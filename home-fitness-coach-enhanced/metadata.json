@@ -1,0 +1,6 @@
+{
+  "name": "Home Fitness Coach",
+  "description": "An interactive home workout planner and active companion with AI workout generator, dynamic timers, and visual fitness trackers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
