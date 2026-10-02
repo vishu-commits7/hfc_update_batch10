@@ -46,7 +46,7 @@ export default function PhotoExerciseDemo({
           own overflow-hidden then clips it to the border-radius exactly. */}
       <motion.div
         className="absolute left-1/2 top-1/2 aspect-square w-[200%] -translate-x-1/2 -translate-y-1/2"
-        style={{ background: "conic-gradient(from 0deg, #d4ff00, #22d3ee, #818cf8, #f472b6, #d4ff00)" }}
+        style={{ background: "conic-gradient(from 0deg, #00e5a0, #38d6ff, #8b84ff, #ffc94a, #00e5a0)" }}
         animate={{ rotate: 360 }}
         transition={{ repeat: Infinity, ease: "linear", duration: 6 }}
       />

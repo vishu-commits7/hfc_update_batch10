@@ -1,0 +1,261 @@
+/* =====================================================================
+   OBSIDIAN — legacy bridge
+   ---------------------------------------------------------------------
+   The app has fourteen screens that were authored against the original
+   light theme with literal Tailwind palette classes (`bg-white`,
+   `text-slate-400`, `border-slate-100`, ...). Rewriting all of them by
+   hand would have been thousands of lines of churn with a real chance of
+   regressing working behaviour, so they are re-skinned here instead.
+
+   Two mechanisms, chosen per colour family:
+
+   A. VARIABLE SWAP — for families that only ever appear as an accent and
+      so have an unambiguous obsidian equivalent (blue, lime, rose, amber,
+      emerald, indigo). Tailwind v4 compiles `text-blue-600` to
+      `color: var(--color-blue-600)`, so redefining that variable under
+      `.theme-obsidian` re-skins every variant — `hover:`, `focus:`,
+      `/50` opacity modifiers, gradients — at zero specificity cost.
+
+   B. TARGETED RULES — for `white`, `black` and the `slate` ramp, which
+      are genuinely ambiguous: `text-slate-900` is dark *text* wanting to
+      become light, while `bg-slate-900` is a dark *surface* wanting to
+      stay dark. One variable cannot serve both, so those are mapped
+      class by class. These rules sit outside `@layer`, which beats
+      Tailwind's layered utilities regardless of specificity — including
+      `hover:` variants, hence the explicit hover pairs below.
+
+   Screens rewritten against the token system directly (App, Dashboard,
+   ActiveWorkout, WorkoutCard, AnalyticsDrawer, CommandPalette and the
+   `ui/` primitives) use none of this and are unaffected by it.
+   ===================================================================== */
+
+/* ---------------------------------------------------------------------
+   A. Variable swaps
+   ------------------------------------------------------------------ */
+.theme-obsidian {
+  /* blue → hyper-cyan (the legacy primary/interactive colour) */
+  --color-blue-50: rgb(56 214 255 / 0.1);
+  --color-blue-100: rgb(56 214 255 / 0.18);
+  --color-blue-200: rgb(56 214 255 / 0.28);
+  --color-blue-300: #9ae9ff;
+  --color-blue-400: #62dcff;
+  --color-blue-500: #38d6ff;
+  --color-blue-600: #38d6ff;
+  --color-blue-700: #6fe1ff;
+  --color-blue-800: #a3ecff;
+  --color-blue-900: #d1f6ff;
+  --color-blue-950: #0a2b36;
+
+  /* lime → electric emerald (the legacy "premium" accent) */
+  --color-lime-50: rgb(0 229 160 / 0.1);
+  --color-lime-100: rgb(0 229 160 / 0.18);
+  --color-lime-200: #7cf2cf;
+  --color-lime-300: #00e5a0;
+  --color-lime-400: #00e5a0;
+  --color-lime-500: #00d093;
+  --color-lime-600: #00b880;
+  --color-lime-700: #00e5a0;
+  --color-lime-800: #9df3d8;
+  --color-lime-900: #cdf9ec;
+
+  /* emerald → emerald (kept in family, re-lit for dark surfaces) */
+  --color-emerald-50: rgb(0 229 160 / 0.1);
+  --color-emerald-100: rgb(0 229 160 / 0.18);
+  --color-emerald-300: #5cefc1;
+  --color-emerald-400: #00e5a0;
+  --color-emerald-500: #00e5a0;
+  --color-emerald-600: #00e5a0;
+  --color-emerald-700: #6ff0c8;
+
+  /* amber → solar gold (achievements, warnings, coach reminders) */
+  --color-amber-50: rgb(255 201 74 / 0.1);
+  --color-amber-100: rgb(255 201 74 / 0.2);
+  --color-amber-300: #ffd980;
+  --color-amber-400: #ffc94a;
+  --color-amber-500: #ffc94a;
+  --color-amber-600: #ffc94a;
+  --color-amber-700: #ffd980;
+  --color-amber-800: #ffe4a6;
+  --color-amber-900: #fff0cd;
+
+  /* rose / red → crimson (destructive) */
+  --color-rose-50: rgb(255 77 106 / 0.1);
+  --color-rose-100: rgb(255 77 106 / 0.2);
+  --color-rose-300: #ff8da0;
+  --color-rose-500: #ff4d6a;
+  --color-rose-600: #ff4d6a;
+  --color-rose-700: #ff7188;
+  --color-rose-800: #ffa3b2;
+  --color-rose-900: #ffd0d8;
+  --color-red-300: #ff8da0;
+  --color-red-500: #ff4d6a;
+  --color-red-600: #ff4d6a;
+
+  /* indigo / violet → a cooled violet that sits beside cyan without
+     competing with it for "primary" */
+  --color-indigo-50: rgb(139 132 255 / 0.1);
+  --color-indigo-100: rgb(139 132 255 / 0.2);
+  --color-indigo-400: #a49dff;
+  --color-indigo-500: #8b84ff;
+  --color-indigo-600: #8b84ff;
+  --color-indigo-900: #191d33;
+  --color-indigo-950: #12142a;
+
+  /* cyan / sky, used in a couple of gradients */
+  --color-cyan-400: #38d6ff;
+  --color-cyan-500: #38d6ff;
+}
+
+/* ---------------------------------------------------------------------
+   B. Targeted rules — ambiguous families
+   ------------------------------------------------------------------ */
+
+/* --- Light card surfaces → carbon ---------------------------------- */
+.theme-obsidian .bg-white {
+  background-color: var(--carbon);
+}
+.theme-obsidian .bg-white\/95 {
+  background-color: color-mix(in srgb, var(--carbon) 92%, transparent);
+}
+.theme-obsidian .bg-white\/70 {
+  background-color: color-mix(in srgb, var(--carbon) 78%, transparent);
+}
+.theme-obsidian .bg-white\/40 {
+  background-color: color-mix(in srgb, var(--graphite) 60%, transparent);
+}
+.theme-obsidian .hover\:bg-white:hover {
+  background-color: var(--graphite);
+}
+.theme-obsidian .hover\:bg-white\/60:hover {
+  background-color: color-mix(in srgb, var(--graphite) 70%, transparent);
+}
+
+/* --- Light wells / chips → graphite -------------------------------- */
+.theme-obsidian .bg-slate-50,
+.theme-obsidian .bg-slate-50\/50,
+.theme-obsidian .bg-gray-50 {
+  background-color: var(--graphite);
+}
+.theme-obsidian .bg-slate-100,
+.theme-obsidian .bg-slate-100\/80,
+.theme-obsidian .bg-slate-100\/70,
+.theme-obsidian .bg-slate-200 {
+  background-color: var(--slate-ink);
+}
+.theme-obsidian .hover\:bg-slate-50:hover,
+.theme-obsidian .hover\:bg-blue-50\/40:hover,
+.theme-obsidian .hover\:bg-blue-50\/50:hover {
+  background-color: var(--slate-ink);
+}
+.theme-obsidian .hover\:bg-slate-100:hover,
+.theme-obsidian .hover\:bg-slate-100\/70:hover,
+.theme-obsidian .hover\:bg-slate-200:hover,
+.theme-obsidian .hover\:bg-slate-300:hover {
+  background-color: color-mix(in srgb, var(--slate-ink) 70%, var(--ink-4));
+}
+
+/* --- Already-dark surfaces → retinted to the obsidian hue ----------
+   These were near-black slate; left alone they read as a slightly
+   different, slightly bluer black than the new canvas, which is exactly
+   the kind of mismatch that makes an interface look assembled rather
+   than designed. */
+.theme-obsidian .bg-slate-900 {
+  background-color: var(--graphite);
+}
+.theme-obsidian .bg-slate-950,
+.theme-obsidian .bg-\[\#05070c\] {
+  background-color: var(--obsidian);
+}
+.theme-obsidian .hover\:bg-slate-800:hover {
+  background-color: var(--slate-ink);
+}
+
+/* --- Modal scrims --------------------------------------------------- */
+.theme-obsidian .bg-black\/40,
+.theme-obsidian .bg-black\/50,
+.theme-obsidian .bg-black\/35 {
+  background-color: var(--scrim);
+}
+
+/* --- Text ramp (inverted) ------------------------------------------- */
+.theme-obsidian .text-slate-950,
+.theme-obsidian .text-slate-900,
+.theme-obsidian .text-slate-800 {
+  color: var(--ink);
+}
+.theme-obsidian .text-slate-700,
+.theme-obsidian .text-slate-600,
+.theme-obsidian .text-slate-500 {
+  color: var(--ink-2);
+}
+.theme-obsidian .text-slate-400 {
+  color: var(--ink-3);
+}
+.theme-obsidian .text-slate-300 {
+  color: var(--ink-4);
+}
+.theme-obsidian .hover\:text-slate-800:hover,
+.theme-obsidian .hover\:text-slate-700:hover,
+.theme-obsidian .hover\:text-slate-600:hover {
+  color: var(--ink);
+}
+.theme-obsidian .placeholder-slate-400::placeholder,
+.theme-obsidian .placeholder-slate-300::placeholder {
+  color: var(--ink-4);
+}
+
+/* Dark surfaces set their own text colour and must keep it — a
+   `text-slate-900` label inside a `bg-slate-950` card was already light
+   by intent and the rules above would have flipped it to light-on-light.
+   Restated here at higher specificity. */
+.theme-obsidian .bg-slate-900 .text-white,
+.theme-obsidian .bg-slate-950 .text-white,
+.theme-obsidian .bg-slate-900 .text-slate-900,
+.theme-obsidian .bg-slate-950 .text-slate-950 {
+  color: var(--ink);
+}
+
+/* --- Borders -------------------------------------------------------- */
+.theme-obsidian .border-slate-100,
+.theme-obsidian .border-slate-150,
+.theme-obsidian .border-gray-100 {
+  border-color: var(--line);
+}
+.theme-obsidian .border-slate-200,
+.theme-obsidian .border-slate-200\/80,
+.theme-obsidian .border-slate-200\/50,
+.theme-obsidian .border-slate-300 {
+  border-color: var(--line-strong);
+}
+.theme-obsidian .hover\:border-slate-200:hover,
+.theme-obsidian .hover\:border-slate-300:hover {
+  border-color: var(--line-strong);
+}
+.theme-obsidian .divide-slate-100 > * + * {
+  border-color: var(--line);
+}
+
+/* --- Form controls --------------------------------------------------
+   Inputs in the legacy screens are `bg-white border-slate-200`, which
+   the rules above already handle, but the native controls underneath
+   (date pickers, range thumbs, checkboxes) need the colour-scheme hint
+   to stop rendering as light-mode widgets on a dark card. */
+.theme-obsidian input,
+.theme-obsidian textarea,
+.theme-obsidian select {
+  color-scheme: dark;
+  caret-color: var(--cyan);
+}
+
+/* --- Legacy shadows -------------------------------------------------
+   Light-theme shadows are pure black at 2–8% — effectively invisible on
+   a dark canvas, leaving legacy cards looking flat next to the new ones.
+   Swapped for the bevel, which is what actually reads as depth here. */
+.theme-obsidian .shadow-xs,
+.theme-obsidian .shadow-sm,
+.theme-obsidian .shadow-md,
+.theme-obsidian .shadow-lg,
+.theme-obsidian .shadow-xl,
+.theme-obsidian .shadow-2xl {
+  box-shadow: var(--bevel), var(--shadow-md);
+}

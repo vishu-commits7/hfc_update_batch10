@@ -1,17 +1,60 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="theme-obsidian">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="description" content="Home Fitness Coach — Premium: AI workouts, 38 animated exercises, multi-week programs, achievements, and a wellness toolkit. Starts empty, no fake data." />
-    <meta name="theme-color" content="#0b0f19" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23020617'/%3E%3Cpath d='M25 50h6M69 50h6M31 50h38M40 36v28M60 36v28' stroke='%23d4ff00' stroke-width='7' stroke-linecap='round'/%3E%3C/svg%3E" />
-    <!-- Display + calligraphy webfonts (progressive enhancement — every
-         element that uses them also has a bold system-font fallback so the
-         app looks correct even fully offline / before these load). -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta
+      name="description"
+      content="Home Fitness Coach — Premium: AI workouts, 38 animated exercises, multi-week programs, achievements, and a wellness toolkit. Starts empty, no fake data."
+    />
+    <meta name="theme-color" content="#04050a" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23090b11'/%3E%3Cpath d='M25 50h6M69 50h6M31 50h38M40 36v28M60 36v28' stroke='%2300e5a0' stroke-width='7' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
+
+    <!--
+      Theme bootstrap. This runs before the stylesheet paints, so the app
+      never flashes the wrong theme on cold start — which on a dark app is
+      a full-screen white flash, the most conspicuous polish failure there
+      is. Kept inline and dependency-free precisely so nothing can delay it.
+    -->
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem("hfc_theme");
+          var theme = saved === "daylight" ? "daylight" : "obsidian";
+          var root = document.documentElement;
+          root.classList.remove("theme-obsidian", "theme-daylight");
+          root.classList.add("theme-" + theme);
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", theme === "daylight" ? "#eef1f6" : "#04050a");
+        } catch (e) {
+          /* private mode / storage disabled — the default class on <html> stands */
+        }
+      })();
+    </script>
+
+    <!--
+      Display face only. Every element that uses Unbounded also carries a
+      system fallback, so the app renders correctly offline and on first
+      paint. The body/UI face is the platform's own by design — see
+      --font-ui in styles/tokens.css.
+    -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800;900&family=Dancing+Script:wght@500;700&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800;900&family=Dancing+Script:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+
     <title>Home Fitness Coach — Premium</title>
   </head>
   <body>

@@ -4,21 +4,16 @@ import {
   Mars, Venus, NonBinary, ChevronRight, ChevronLeft, X, Sparkles,
   Ruler, Weight, Cake, Check, Minus, Plus, SkipForward
 } from "lucide-react";
-import { UserProfile } from "../types";
 import { calculateBMI, bmiCategory, cmToFtIn, ftInToCm, kgToLb, lbToKg } from "../lib/wellness";
-import Dumbbell3D from "./Dumbbell3D";
+import Dumbbell3D from "./Dumbbell3DLazy";
 import { audio } from "../lib/audio";
 import coachMalePhoto from "../assets/coach/coach-male.png";
 import coachFemalePhoto from "../assets/coach/coach-female.png";
-import demoBlackPhoto from "../assets/exercises/squat-black-1.jpg";
-import demoWhitePhoto from "../assets/exercises/squat-white-1.jpg";
-import { DemoRace } from "../lib/exercisePhotos";
 
 type Gender = "male" | "female" | "other";
 
 export interface PersonalizeData {
   gender?: Gender;
-  race?: DemoRace;
   age?: number;
   heightCm?: number;
   weightKg?: number;
@@ -32,8 +27,12 @@ interface PersonalizeFlowProps {
   onClose?: () => void;
 }
 
-const ONBOARDING_STEPS = ["choice", "gender", "race", "age", "height", "weight", "summary"] as const;
-const EDIT_STEPS = ["gender", "race", "age", "height", "weight", "summary"] as const;
+// The "race" step is gone. It existed only to pick which of two
+// photographic models appeared in the Academy; now that every demo is the
+// posed figure, the question had no effect on anything and was asking a
+// new user to state their race before they had seen the app.
+const ONBOARDING_STEPS = ["choice", "gender", "age", "height", "weight", "summary"] as const;
+const EDIT_STEPS = ["gender", "age", "height", "weight", "summary"] as const;
 
 /* ------------------------------------------------------------------ *
  * Drifting gradient-orb backdrop — the same futuristic language used
@@ -219,7 +218,6 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
   const [direction, setDirection] = useState(1);
 
   const [gender, setGender] = useState<Gender | undefined>(initial.gender);
-  const [race, setRace] = useState<DemoRace | undefined>(initial.race);
   const [age, setAge] = useState(initial.age ?? 25);
   const [heightCm, setHeightCm] = useState(initial.heightCm ?? 170);
   const [weightKg, setWeightKg] = useState(initial.weightKg ?? 65);
@@ -232,7 +230,6 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
   // is saved as unset rather than silently persisting a default number.
   const [touched, setTouched] = useState<Record<string, boolean>>({
     gender: initial.gender !== undefined,
-    race: initial.race !== undefined,
     age: initial.age !== undefined,
     height: initial.heightCm !== undefined,
     weight: initial.weightKg !== undefined,
@@ -255,7 +252,6 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
   const finish = () => {
     onComplete({
       gender: touched.gender ? gender : undefined,
-      race: touched.race ? race : undefined,
       age: touched.age ? age : undefined,
       heightCm: touched.height ? heightCm : undefined,
       weightKg: touched.weight ? weightKg : undefined,
@@ -352,7 +348,7 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
                   <h1 className="font-display mt-6 text-3xl font-black leading-tight tracking-tight text-white">Let's personalize<br/>your plan</h1>
                   <p className="font-script mt-1 text-lg text-lime-300/90">crafted around you</p>
                   <p className="mx-auto mt-3 max-w-xs text-sm leading-6 text-white/50">
-                    Five quick questions — gender, race, age, height and weight — help the AI coach tailor a plan to you. Totally optional.
+                    Four quick questions — gender, age, height and weight — help the AI coach tailor a plan to you. Totally optional.
                   </p>
                   <div className="mt-8 space-y-3">
                     <motion.button whileTap={{ scale: 0.97 }} onClick={() => go(1)} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-lime-300 py-4 text-sm font-black text-slate-950">
@@ -378,26 +374,6 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
                   <motion.button
                     whileTap={{ scale: 0.97 }}
                     disabled={!gender}
-                    onClick={acceptAndGo}
-                    className="mt-8 flex w-full items-center justify-center gap-2 rounded-2xl bg-white py-4 text-sm font-black text-slate-950 disabled:opacity-30"
-                  >
-                    Continue <ChevronRight className="h-4 w-4" />
-                  </motion.button>
-                </div>
-              )}
-
-              {step === "race" && (
-                <div>
-                  <p className="text-center text-[10px] font-black uppercase tracking-[0.2em] text-lime-300">Question {questionPosition + 1} of {questionSteps.length}</p>
-                  <h2 className="font-display mt-3 text-center text-2xl font-black text-white">Who should demonstrate your exercises?</h2>
-                  <p className="mt-1.5 text-center text-xs text-white/40">Picks the model shown in the Academy's real-photo exercise demos.</p>
-                  <div className="mt-8 flex gap-3">
-                    <GenderCard active={race === "black"} onClick={() => setRace("black")} label="Black" glow="bg-indigo-500/20" ringColors="#818cf8, #22d3ee, #d4ff00, #818cf8" photo={demoBlackPhoto} />
-                    <GenderCard active={race === "white"} onClick={() => setRace("white")} label="White" glow="bg-cyan-500/20" ringColors="#22d3ee, #d4ff00, #818cf8, #22d3ee" photo={demoWhitePhoto} />
-                  </div>
-                  <motion.button
-                    whileTap={{ scale: 0.97 }}
-                    disabled={!race}
                     onClick={acceptAndGo}
                     className="mt-8 flex w-full items-center justify-center gap-2 rounded-2xl bg-white py-4 text-sm font-black text-slate-950 disabled:opacity-30"
                   >
@@ -491,7 +467,6 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-left">
                       <p className="text-[10px] font-black uppercase tracking-widest text-white/40">Profile</p>
                       <p className="mt-1 text-sm font-bold text-white capitalize">{touched.gender ? gender : "Skipped"} · {touched.age ? `${age}yrs` : "Skipped"}</p>
-                      {touched.race && <p className="mt-0.5 text-[11px] font-bold uppercase tracking-wide text-lime-300/80">{race} demo model</p>}
                       <p className="text-xs text-white/40">{touched.height ? `${heightCm}cm` : "height skipped"} · {touched.weight ? `${weightKg}kg` : "weight skipped"}</p>
                     </div>
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-left">

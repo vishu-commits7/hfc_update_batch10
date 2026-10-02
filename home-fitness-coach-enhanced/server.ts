@@ -1,6 +1,5 @@
 import express from "express";
 import path from "path";
-import cors from "cors";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 
@@ -9,32 +8,7 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-// The installed Android/iOS app has no server of its own — it calls this
-// same server over the network from a *different* origin (the app's local
-// WebView origin, not this server's domain), so the browser's CORS check
-// has to be explicitly allowed here or every request from the app gets
-// silently blocked. Left wide open (`*`) since this endpoint has no
-// per-user auth/session to protect — the shared-secret header below is
-// this API's actual access control.
-app.use(cors());
-
-// Render (and most host-your-own-server platforms) assign the port at
-// runtime via the PORT env var — a hardcoded port means the platform's
-// health checks can never reach the app.
-const PORT = Number(process.env.PORT) || 3000;
-
-// Optional lightweight gate: if API_SHARED_SECRET is set, only requests
-// carrying the matching header are served. This is *not* strong security
-// (the secret ships inside the compiled app, same as any client secret
-// would), but once this server has a public URL it stops random bots/
-// scanners that find the URL from quietly burning through the Gemini
-// quota — the actual API key never leaves this server either way.
-const REQUIRED_SECRET = process.env.API_SHARED_SECRET;
-function checkSharedSecret(req: express.Request, res: express.Response, next: express.NextFunction) {
-  if (!REQUIRED_SECRET) return next(); // not configured — gate disabled
-  if (req.header("x-app-secret") === REQUIRED_SECRET) return next();
-  return res.status(401).json({ error: "Unauthorized", message: "Missing or invalid app secret." });
-}
+const PORT = 3000;
 
 // Initialize Gemini safely
 let ai: GoogleGenAI | null = null;
@@ -57,7 +31,7 @@ function getGeminiClient(): GoogleGenAI {
 }
 
 // API endpoint to generate custom AI workouts
-app.post("/api/workouts/generate", checkSharedSecret, async (req, res) => {
+app.post("/api/workouts/generate", async (req, res) => {
   try {
     const { fitnessLevel, goal, duration, targetArea, equipment, healthNotes } = req.body ?? {};
 
@@ -200,7 +174,7 @@ const startServer = async () => {
     // Serve pre-built static files in production
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
+    app.get("*", (_req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }

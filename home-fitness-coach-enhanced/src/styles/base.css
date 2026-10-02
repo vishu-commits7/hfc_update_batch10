@@ -1,0 +1,504 @@
+/* =====================================================================
+   OBSIDIAN — base layer
+   Resets, document chrome, and the handful of material primitives that
+   are cheaper as CSS than as a React component.
+
+   CASCADE LAYERS MATTER HERE. Tailwind v4 declares
+   `@layer theme, base, components, utilities`, and an *unlayered* rule
+   beats every layered one regardless of specificity. So:
+
+     · element resets (`button { padding: 0 }`) go in `@layer base`,
+       otherwise they silently defeat `px-4` on every button in the app;
+     · material primitives (`.surface`, `.eyebrow`) go in
+       `@layer components`, so a utility can always override them;
+     · only `prefers-reduced-motion` stays unlayered, because it must
+       win over everything by design.
+
+   The legacy bridge is unlayered on purpose — that is how it re-skins
+   utilities it does not own. It is the exception, not the pattern.
+   ===================================================================== */
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    /* `overflow-x: clip`, NOT `hidden`.
+       
+       Per spec you cannot have one axis `visible` and the other `hidden`,
+       so `overflow-x: hidden` silently promotes `overflow-y` to `auto` —
+       which turns <body> into its own scroll container nested inside the
+       viewport's. Desktop Chromium tolerates the nesting; Android WebView
+       is where the two scrollers fight and the page stops scrolling
+       altogether. `clip` suppresses the overflow without creating a
+       scroll container, so `overflow-y` stays `visible` and the viewport
+       remains the only scroller.
+       
+       `max-width: 100vw` is gone with it: 100vw includes the scrollbar
+       gutter, so on desktop it was itself a source of horizontal
+       overflow — the very thing the clip was added to hide. */
+    overflow-x: clip;
+    background-color: var(--void);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    /* Stops the iOS rubber-band exposing white behind the app, and stops
+       Android's overscroll glow dragging the page while a drawer is
+       being flicked. Deliberately NOT `overscroll-behavior: none` on both
+       axes — the horizontal rails (chip rows, coach avatars) set their
+       own containment, and a document-level lock would swallow their
+       gestures. */
+    overscroll-behavior-y: none;
+  }
+
+  /* Engines without `overflow-x: clip` fall back to clipping at the app
+     frame instead of the document, which keeps the viewport as the sole
+     scroller either way. */
+  @supports not (overflow-x: clip) {
+    html,
+    body {
+      overflow-x: visible;
+    }
+  }
+
+  /* A mobile-browser artifact that fights every custom press state in
+     the app. Feedback comes from the spring physics instead. */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    color: inherit;
+  }
+
+  button {
+    background: none;
+    border: 0 solid transparent;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  /* Keyboard users get an unmistakable ring; pointer users get nothing. */
+  :focus {
+    outline: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--cyan);
+    outline-offset: 2px;
+    border-radius: var(--r-xs);
+  }
+
+  ::selection {
+    background: var(--cyan);
+    color: var(--void);
+  }
+
+  /* Thin, self-effacing scrollbars. On a mobile-first layout a heavy
+     scrollbar is the fastest way to make a polished app look like a
+     web page. */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border-radius: 999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--ink-4);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+}
+
+@layer components {
+  /* --- Horizontal rails ---------------------------------------------
+     Chip rows, coach avatars, up-next strips. The scrollbar is hidden
+     because content visibly clipped mid-item communicates scrollability
+     better than a bar does on touch. */
+  .rail {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+  }
+
+  .rail::-webkit-scrollbar {
+    display: none;
+  }
+
+  .rail > * {
+    scroll-snap-align: start;
+  }
+
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* --- Type primitives --------------------------------------------- */
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+
+  .font-numeric {
+    font-family: var(--font-numeric);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    letter-spacing: -0.03em;
+  }
+
+  /* Retained so untouched legacy screens keep their styling. Not used
+     on any of the new surfaces. */
+  .font-script {
+    font-family: "Dancing Script", "Segoe Script", cursive;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+  }
+
+  /* Overline label. Sits above almost every stat in the app, so it
+     earns a class instead of six repeated utilities. */
+  .eyebrow {
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  /* --- Material primitives ------------------------------------------ */
+
+  /* The standard card: gradient-faked glass, hairline, lit top edge. */
+  .surface {
+    position: relative;
+    background-color: var(--carbon);
+    background-image: var(--glass-solid);
+    border: 1px solid var(--line);
+    box-shadow: var(--bevel), var(--shadow-md);
+  }
+
+  /* Aurora card: diagonal colour wash layered over the standard surface.
+     Creates the sense of ambient internal lighting without photography.
+     Applied to hero bento cells and achievement cards. */
+  .aurora-card {
+    position: relative;
+    background-color: var(--carbon);
+    background-image:
+      radial-gradient(ellipse 120% 80% at 0% 0%, var(--aurora-a) 0%, transparent 60%),
+      radial-gradient(ellipse 100% 70% at 100% 100%, var(--aurora-b) 0%, transparent 55%),
+      radial-gradient(ellipse 80% 60% at 50% 0%, var(--aurora-c) 0%, transparent 50%),
+      var(--glass-solid);
+    border: 1px solid var(--line);
+    box-shadow: var(--bevel), var(--shadow-md);
+  }
+
+  /* Neon border: a glowing hairline in the current accent colour.
+     More intense than .hairline-glow — used for active states and
+     the featured session card. Driven by --glow on the element. */
+  .neon-border {
+    border: 1px solid color-mix(in srgb, var(--glow) 45%, transparent);
+    box-shadow:
+      var(--bevel),
+      inset 0 0 0 1px color-mix(in srgb, var(--glow) 18%, transparent),
+      var(--glow-sm) color-mix(in srgb, var(--glow) 30%, transparent),
+      var(--glow-md) color-mix(in srgb, var(--glow) 14%, transparent);
+  }
+
+  /* Prism card: rainbow-tinted border via a gradient-border trick.
+     The border is painted as a pseudo-element so the gradient is
+     visible; inner content sits on the solid background. */
+  .prism-card {
+    position: relative;
+    background-color: var(--carbon);
+    background-image: var(--glass-solid);
+    box-shadow: var(--bevel), var(--shadow-lg);
+    border: 1px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .prism-card::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: var(--prism-border);
+    -webkit-mask:
+      linear-gradient(#fff 0 0) content-box,
+      linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* Session surface: the full-bleed background for ActiveWorkout.
+     Deeper than the void, with a subtle accent tint that shifts
+     to the current exercise's accent colour via --glow. */
+  .session-surface {
+    background-color: var(--session-bg);
+    background-image:
+      radial-gradient(
+        ellipse 160% 60% at 50% 100%,
+        color-mix(in srgb, var(--glow, var(--cyan)) 12%, transparent) 0%,
+        transparent 70%
+      );
+  }
+
+  /* Pulse glow: a breathing ring around hero numbers in session mode.
+     Layered with pulse-ring for a double-ring effect. */
+  .pulse-glow {
+    box-shadow:
+      0 0 0 0 color-mix(in srgb, var(--glow) 40%, transparent),
+      0 0 24px -4px color-mix(in srgb, var(--glow) 30%, transparent);
+    animation: obsidian-pulse-glow 2.4s var(--ease-in-out) infinite;
+  }
+
+  /* Floating ambient orb: decorative, purely CSS, pointer-events-none.
+     Used in session mode header and achievement cells. */
+  .ambient-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(48px);
+    opacity: 0.35;
+    pointer-events: none;
+    animation: obsidian-float 8s var(--ease-in-out) infinite alternate;
+  }
+
+  /* True glass. Reserved for elements over scrolling content — see the
+     note in tokens.css about WebView cost. */
+  .glass {
+    background-color: var(--glass-tint);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.6);
+    backdrop-filter: blur(var(--glass-blur)) saturate(1.6);
+    border: 1px solid var(--line);
+    box-shadow: var(--bevel);
+  }
+
+  /* A hairline that glows in an accent. Driven by `--glow`, set by the
+     component, so one class covers all five accents. */
+  .hairline-glow {
+    border: 1px solid transparent;
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--glow) 34%, transparent),
+      0 0 0 1px color-mix(in srgb, var(--glow) 10%, transparent),
+      0 0 28px -6px color-mix(in srgb, var(--glow) 40%, transparent);
+  }
+
+  /* Soft radial bloom behind hero numerals and active cards. Always
+     decorative and `pointer-events: none` at the call site. */
+  .bloom {
+    background: radial-gradient(
+      circle at center,
+      color-mix(in srgb, var(--glow) 46%, transparent) 0%,
+      transparent 68%
+    );
+    filter: blur(36px);
+  }
+
+  /* Fine grain over large flat fills. Dark gradients band visibly on
+     8-bit phone panels; a little noise dithers it away. */
+  .grain::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.4;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");
+  }
+
+  /* --- Exercise animation -------------------------------------------
+     The figure is built from FILLED tapered paths now, not strokes, so
+     the old `.motion-line { fill: none }` joinery rule is gone — it would
+     erase every limb it touched. Colour and geometry live inline in
+     HumanFigure; only compositing hints are stated here. */
+
+  /* Joint groups are written to sixty times a second from the shared
+     clock. Promoting them keeps those writes off the main-thread paint
+     path; `transform` alone is the only property that changes. */
+  .exercise-anim .motion-upper-body,
+  .exercise-anim .motion-arm-l,
+  .exercise-anim .motion-arm-r,
+  .exercise-anim .motion-leg-l,
+  .exercise-anim .motion-leg-r {
+    will-change: transform;
+  }
+
+  /* --- Layout helpers ----------------------------------------------- */
+  .safe-t {
+    padding-top: var(--safe-t);
+  }
+
+  .safe-b {
+    padding-bottom: var(--safe-b);
+  }
+
+  /* Promotes an element to its own compositor layer. Applied only to
+     things that animate continuously — each layer costs GPU memory. */
+  .gpu {
+    will-change: transform, opacity;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+  }
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .glass {
+    background-color: var(--carbon);
+  }
+}
+
+/* --- Motion ---------------------------------------------------------
+   Keyframes are not affected by cascade layers; the classes that use
+   them are kept in `components` for consistency with the rest. */
+@keyframes obsidian-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes obsidian-shimmer {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(220%); }
+}
+
+@keyframes obsidian-breathe {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50%       { opacity: 1;    transform: scale(1.06); }
+}
+
+@keyframes obsidian-pulse-ring {
+  0%       { opacity: 0.5; transform: scale(0.92); }
+  70%, 100% { opacity: 0;   transform: scale(1.5); }
+}
+
+@keyframes obsidian-pulse-glow {
+  0%, 100% {
+    box-shadow:
+      0 0 0 0 color-mix(in srgb, var(--glow) 40%, transparent),
+      0 0 24px -4px color-mix(in srgb, var(--glow) 30%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 6px color-mix(in srgb, var(--glow) 0%, transparent),
+      0 0 44px -4px color-mix(in srgb, var(--glow) 50%, transparent);
+  }
+}
+
+@keyframes obsidian-float {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(12px, -18px) scale(1.08); }
+}
+
+@keyframes obsidian-rotate-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes obsidian-scale-in {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes obsidian-timer-tick {
+  0%   { opacity: 1; }
+  40%  { opacity: 0.7; }
+  100% { opacity: 1; }
+}
+
+@layer components {
+  /* Opacity only, deliberately. The previous build documented — correctly
+     — that a transform animation with `fill-mode: forwards` keeps
+     Chromium treating the element as a containing block for
+     `position: fixed` descendants, which silently mispositions every
+     modal inside an animating screen. Screen-level animation stays
+     opacity-only to sidestep that whole class of bug; entrance movement
+     is handled per component by Motion, which cleans up its own
+     transforms. */
+  .animate-fade-in {
+    animation: obsidian-fade-in var(--t-slow) var(--ease-out-expo) forwards;
+  }
+
+  .shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      100deg,
+      transparent 20%,
+      rgb(255 255 255 / 0.08) 50%,
+      transparent 80%
+    );
+    animation: obsidian-shimmer 2.4s var(--ease-in-out) infinite;
+  }
+
+  .breathe {
+    animation: obsidian-breathe 3.2s var(--ease-in-out) infinite;
+  }
+
+  .pulse-ring {
+    animation: obsidian-pulse-ring 2s var(--ease-out-expo) infinite;
+  }
+
+  .animate-float {
+    animation: obsidian-float 8s var(--ease-in-out) infinite alternate;
+  }
+
+  .animate-rotate-slow {
+    animation: obsidian-rotate-slow 20s linear infinite;
+  }
+
+  .animate-scale-in {
+    animation: obsidian-scale-in var(--t-slow) var(--ease-out-expo) forwards;
+  }
+
+  .timer-tick {
+    animation: obsidian-timer-tick 1s step-start infinite;
+  }
+}
+
+/* --- Reduced motion --------------------------------------------------
+   Unlayered and `!important` by design: this must win over everything,
+   including the exercise rig and any inline animation. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

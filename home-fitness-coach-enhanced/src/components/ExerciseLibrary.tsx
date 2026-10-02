@@ -1,10 +1,12 @@
-import React, { useId, useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { motion } from "motion/react";
 import { Search, Play, Star, ChevronRight, CheckCircle2, AlertTriangle, Timer, Dumbbell, HeartPulse, X, Mars, Venus, Volume2, Square } from "lucide-react";
-import HumanFigure, { FigureGender } from "./HumanFigure";
+import type { FigureGender } from "./HumanFigure";
+import ExerciseThumb from "./ExerciseThumb";
+import type { DemoTone } from "../lib/exercisePhotos.generated";
+import { readDemoModel, writeDemoModel } from "../lib/demoPrefs";
 import { UserProfile } from "../types";
-import { DemoRace, getPhotoSet, readSavedRace } from "../lib/exercisePhotos";
-import PhotoExerciseDemo from "./PhotoExerciseDemo";
-import { PhotoExerciseThumb } from "./PhotoExerciseThumb";
 import { audio } from "../lib/audio";
 import heroDeadlift from "../assets/ui/hero-deadlift.jpg";
 
@@ -64,47 +66,89 @@ export const DEMO_EXERCISES: ExerciseDemo[] = [
 
 const CATEGORIES = ["All", "Favorites", "Upper Body", "Lower Body", "Core", "Cardio", "Flexibility"];
 
-function MotionDemo({ exercise, gender }: { exercise: ExerciseDemo; gender: FigureGender }) {
-  const anim = exercise.pattern || exercise.id;
-  const cls = `motion-human motion-${anim}`;
-  // Unique per-mount gradient/filter ids — this demo swaps exercises on the
-  // same DOM node, and SVG <defs> ids must never collide with any other
-  // instance (e.g. a second copy rendered elsewhere in the tree).
-  const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
+/**
+ * The movement, enlarged, lit and looping — what you get when you open an
+ * exercise rather than browse past it.
+ *
+ * The grid holds signature poses; this is the one place the figure
+ * actually moves, so it is the one place worth spending on. Two neon
+ * gradient washes rake the stage from opposite corners, keyed to the demo
+ * figure's gender (cyan for male, magenta for female), with a slow
+ * specular sweep across the glass. All of it is `pointer-events: none`
+ * decoration layered under and over the figure — the figure itself is the
+ * same renderer the 44px list thumbnails use.
+ */
+function MotionDemo({ exercise, gender, model }: { exercise: ExerciseDemo; gender: FigureGender; model: DemoTone }) {
+  const female = gender === "female";
+  const hot = female ? "#ff5fae" : "#38d6ff";
+  const cool = female ? "#a45cff" : "#00e5a0";
+
   return (
-    <div className="motion-stage relative h-56 overflow-hidden rounded-[24px] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950">
-      <div className="absolute inset-0 opacity-20" style={{backgroundImage:"radial-gradient(circle at 30% 20%, rgba(190,255,0,.5), transparent 28%), radial-gradient(circle at 80% 80%, rgba(59,130,246,.5), transparent 30%)"}} />
-      <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-black/35 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-lime-300 backdrop-blur">
-        <span className="h-2 w-2 animate-pulse rounded-full bg-lime-300"/> Motion demo
+    <div
+      className="relative h-72 overflow-hidden rounded-[24px] sm:h-80"
+      style={{
+        background: "radial-gradient(130% 100% at 50% 0%, #131826 0%, #080a11 70%)",
+        boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${hot} 26%, transparent), 0 0 44px -14px ${hot}`,
+      }}
+    >
+      {/* Backlight. Sits behind the figure and is what makes the whole
+          panel read as lit rather than as a picture on a dark card. */}
+      <motion.div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background: `radial-gradient(60% 55% at 28% 22%, ${hot}59 0%, transparent 62%), radial-gradient(58% 60% at 76% 82%, ${cool}4d 0%, transparent 64%)`,
+        }}
+        animate={{ opacity: [0.75, 1, 0.75] }}
+        transition={{ duration: 5.2, repeat: Infinity, ease: "easeInOut" }}
+      />
+
+      {/* Floor pool, so the figure is standing in the light rather than
+          floating in front of it. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-10 bottom-5 h-16 rounded-[50%]"
+        style={{ background: `radial-gradient(closest-side, ${hot}3d, transparent)` }}
+      />
+
+      {/* Photographs where they exist, drawn figure otherwise — the rule
+          lives in ExerciseThumb so the hero, the grid and the session
+          panel can never disagree about which demo an exercise gets. */}
+      <ExerciseThumb
+        name={exercise.name}
+        targetMuscle={exercise.focus}
+        gender={gender}
+        model={model}
+        tone={female ? "crimson" : "cyan"}
+        bare
+      />
+
+      {/* Specular sweep. Skewed and travelling well past both edges so it
+          enters and leaves cleanly instead of blinking on mid-panel. */}
+      <motion.div
+        aria-hidden
+        className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 skew-x-[-18deg]"
+        style={{ background: "linear-gradient(90deg, transparent, rgb(255 255 255 / 0.13), transparent)" }}
+        animate={{ x: ["0%", "460%"] }}
+        transition={{ duration: 3.4, repeat: Infinity, repeatDelay: 2.4, ease: "easeInOut" }}
+      />
+
+      <div className="pointer-events-none absolute left-4 top-4 flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest backdrop-blur" style={{ color: hot }}>
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: hot, boxShadow: `0 0 8px ${hot}` }} />
+        Live form
       </div>
-      <div className="absolute right-4 top-4 rounded-full bg-white/10 px-3 py-1.5 text-[10px] font-bold text-white/60">{gender === "female" ? "FEMALE" : gender === "male" ? "MALE" : "NEUTRAL"} · 3D</div>
-      <svg viewBox="0 0 360 220" className={`motion-svg ${cls}`} aria-label={`${exercise.name} animated demonstration, ${gender} figure`} style={{ overflow: "visible" }}>
-        <defs>
-          <linearGradient id={`skinGrad-${uid}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#f2c39a" />
-            <stop offset="100%" stopColor="#d99e6c" />
-          </linearGradient>
-          <linearGradient id={`outfitGrad-${uid}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={gender === "female" ? "#4c5670" : "#343c50"} />
-            <stop offset="100%" stopColor={gender === "female" ? "#2c3244" : "#1c2130"} />
-          </linearGradient>
-          <filter id={`glow-${uid}`} x="-60%" y="-60%" width="220%" height="220%">
-            <feGaussianBlur stdDeviation="3" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
-        <ellipse cx="180" cy="200" rx="62" ry="11" className="motion-shadow" />
-        <g filter={`url(#glow-${uid})`}>
-          <HumanFigure gender={gender} detailed gradientId={`outfitGrad-${uid}`} skinGradientId={`skinGrad-${uid}`} />
-        </g>
-        <path d="M95 192 H265" className="motion-floor" />
-      </svg>
-      <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between">
-        <div><p className="text-[10px] font-black uppercase tracking-widest text-white/40">Demonstration</p><p className="text-sm font-black text-white">{exercise.tempo}</p></div>
-        <div className="flex items-center gap-1 text-[10px] font-bold text-white/50"><Play className="h-3.5 w-3.5 fill-current"/> Looping motion</div>
+      <div className="pointer-events-none absolute right-4 top-4 rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-[10px] font-bold text-white/55 backdrop-blur">
+        {female ? "FEMALE" : gender === "male" ? "MALE" : "NEUTRAL"}
+      </div>
+
+      <div className="pointer-events-none absolute inset-x-4 bottom-4 flex items-end justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-widest text-white/40">Tempo</p>
+          <p className="text-sm font-black text-white">{exercise.tempo}</p>
+        </div>
+        <div className="flex items-center gap-1 text-[10px] font-bold text-white/50">
+          <Play className="h-3.5 w-3.5 fill-current" /> Looping
+        </div>
       </div>
     </div>
   );
@@ -135,18 +179,18 @@ export default function ExerciseLibrary({ onNavigateToLog, favorites = [], onTog
     if (profile?.gender === "male" || profile?.gender === "female") return profile.gender;
     return "female";
   });
+  // Which photographic model the demos use. Remembered, never asked for:
+  // the old onboarding question made a new user state their race before
+  // they had seen the app, to pick between two photo sets.
+  const [demoModel, setDemoModel] = useState<DemoTone>(readDemoModel);
+  const setModelPersisted = (m: DemoTone) => {
+    setDemoModel(m);
+    writeDemoModel(m);
+  };
+
   const setGenderPersisted = (g: FigureGender) => {
     setFigureGender(g);
     localStorage.setItem("kinetic_demo_gender", g);
-  };
-
-  // Demo model race for the real-photo exercises (push-ups, squats,
-  // plank so far) — same "remember whatever they pick" persistence
-  // pattern as the illustrated-figure gender toggle above.
-  const [demoRace, setDemoRace] = useState<DemoRace>(() => readSavedRace(profile?.race));
-  const setRacePersisted = (r: DemoRace) => {
-    setDemoRace(r);
-    localStorage.setItem("kinetic_demo_race", r);
   };
 
   // Voice-over: reads the exercise name, description and coach cues aloud
@@ -186,7 +230,7 @@ export default function ExerciseLibrary({ onNavigateToLog, favorites = [], onTog
       <div className="mb-6">
         <span className="text-[10px] font-black uppercase tracking-widest text-blue-600">Exercise academy</span>
         <div className="mt-1 flex items-end justify-between gap-3">
-          <div><h1 className="font-display text-2xl font-black tracking-tight">Illustrated movement library</h1><p className="mt-2 text-sm leading-5 text-slate-500">Every exercise has a fully illustrated, looping demo — with a male and a female figure to choose from — plus form cues and common mistakes.</p></div>
+          <div><h1 className="font-display text-2xl font-black tracking-tight">Movement library</h1><p className="mt-2 text-sm leading-5 text-slate-500">Every movement is demonstrated by a posed figure built from real joint angles — in your choice of male or female — plus form cues and common mistakes.</p></div>
           <div className="hidden rounded-2xl bg-slate-900 px-3 py-2 text-right text-white sm:block"><p className="text-lg font-black">{DEMO_EXERCISES.length}</p><p className="text-[9px] uppercase tracking-widest text-white/50">movements</p></div>
         </div>
 
@@ -201,14 +245,14 @@ export default function ExerciseLibrary({ onNavigateToLog, favorites = [], onTog
             <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/55 to-transparent" />
             <div className="relative z-10 max-w-[65%] pl-5 pr-3 sm:max-w-[55%] sm:pl-6">
               <p className="text-[10px] font-black uppercase tracking-widest text-lime-300">Train with real form</p>
-              <p className="mt-1 text-sm font-black leading-tight text-white sm:text-base">Real photos. Real reps. Zero guesswork.</p>
+              <p className="mt-1 text-sm font-black leading-tight text-white sm:text-base">Real form, demonstrated. Zero guesswork.</p>
             </div>
           </div>
         </div>
 
-        {/* Demo figure gender toggle — applies to every exercise's demo */}
+        {/* Demo preferences. Both drive every demo in the app. */}
         <div className="mt-4 flex items-center gap-2 rounded-2xl border border-slate-100 bg-white p-1.5 shadow-xs">
-          <span className="pl-2 text-[10px] font-black uppercase tracking-widest text-slate-400">Demo figure</span>
+          <span className="pl-2 text-[10px] font-black uppercase tracking-widest text-slate-400">Demo</span>
           <div className="ml-auto flex gap-1">
             <button id="btn-demo-gender-male" aria-label="Show male demo figure" onClick={() => setGenderPersisted("male")} className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-black transition-all ${figureGender === "male" ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50"}`}>
               <Mars className="h-3.5 w-3.5"/> Male
@@ -218,6 +262,30 @@ export default function ExerciseLibrary({ onNavigateToLog, favorites = [], onTog
             </button>
           </div>
         </div>
+
+        {/* Model tone. Only reaches the photographic demos — the drawn
+            figure has no photographic counterpart, so this is hidden while
+            a gender with no photography is selected rather than sitting
+            there doing nothing. */}
+        {figureGender !== "female" && (
+          <div className="mt-2 flex items-center gap-2 rounded-2xl border border-slate-100 bg-white p-1.5 shadow-xs">
+            <span className="pl-2 text-[10px] font-black uppercase tracking-widest text-slate-400">Model</span>
+            <div className="ml-auto flex gap-1">
+              {(["white", "black"] as const).map(m => (
+                <button
+                  key={m}
+                  id={`btn-demo-model-${m}`}
+                  aria-pressed={demoModel === m}
+                  aria-label={`Show the ${m} demo model`}
+                  onClick={() => setModelPersisted(m)}
+                  className={`rounded-xl px-3 py-1.5 text-xs font-black capitalize transition-all ${demoModel === m ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="relative">
@@ -236,40 +304,79 @@ export default function ExerciseLibrary({ onNavigateToLog, favorites = [], onTog
 
       <div className="mt-4 grid grid-cols-2 gap-2.5 sm:gap-3">
         {filtered.map(ex => (
-          <button key={ex.id} onClick={() => setSelected(ex)} className="overflow-hidden rounded-[20px] border border-slate-100 bg-white text-left shadow-sm transition hover:-translate-y-0.5 active:scale-[0.98]">
-            <div className="relative h-20 bg-slate-900 sm:h-24">
-              {getPhotoSet(ex.id) ? (
-                <PhotoExerciseThumb set={getPhotoSet(ex.id)!} race={demoRace} fill />
-              ) : (
-                <svg viewBox="0 0 360 220" className={`mini-motion motion-${ex.pattern || ex.id}`} style={{ overflow: "visible" }}>
-                  <HumanFigure gender={figureGender} />
-                </svg>
-              )}
+          /* A <div>, not a <button>. The favourite toggle lives inside this
+             card, and a <button> nested in a <button> is invalid HTML:
+             React logs it, and browsers resolve the ambiguity however they
+             like — which is why the star sometimes opened the exercise
+             instead of favouriting it. The card's own hit target is a
+             stretched sibling button below, and the star sits above it, so
+             both are real buttons, both are keyboard reachable, and z-order
+             decides the tap rather than the parser. */
+          <div key={ex.id} className="relative overflow-hidden rounded-[20px] border border-slate-100 bg-white text-left shadow-sm transition hover:-translate-y-0.5 active:scale-[0.98]">
+            <div className="relative aspect-[4/3] bg-[var(--obsidian)]">
+              {/* Photographs where they exist, the pose engine everywhere
+                  else — the rule lives in ExerciseThumb so the grid, the
+                  workout lists and the in-session panel can never drift
+                  apart on which demo an exercise gets. */}
+              <ExerciseThumb
+                name={ex.name}
+                targetMuscle={ex.focus}
+                gender={figureGender}
+                model={demoModel}
+                tone="emerald"
+                bare
+                still
+              />
               <span className="absolute left-2 top-2 rounded-full bg-black/35 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-widest text-lime-300">Play</span>
-              <button onClick={e => {e.stopPropagation(); toggleFavorite(ex.id)}} className="absolute right-1.5 top-1.5 rounded-full bg-black/35 p-1 hover:bg-black/50">
-                <Star className={`h-3 w-3 ${favorites.includes(ex.id) ? "fill-current text-amber-400" : "text-white/70"}`}/>
-              </button>
             </div>
             <div className="p-2.5 sm:p-3">
               <span className="text-[9px] font-black uppercase tracking-widest text-blue-600">{ex.category}</span>
               <h3 className="mt-0.5 truncate text-sm font-black leading-tight">{ex.name}</h3>
               <p className="mt-0.5 truncate text-[11px] text-slate-500">{ex.focus}</p>
             </div>
-          </button>
+
+            <button
+              type="button"
+              onClick={() => setSelected(ex)}
+              aria-label={`Open ${ex.name}`}
+              className="absolute inset-0 z-10 rounded-[20px]"
+            />
+            <button
+              type="button"
+              onClick={() => toggleFavorite(ex.id)}
+              aria-pressed={favorites.includes(ex.id)}
+              aria-label={favorites.includes(ex.id) ? `Remove ${ex.name} from favorites` : `Add ${ex.name} to favorites`}
+              className="absolute right-1.5 top-1.5 z-20 rounded-full bg-black/35 p-1 hover:bg-black/50"
+            >
+              <Star className={`h-3 w-3 ${favorites.includes(ex.id) ? "fill-current text-amber-400" : "text-white/70"}`}/>
+            </button>
+          </div>
         ))}
       </div>
 
       {filtered.length === 0 && <div className="mt-5 rounded-3xl bg-white p-8 text-center border border-slate-100"><p className="font-black">No exercise found</p><p className="mt-1 text-xs text-slate-500">Try another movement or category.</p></div>}
 
       {/* Detail view opens as a full-screen modal on demand — browsing the
-          grid never means scrolling past a large demo panel first. */}
-      {selected && (
+          grid never means scrolling past a large demo panel first.
+
+          PORTALLED TO <body>, and that is a fix rather than a preference.
+          Each screen is wrapped in an animating element that sets
+          `opacity`, and any opacity below 1 creates a stacking context —
+          so this sheet's `z-[90]` was only ever 90 *within that screen*,
+          and the tab bar's `z-50` at the document root still painted over
+          it. The result was the last ~80px of every exercise sheet
+          sitting underneath the tab bar. A portal lifts the sheet out to
+          the root, where its z-index means what it says. */}
+      {selected && createPortal(
         <div
-          className="fixed inset-0 z-[90] flex items-end justify-center bg-black/50 backdrop-blur-xs sm:items-center sm:p-6"
+          className="fixed inset-0 z-[90] flex items-end justify-center bg-black/55 backdrop-blur-xs sm:items-center sm:p-6"
           onClick={() => setSelected(null)}
         >
           <div
             className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-[28px] bg-slate-950 p-4 text-white shadow-2xl animate-fade-in sm:rounded-[28px] sm:p-5"
+            // The sheet now covers the tab bar rather than hiding behind
+            // it, so it owes the viewport its own bottom inset.
+            style={{ paddingBottom: "calc(var(--safe-b, 0px) + 24px)" }}
             onClick={e => e.stopPropagation()}
           >
             <div className="flex justify-end">
@@ -277,11 +384,7 @@ export default function ExerciseLibrary({ onNavigateToLog, favorites = [], onTog
                 <X className="h-4 w-4"/>
               </button>
             </div>
-            {getPhotoSet(selected.id) ? (
-              <PhotoExerciseDemo exercise={selected} set={getPhotoSet(selected.id)!} race={demoRace} onRaceChange={setRacePersisted} />
-            ) : (
-              <MotionDemo exercise={selected} gender={figureGender}/>
-            )}
+            <MotionDemo exercise={selected} gender={figureGender} model={demoModel} />
             <div className="mt-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -319,7 +422,8 @@ export default function ExerciseLibrary({ onNavigateToLog, favorites = [], onTog
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

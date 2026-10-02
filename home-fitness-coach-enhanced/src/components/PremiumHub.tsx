@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Activity, Award, Bell, Brain, CalendarDays, Check, ChevronRight, ChevronLeft, Clock3,
-  Dumbbell, Flame, HeartPulse, Lock, Moon, Play, RotateCcw, ShieldCheck,
+  Dumbbell, HeartPulse, Lock, Moon, RotateCcw, ShieldCheck,
   Sparkles, Target, TimerReset, Trophy, Utensils, Watch, Zap, BarChart3,
-  BookOpen, Download, Settings2, SlidersHorizontal, Volume2, VolumeX,
-  Calculator, Droplets, Wind, LayoutGrid, PlusCircle, MinusCircle, Star, X
+  BookOpen, Download, Settings2, SlidersHorizontal, Volume2,
+  Calculator, Droplets, Wind, LayoutGrid, PlusCircle, MinusCircle
 } from "lucide-react";
 import { UserProfile, Workout, WorkoutLog, ProgressLog, ProgramPlan } from "../types";
 import { PROGRAM_PLANS, CURATED_WORKOUTS } from "../constants";
@@ -738,7 +738,7 @@ export default function PremiumHub({ isPremium = true, onTogglePremium, profile,
             <div><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Premium modules</p><h3 className="text-xl font-black">Upgrade when you want the full suite</h3></div>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {FEATURES.slice(0, 12).map(([title], i) => <div key={title} className="flex items-center gap-2 rounded-xl bg-slate-50 p-3"><Lock className="h-3.5 w-3.5 text-slate-400"/><span className="text-xs font-bold text-slate-600">{title}</span></div>)}
+            {FEATURES.slice(0, 12).map(([title]) => <div key={title} className="flex items-center gap-2 rounded-xl bg-slate-50 p-3"><Lock className="h-3.5 w-3.5 text-slate-400"/><span className="text-xs font-bold text-slate-600">{title}</span></div>)}
           </div>
           <button onClick={() => onTogglePremium?.(true)} className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 py-3.5 text-sm font-black text-white">Activate Premium <Sparkles className="h-4 w-4 text-lime-300"/></button>
         </div>

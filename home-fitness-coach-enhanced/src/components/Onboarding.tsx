@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Sparkles, Dumbbell, Trophy, Wind, ChevronRight, ChevronLeft, X } from "lucide-react";
 import { DEMO_EXERCISES } from "./ExerciseLibrary";
-import Dumbbell3D from "./Dumbbell3D";
+import Dumbbell3D from "./Dumbbell3DLazy";
 import heroPullupStrip from "../assets/ui/hero-pullup-strip.jpg";
 
 const SLIDES = [

@@ -1,9 +1,8 @@
 import React, { useState } from "react";
 import { UserProfile, Workout } from "../types";
 import { AVAILABLE_EQUIPMENT, FITNESS_LEVELS, WORKOUT_GOALS, TARGET_AREAS } from "../constants";
-import { Sparkles, ArrowLeft, Brain, Dumbbell, ShieldAlert, Loader2, Play } from "lucide-react";
+import { Sparkles, ArrowLeft, Brain, ShieldAlert } from "lucide-react";
 import heroOverheadPress from "../assets/ui/hero-overheadpress.jpg";
-import { apiUrl, apiHeaders, parseJsonResponse } from "../lib/apiBase";
 
 interface AiGeneratorProps {
   onBack: () => void;
@@ -67,9 +66,9 @@ export default function AiGenerator({ onBack, onWorkoutGenerated, profile, setPr
       // Ask our own backend to talk to Gemini. The API key lives only on the
       // server (see server.ts) — it must never be embedded in client code,
       // since anything shipped to the browser bundle is publicly readable.
-      const response = await fetch(apiUrl("/api/workouts/generate"), {
+      const response = await fetch("/api/workouts/generate", {
         method: "POST",
-        headers: apiHeaders(),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fitnessLevel,
           goal,
@@ -80,7 +79,7 @@ export default function AiGenerator({ onBack, onWorkoutGenerated, profile, setPr
         })
       });
 
-      const generatedWorkout = await parseJsonResponse(response);
+      const generatedWorkout = await response.json();
 
       if (!response.ok) {
         throw new Error(generatedWorkout?.message || "Failed to generate AI workout plan.");

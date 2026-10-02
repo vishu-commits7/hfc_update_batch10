@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
 /**
@@ -12,7 +12,7 @@ import * as THREE from "three";
  */
 export default function Dumbbell3D({
   size = 96,
-  accent = "#d4ff00",
+  accent = "#00e5a0",
   className = "",
 }: {
   size?: number;

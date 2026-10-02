@@ -1,6 +1,5 @@
-import React from "react";
 import { WorkoutLog } from "../types";
-import { ArrowLeft, Trash2, Calendar, Award, Flame, Smile, TrendingUp, BarChart2 } from "lucide-react";
+import { ArrowLeft, Trash2, Calendar, Award, Flame, Smile, BarChart2 } from "lucide-react";
 
 interface HistoryLogsProps {
   logs: WorkoutLog[];

@@ -1,0 +1,100 @@
+/*
+ * Maven Central mirror — a workaround for DNS, not a project setting.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * `mavenCentral()` resolves to https://repo.maven.apache.org/maven2/. On this
+ * machine that hostname does not resolve:
+ *
+ *     java.net.UnknownHostException: repo.maven.apache.org
+ *
+ * Nothing in the project is wrong. Every build before this one was served by
+ * google() plus an already-warm Gradle cache, so Maven Central was never
+ * actually contacted. Adding @capacitor/local-notifications changed that: its
+ * module carries its own buildscript block that pulls the Kotlin Gradle plugin
+ * and kotlin-compiler-embeddable, and those live on Maven Central.
+ *
+ * WHAT IT DOES
+ * ------------
+ * Rewrites every mavenCentral() declaration — in the root project, in each
+ * subproject, and crucially in the *buildscript* classpath of the plugin
+ * modules under node_modules, which is where the failure actually happens — to
+ * point at repo1.maven.org instead. repo1.maven.org is Maven Central's
+ * canonical host (repo.maven.apache.org is a CNAME onto it), so this is the
+ * same artifacts from the same servers, reached by a name that resolves.
+ *
+ * A Google-hosted Central mirror is appended as a second chance, in case
+ * repo1.maven.org is unreachable too.
+ *
+ * Rewriting the URL in place rather than adding a repository is deliberate:
+ * an added repository lands at the end of the list, so Gradle would still try
+ * the dead host first and take the DNS timeout on every single artifact.
+ *
+ * HOW TO USE
+ * ----------
+ *     cd android
+ *     .\gradlew.bat assembleDebug --init-script maven-mirror.init.gradle
+ *
+ * It prints one line per repository it redirects, so you can see it working.
+ *
+ * WHEN TO DELETE IT
+ * -----------------
+ * The moment `nslookup repo.maven.apache.org` resolves again. This file fixes
+ * one machine's name resolution; it is not a thing the project needs, and
+ * leaving it in the build command hides a network problem that will bite
+ * somewhere else — npm, git, the Gemini backend — sooner or later.
+ */
+
+import org.gradle.api.artifacts.repositories.MavenArtifactRepository
+
+// Maven Central's canonical host. Same content, different DNS name.
+def PRIMARY = 'https://repo1.maven.org/maven2/'
+
+// Google's read-through mirror of Central, Asia edge. Second chance only.
+def FALLBACK = 'https://maven-central-asia.storage-download.googleapis.com/maven2/'
+
+def DEAD_HOST = 'repo.maven.apache.org'
+
+def redirected = [] as Set
+
+def fix = { repos, String where ->
+    if (repos == null) return
+    // `all` is a live hook: it fires for repositories declared later too,
+    // which matters because the plugin modules under node_modules declare
+    // theirs while their own build.gradle is being evaluated.
+    repos.all { repo ->
+        if (!(repo instanceof MavenArtifactRepository)) return
+        def url = repo.url?.toString() ?: ''
+        if (!url.contains(DEAD_HOST)) return
+
+        repo.url = PRIMARY
+        def key = "$where/${repo.name}".toString()
+        if (redirected.add(key)) {
+            println "[maven-mirror] $where: ${repo.name} -> $PRIMARY"
+        }
+    }
+
+    // Append the mirror once per repository container, so a failure on
+    // repo1.maven.org still has somewhere to go.
+    if (repos.findByName('centralMirrorFallback') == null) {
+        repos.maven { r ->
+            r.name = 'centralMirrorFallback'
+            r.url = FALLBACK
+        }
+    }
+}
+
+settingsEvaluated { settings ->
+    fix(settings.buildscript.repositories, 'settings.buildscript')
+    fix(settings.pluginManagement.repositories, 'pluginManagement')
+}
+
+projectsLoaded { gradle ->
+    gradle.rootProject.allprojects { project ->
+        // The buildscript classpath is the one that fails here: the Kotlin
+        // Gradle plugin is resolved before any of the project's own
+        // dependencies are looked at.
+        fix(project.buildscript.repositories, "${project.path}.buildscript")
+        fix(project.repositories, project.path.toString())
+    }
+}

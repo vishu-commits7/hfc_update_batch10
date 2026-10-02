@@ -1,0 +1,249 @@
+/* =====================================================================
+   OBSIDIAN — design tokens
+   ---------------------------------------------------------------------
+   Every value the interface is allowed to use lives here, as a runtime
+   CSS custom property. Two consequences worth stating up front:
+
+   1. Theming is a variable swap, not a second set of class names. The
+      `.theme-obsidian` / `.theme-daylight` classes on <html> redefine the
+      same variable names, so a component written once renders correctly
+      in both themes with no `dark:` variants anywhere in the markup.
+
+   2. Nothing downstream hard-codes a hex. `index.css` re-exports these
+      into Tailwind's theme with `@theme inline`, which is what turns
+      `--surface-raised` into the `bg-surface-raised` utility. Change a
+      value here and the whole app moves with it.
+   ===================================================================== */
+
+:root,
+.theme-obsidian {
+  color-scheme: dark;
+
+  /* --- Surfaces ---------------------------------------------------
+     A five-step depth ramp. The steps are deliberately close together:
+     on OLED phones, large jumps between dark greys read as banding, and
+     depth is carried by the hairline + inner highlight instead. */
+  --void: #04050a;
+  --obsidian: #090b11;
+  --carbon: #0f1219;
+  --graphite: #151925;
+  --slate-ink: #1c2130;
+
+  /* --- Hairlines ---------------------------------------------------
+     Borders are light at low alpha rather than a lighter grey, so they
+     stay correct over any surface step and over photography. */
+  --line-faint: rgb(255 255 255 / 0.055);
+  --line: rgb(255 255 255 / 0.085);
+  --line-strong: rgb(255 255 255 / 0.14);
+
+  /* Inner top highlight — the single detail that makes a flat dark
+     rectangle read as a physical, lit edge rather than a hole. */
+  --bevel: inset 0 1px 0 0 rgb(255 255 255 / 0.06);
+
+  /* --- Text --------------------------------------------------------
+     Measured against --carbon. Primary ≈ 16.2:1, secondary ≈ 7.4:1,
+     tertiary ≈ 4.6:1 — tertiary is the floor for anything ≥11px. */
+  --ink: #f3f6fb;
+  --ink-2: #a5b0c4;
+  --ink-3: #737f95;
+  --ink-4: #4d5769;
+
+  /* --- Accents -----------------------------------------------------
+     Three carriers, each with one job, plus two status hues. */
+  --emerald: #00e5a0;
+  --emerald-dim: #0b7f5d;
+  --cyan: #38d6ff;
+  --cyan-dim: #12718f;
+  --gold: #ffc94a;
+  --gold-dim: #8a6a1d;
+  --ember: #ff7a45;
+  --crimson: #ff4d6a;
+
+  --emerald-wash: rgb(0 229 160 / 0.12);
+  --cyan-wash: rgb(56 214 255 / 0.12);
+  --gold-wash: rgb(255 201 74 / 0.12);
+  --ember-wash: rgb(255 122 69 / 0.12);
+  --crimson-wash: rgb(255 77 106 / 0.12);
+
+  /* --- Neon glow layers -------------------------------------------
+     Deep, multi-layer glows for hero surfaces and active states.
+     More intense than the existing bloom — reserved for active
+     cards, session mode, and achievement moments. */
+  --neon-emerald-near: rgb(0 229 160 / 0.22);
+  --neon-emerald-far:  rgb(0 229 160 / 0.07);
+  --neon-cyan-near:    rgb(56 214 255 / 0.22);
+  --neon-cyan-far:     rgb(56 214 255 / 0.07);
+  --neon-gold-near:    rgb(255 201 74 / 0.22);
+  --neon-gold-far:     rgb(255 201 74 / 0.07);
+  --neon-ember-near:   rgb(255 122 69 / 0.22);
+  --neon-ember-far:    rgb(255 122 69 / 0.07);
+
+  /* --- Aurora gradient -------------------------------------------
+     Subtle diagonal colour wash for hero bento cells. Shifts the
+     flat obsidian into something that reads as lit, without photo. */
+  --aurora-a: rgb(0 229 160 / 0.06);
+  --aurora-b: rgb(56 214 255 / 0.05);
+  --aurora-c: rgb(255 201 74 / 0.04);
+
+  /* --- Glass -------------------------------------------------------
+     `backdrop-filter` is genuinely expensive in an Android WebView,
+     so real blur is rationed to elements over moving content. */
+  --glass-tint: rgb(255 255 255 / 0.04);
+  --glass-tint-strong: rgb(255 255 255 / 0.07);
+  --glass-tint-heavy: rgb(255 255 255 / 0.11);
+  --glass-blur: 24px;
+  --glass-blur-heavy: 40px;
+  --glass-solid: linear-gradient(
+    180deg,
+    rgb(255 255 255 / 0.045) 0%,
+    rgb(255 255 255 / 0.015) 42%,
+    rgb(255 255 255 / 0.008) 100%
+  );
+  --scrim: rgb(4 5 10 / 0.72);
+
+  /* --- Active session surface ------------------------------------
+     Used exclusively during ActiveWorkout. Deep background with a
+     subtle warm pulse so the screen reads as "alive". */
+  --session-bg: #06080e;
+  --session-accent-wash: rgb(56 214 255 / 0.06);
+
+  /* --- Prism border -----------------------------------------------
+     A rainbow-tinted hairline for hero cards. Premium holographic
+     quality without garish colour. */
+  --prism-border: linear-gradient(
+    135deg,
+    rgb(56 214 255 / 0.35) 0%,
+    rgb(0 229 160 / 0.28) 30%,
+    rgb(255 201 74 / 0.22) 60%,
+    rgb(56 214 255 / 0.35) 100%
+  );
+
+  /* --- Shadow ------------------------------------------------------
+     Dark UI gets almost nothing from a black drop shadow. Depth
+     comes from the bevel + a wide, very soft ambient pool. */
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 8px 24px -8px rgb(0 0 0 / 0.6);
+  --shadow-lg: 0 24px 56px -16px rgb(0 0 0 / 0.72);
+  --shadow-xl: 0 40px 80px -24px rgb(0 0 0 / 0.8);
+
+  --glow-sm: 0 4px 20px -4px;
+  --glow-md: 0 8px 36px -8px;
+  --glow-lg: 0 16px 56px -12px;
+}
+
+.theme-daylight {
+  color-scheme: light;
+
+  --void: #eef1f6;
+  --obsidian: #f6f8fb;
+  --carbon: #ffffff;
+  --graphite: #f4f6fa;
+  --slate-ink: #e9edf4;
+
+  --line-faint: rgb(9 11 17 / 0.05);
+  --line: rgb(9 11 17 / 0.09);
+  --line-strong: rgb(9 11 17 / 0.16);
+  --bevel: inset 0 1px 0 0 rgb(255 255 255 / 0.9);
+
+  --ink: #0b0e15;
+  --ink-2: #4a5568;
+  --ink-3: #6e7a8f;
+  --ink-4: #98a3b5;
+
+  --emerald: #00976a;
+  --emerald-dim: #b4efdd;
+  --cyan: #0083ab;
+  --cyan-dim: #b2e8f7;
+  --gold: #9a6f00;
+  --gold-dim: #f7e2ae;
+  --ember: #c6440f;
+  --crimson: #d31d3e;
+
+  --emerald-wash: rgb(0 151 106 / 0.1);
+  --cyan-wash: rgb(0 131 171 / 0.1);
+  --gold-wash: rgb(154 111 0 / 0.1);
+  --ember-wash: rgb(198 68 15 / 0.1);
+  --crimson-wash: rgb(211 29 62 / 0.1);
+
+  --neon-emerald-near: rgb(0 151 106 / 0.15);
+  --neon-emerald-far:  rgb(0 151 106 / 0.05);
+  --neon-cyan-near:    rgb(0 131 171 / 0.15);
+  --neon-cyan-far:     rgb(0 131 171 / 0.05);
+  --neon-gold-near:    rgb(154 111 0 / 0.15);
+  --neon-gold-far:     rgb(154 111 0 / 0.05);
+  --neon-ember-near:   rgb(198 68 15 / 0.15);
+  --neon-ember-far:    rgb(198 68 15 / 0.05);
+
+  --aurora-a: rgb(0 151 106 / 0.04);
+  --aurora-b: rgb(0 131 171 / 0.04);
+  --aurora-c: rgb(154 111 0 / 0.03);
+
+  --glass-tint: rgb(255 255 255 / 0.72);
+  --glass-tint-strong: rgb(255 255 255 / 0.86);
+  --glass-tint-heavy: rgb(255 255 255 / 0.95);
+  --glass-blur: 24px;
+  --glass-blur-heavy: 40px;
+  --glass-solid: linear-gradient(
+    180deg,
+    rgb(255 255 255 / 0.9) 0%,
+    rgb(255 255 255 / 0.72) 100%
+  );
+  --scrim: rgb(16 19 26 / 0.34);
+
+  --session-bg: #f4f7fc;
+  --session-accent-wash: rgb(0 131 171 / 0.06);
+
+  --prism-border: linear-gradient(
+    135deg,
+    rgb(0 131 171 / 0.3) 0%,
+    rgb(0 151 106 / 0.25) 30%,
+    rgb(154 111 0 / 0.2) 60%,
+    rgb(0 131 171 / 0.3) 100%
+  );
+
+  --shadow-sm: 0 1px 2px rgb(9 11 17 / 0.06);
+  --shadow-md: 0 8px 24px -10px rgb(9 11 17 / 0.14);
+  --shadow-lg: 0 24px 56px -20px rgb(9 11 17 / 0.18);
+  --shadow-xl: 0 40px 80px -28px rgb(9 11 17 / 0.22);
+
+  --glow-sm: 0 4px 20px -4px;
+  --glow-md: 0 8px 36px -8px;
+  --glow-lg: 0 16px 56px -12px;
+}
+
+/* =====================================================================
+   Geometry, type and motion — shared by both themes.
+   ===================================================================== */
+:root {
+  --r-xs: 8px;
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 20px;
+  --r-xl: 26px;
+  --r-2xl: 32px;
+  --r-3xl: 40px;
+
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue",
+    system-ui, sans-serif;
+  --font-display: "Unbounded", "SF Pro Display", "Segoe UI Variable Display",
+    system-ui, sans-serif;
+  --font-numeric: "SF Pro Display", "Segoe UI Variable Display", Roboto,
+    system-ui, sans-serif;
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-overshoot: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  --t-instant: 110ms;
+  --t-fast: 180ms;
+  --t-base: 280ms;
+  --t-slow: 440ms;
+  --t-slowest: 720ms;
+
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+}

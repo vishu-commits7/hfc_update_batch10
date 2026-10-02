@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <application
         android:allowBackup="true"
@@ -38,4 +39,47 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Tactile feedback. src/lib/haptics.ts falls back to
+         navigator.vibrate() when the Capacitor haptics plugin is not
+         installed; without this the fallback silently no-ops.
+         Normal permission - no runtime prompt. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Daily workout reminder / streak warning / hydration nudge.
+         @capacitor/local-notifications already merges this in from its own
+         manifest, so the build works without the line. It is declared here
+         anyway because a permission the app actually asks the user for
+         should be readable in the app's own manifest rather than only in a
+         merged dependency - this is the file anyone reviewing the app opens.
+         Android 13+ (API 33) prompts at runtime; the request is made by
+         requestNotificationPermission() in src/lib/notifications.ts. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Exact alarms: deliberately NOT shipped.
+
+         @capacitor/local-notifications declares SCHEDULE_EXACT_ALARM in its
+         own manifest and defaults every notification to isExactNotification
+         = true. Left alone, the first time a user enables a reminder the
+         plugin launches the system "Alarms & reminders" settings screen to
+         collect that permission - which Android 14+ denies by default for
+         anything targeting API 33 or higher (this app targets 36). Every
+         user would be thrown out of the app into Settings to schedule a
+         workout nudge.
+
+         src/lib/notifications.ts sets isExactNotification: false on all
+         three reminders instead, so they schedule as inexact alarms with no
+         prompt and no interruption. None of them need to fire to the
+         precise minute, and inexact alarms are far kinder to the battery.
+
+         Since the permission is never used, it is stripped from the merged
+         manifest so it does not appear in the Play listing or pull the app
+         into a sensitive-permissions review.
+
+         To reintroduce exact alarms: delete this line AND remove the
+         INEXACT spread in src/lib/notifications.ts. Doing only one of the
+         two leaves the app either prompting for a permission it cannot get,
+         or holding a permission it never uses. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        tools:node="remove" />
 </manifest>

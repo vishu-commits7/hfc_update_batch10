@@ -1,19 +1,15 @@
 import React, { useState, useEffect } from "react";
-import { ProgressLog, ProgressExercise, ProgressSet } from "../types";
+import { ProgressLog, ProgressExercise } from "../types";
 import heroTreadmill from "../assets/ui/hero-treadmill.jpg";
 import { 
-  Calendar, 
   Plus, 
   Trash2, 
-  Award, 
   TrendingUp, 
   BarChart2, 
-  Smile, 
   Activity, 
   PlusCircle, 
   ChevronDown, 
   ChevronUp, 
-  ChevronRight,
   Sparkles,
   Info
 } from "lucide-react";
@@ -343,7 +339,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
               <BarChart2 className="mx-auto h-12 w-12 text-slate-300 mb-4" />
               <h3 className="text-xl font-bold text-slate-900 tracking-wide uppercase italic">No Progress Metrics Registered</h3>
               <p className="text-sm text-slate-500 mt-2 leading-relaxed font-sans">
-                Log a workout session first using the **Log Workout** tab above. You'll be able to track dates, sets, reps, and weights to see full dynamic chart progress!
+                Log a workout session first using the <strong className="font-bold text-slate-700">Log Workout</strong> tab above. You'll be able to track dates, sets, reps and weights to see a full progression chart.
               </p>
               <button
                 onClick={() => setActiveTab("log")}
@@ -384,7 +380,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
                     <Sparkles className="h-8 w-8 text-blue-500/50 animate-pulse mb-2" />
                     <p className="text-xs text-slate-700 font-bold uppercase">Awaiting Progressive Entries</p>
                     <p className="text-[11px] text-slate-400 mt-1 max-w-xs">
-                      We need at least 2 distinct date entries for **{chartExName}** to trace a progression line. Keep training!
+                      We need at least 2 distinct date entries for <strong className="font-bold text-slate-700">{chartExName}</strong> to trace a progression line. Keep training!
                     </p>
                   </div>
                 ) : (

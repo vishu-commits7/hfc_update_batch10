@@ -1,6 +1,9 @@
 import React, { useMemo } from "react";
 
-const COLORS = ["#D4FF00", "#3B82F6", "#F472B6", "#34D399", "#FBBF24", "#818CF8"];
+// Confetti palette drawn from the Obsidian accents plus two supporting
+// hues, so a celebration reads as part of the app rather than as a
+// generic party effect bolted on top of it.
+const COLORS = ["#00E5A0", "#38D6FF", "#FFC94A", "#FF7A45", "#8B84FF", "#F3F6FB"];
 
 /**
  * A lightweight, dependency-free confetti burst. Pure CSS animation over a
