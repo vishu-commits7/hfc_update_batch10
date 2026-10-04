@@ -9,7 +9,7 @@ import {
 } from "react";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import {
-  Activity,
+  UserRound,
   Command as CommandIcon,
   Compass,
   Dumbbell,
@@ -23,6 +23,11 @@ import {
   TrendingUp,
   Trophy,
   Zap,
+  Swords,
+  Flame,
+  Camera,
+  Scan,
+  Film,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -38,6 +43,7 @@ import { computeUnlockedAchievements } from "./lib/achievements";
 import { CURATED_WORKOUTS } from "./constants";
 import { tapFeedback } from "./lib/haptics";
 import { MagneticButton } from "./components/ui";
+import LofiMusicButton from "./components/LofiMusicButton";
 import { useTheme } from "./hooks/useTheme";
 import { useIsDesktop } from "./hooks/useMediaQuery";
 import { screenVariants, SPRING_SNAP, SPRING_WEIGHTED } from "./design/motion";
@@ -70,11 +76,21 @@ const HistoryLogs = lazy(() => import("./components/HistoryLogs"));
 const ExerciseLibrary = lazy(() => import("./components/ExerciseLibrary"));
 const ProgressTracker = lazy(() => import("./components/ProgressTracker"));
 const PremiumHub = lazy(() => import("./components/PremiumHub"));
+const BeastDuelArena = lazy(() => import("./components/BeastDuelArena"));
+const AuthScreen = lazy(() => import("./components/AuthScreen"));
+const AthleteProfileHub = lazy(() => import("./components/AthleteProfileHub"));
+const ReelsFeedView = lazy(() => import("./components/ReelsFeedView"));
+const GymBeastMotivationReel = lazy(() => import("./components/GymBeastMotivationReel"));
+const ViralFlexStudio = lazy(() => import("./components/ViralFlexStudio"));
+const SmartFormScanner = lazy(() => import("./components/SmartFormScanner"));
+import type { FlexStats } from "./components/ViralFlexStudio";
+import { useAuthUser } from "./lib/useAuth";
 
-const FRESH_APP_VERSION = "home-fitness-coach-clean-premium-v5";
+const FRESH_APP_VERSION = "home-fitness-coach-clean-premium-v6";
 
 type View =
   | "dashboard"
+  | "reels"
   | "ai-generator"
   | "history-logs"
   | "active-workout"
@@ -82,7 +98,10 @@ type View =
   | "progress-tracker"
   | "premium-hub"
   | "settings"
-  | "community";
+  | "community"
+  | "beast-duels"
+  | "profile-hub"
+  | "auth";
 
 type NavTarget = Exclude<View, "active-workout">;
 
@@ -99,10 +118,10 @@ const EMPTY_PROFILE: UserProfile = {
 
 const NAV: { view: NavTarget; icon: LucideIcon; label: string }[] = [
   { view: "dashboard", icon: Dumbbell, label: "Train" },
+  { view: "reels", icon: Film, label: "Reels" },
+  { view: "beast-duels", icon: Swords, label: "Arena" },
   { view: "exercise-library", icon: Compass, label: "Academy" },
-  { view: "progress-tracker", icon: TrendingUp, label: "Progress" },
-  { view: "premium-hub", icon: Sparkles, label: "Hub" },
-  { view: "history-logs", icon: History, label: "History" },
+  { view: "profile-hub", icon: UserRound, label: "Profile" },
 ];
 
 function clearLocalTrainingData() {
@@ -151,8 +170,22 @@ export default function App() {
 
   const isDesktop = useIsDesktop();
   const [theme, toggleTheme] = useTheme();
+  const { user } = useAuthUser();
 
-  const [currentView, setCurrentView] = useState<View>("dashboard");
+  const [currentView, setCurrentView] = useState<View>(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("duelRoom")) return "beast-duels";
+    }
+    return "dashboard";
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("duelRoom")) {
+      setCurrentView("beast-duels");
+    }
+  }, []);
   const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
   const [preselectedExerciseForLog, setPreselectedExerciseForLog] =
     useState<string | undefined>();
@@ -168,6 +201,12 @@ export default function App() {
     useState<"onboarding" | "edit" | null>(null);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [storyReelOpen, setStoryReelOpen] = useState(false);
+  const [storyReelIndex, setStoryReelIndex] = useState(0);
+  const [flexStudioOpen, setFlexStudioOpen] = useState(false);
+  const [flexStudioStats, setFlexStudioStats] = useState<FlexStats | undefined>();
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannerExercise, setScannerExercise] = useState<string | undefined>();
 
   const [profile, setProfile] = useState<UserProfile>(() => {
     const saved = localStorage.getItem("kinetic_profile");
@@ -314,10 +353,13 @@ export default function App() {
     );
   };
 
-  const toggleFavorite = (id: string) =>
-    setFavorites((prev) =>
-      prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id],
-    );
+  const toggleFavorite = useCallback(
+    (id: string) =>
+      setFavorites((prev) =>
+        prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id],
+      ),
+    [],
+  );
 
   const dismissOnboarding = () => {
     localStorage.setItem("kinetic_onboarding_seen", "1");
@@ -345,8 +387,11 @@ export default function App() {
     setCurrentView("active-workout");
   };
 
-  const handleDeleteWorkout = (id: string) =>
-    setSavedWorkouts((prev) => prev.filter((w) => w.id !== id));
+  const handleDeleteWorkout = useCallback(
+    (id: string) =>
+      setSavedWorkouts((prev) => prev.filter((w) => w.id !== id)),
+    [],
+  );
 
   const checkForNewAchievement = (
     nextProfile: UserProfile,
@@ -407,14 +452,17 @@ export default function App() {
     notify("Training records cleared.");
   };
 
-  const handleDeleteLog = (id: string) => {
-    setLogs((prev) => prev.filter((l) => l.id !== id));
-  };
+  const handleDeleteLog = useCallback(
+    (id: string) => {
+      setLogs((prev) => prev.filter((l) => l.id !== id));
+    },
+    [],
+  );
 
-  const handleSelectWorkout = (workout: Workout) => {
+  const handleSelectWorkout = useCallback((workout: Workout) => {
     setSelectedWorkout(workout);
     setCurrentView("active-workout");
-  };
+  }, []);
 
   const nav = useCallback((view: NavTarget) => {
     tapFeedback();
@@ -466,6 +514,102 @@ export default function App() {
         tone: "gold",
         keywords: "stats analytics insights trends weekly",
         run: () => setAnalyticsOpen(true),
+      },
+      {
+        id: "beast-duels",
+        label: "1v1 Beast Arena & Duels",
+        hint: "Deathmatches & challenge rivals",
+        icon: Swords,
+        group: "Actions",
+        tone: "gold",
+        keywords: "duel arena battle challenge 1v1 pvp",
+        run: () => nav("beast-duels"),
+      },
+      {
+        id: "daily-stories",
+        label: "Savage Motivation Reels",
+        hint: "Full-screen daily visual fuel",
+        icon: Flame,
+        group: "Actions",
+        tone: "ember",
+        keywords: "motivation savage stories fuel reels wallpaper",
+        run: () => {
+          setStoryReelIndex(0);
+          setStoryReelOpen(true);
+        },
+      },
+      {
+        id: "flex-studio",
+        label: "Viral Flex Studio 2.0",
+        hint: "Create Instagram & WhatsApp story card",
+        icon: Camera,
+        group: "Actions",
+        tone: "cyan",
+        keywords: "flex card story instagram share photo",
+        run: () => setFlexStudioOpen(true),
+      },
+      {
+        id: "form-scanner",
+        label: "AI Form Vision Scanner",
+        hint: "Pose telemetry & bio-feedback",
+        icon: Scan,
+        group: "Actions",
+        tone: "cyan",
+        keywords: "camera scanner ai form pose angle rep detection",
+        run: () => {
+          setScannerExercise(undefined);
+          setScannerOpen(true);
+        },
+      },
+      {
+        id: "nav-progress",
+        label: "Progress Tracker & Max PRs",
+        hint: "Track bodyweight & PR charts",
+        icon: TrendingUp,
+        group: "Navigate",
+        tone: "cyan",
+        keywords: "progress weight tracking pr personal record",
+        run: () => nav("progress-tracker"),
+      },
+      {
+        id: "nav-hub",
+        label: "Recovery & Biometrics Hub",
+        hint: "Sleep, HRV, water & readiness",
+        icon: Sparkles,
+        group: "Navigate",
+        tone: "gold",
+        keywords: "recovery biometrics sleep hrv water hub",
+        run: () => nav("premium-hub"),
+      },
+      {
+        id: "nav-history",
+        label: "Workout History & Logs",
+        hint: "Review past workout sessions",
+        icon: History,
+        group: "Navigate",
+        tone: "neutral",
+        keywords: "history logs past sessions completed",
+        run: () => nav("history-logs"),
+      },
+      {
+        id: "nav-settings",
+        label: "App Settings & Hardware",
+        hint: "Audio, voice, haptics, theme, cloud sync",
+        icon: UserRound,
+        group: "Preferences",
+        tone: "neutral",
+        keywords: "settings voice audio lofi haptics backup data",
+        run: () => nav("settings"),
+      },
+      {
+        id: "auth-signin",
+        label: user ? `Account: ${user.displayName || user.email || "Athlete"}` : "Sign In with Google or Email",
+        hint: user ? "Manage Cloud Sync" : "1-Tap Cloud Sync",
+        icon: UserRound,
+        group: "Actions",
+        tone: "cyan",
+        keywords: "google gmail signin login auth account cloud sync",
+        run: () => nav(user ? "settings" : "auth"),
       },
       {
         id: "theme",
@@ -527,24 +671,23 @@ export default function App() {
 
               <div>
                 {/* Brand mark */}
-                <div className="flex items-center gap-2.5 px-3">
-                  <motion.span
-                    className="grid h-9 w-9 place-items-center rounded-md2"
-                    style={{
-                      background: "var(--emerald-wash)",
-                      color: "var(--emerald)",
-                    }}
-                    whileHover={{ scale: 1.08, rotate: 4 }}
+                <div
+                  className="flex items-center gap-2.5 px-3 cursor-pointer select-none"
+                  onClick={() => nav("dashboard")}
+                >
+                  <motion.div
+                    className="relative h-9 w-9 shrink-0 overflow-hidden rounded-xl border border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.3)]"
+                    whileHover={{ scale: 1.08 }}
                     transition={SPRING_SNAP}
                   >
-                    <Activity className="h-4.5 w-4.5" strokeWidth={2.6} />
-                  </motion.span>
+                    <img src="/app-logo.jpg" alt="APEX PULSE" className="h-full w-full object-cover" />
+                  </motion.div>
                   <span className="min-w-0">
-                    <span className="font-display block truncate text-sm font-extrabold tracking-tight text-ink">
-                      Home Fitness
+                    <span className="font-display block truncate text-sm font-extrabold tracking-tight text-white flex items-center gap-1.5">
+                      APEX <span className="bg-gradient-to-r from-cyan-400 to-amber-400 bg-clip-text text-transparent">PULSE</span>
                     </span>
-                    <span className="block truncate text-[10px] font-bold text-ink-4">
-                      {isPremium ? "Premium" : "Basic"} ·{" "}
+                    <span className="block truncate text-[10px] font-bold text-cyan-400">
+                      {isPremium ? "PRO APEX" : "FREE ATHLETE"} ·{" "}
                       {derivedProfile.totalWorkouts} logged
                     </span>
                   </span>
@@ -594,17 +737,7 @@ export default function App() {
                 </button>
 
                 <div className="flex gap-2">
-                  <MagneticButton
-                    size="md"
-                    variant="ghost"
-                    tone="neutral"
-                    block
-                    className="border border-line"
-                    onClick={() => setAnalyticsOpen(true)}
-                  >
-                    <Trophy className="h-3.5 w-3.5" />
-                    Stats
-                  </MagneticButton>
+                  <LofiMusicButton showLabel size="md" className="flex-1 justify-center" />
                   <MagneticButton
                     size="md"
                     icon
@@ -617,6 +750,19 @@ export default function App() {
                     <ThemeIcon theme={theme} />
                   </MagneticButton>
                 </div>
+                <div className="pt-1">
+                  <MagneticButton
+                    size="sm"
+                    variant="ghost"
+                    tone="neutral"
+                    block
+                    className="border border-line text-xs"
+                    onClick={() => setAnalyticsOpen(true)}
+                  >
+                    <Trophy className="h-3.5 w-3.5" />
+                    Achievements & Stats
+                  </MagneticButton>
+                </div>
               </div>
             </aside>
           )}
@@ -625,8 +771,7 @@ export default function App() {
           <div
             className={[
               "relative w-full min-w-0",
-              inSession ? "" : "max-w-lg lg:max-w-none",
-              inSession ? "" : "border-x border-line lg:border-x-0",
+              inSession ? "" : "max-w-[480px] w-full mx-auto shadow-2xl border-x border-white/5",
             ]
               .filter(Boolean)
               .join(" ")}
@@ -638,37 +783,59 @@ export default function App() {
                 className="glass sticky top-0 z-40 border-x-0 border-t-0 px-4 pb-2.5"
                 style={{ paddingTop: "calc(var(--safe-t) + 10px)" }}
               >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <motion.span
-                      className="grid h-7 w-7 shrink-0 place-items-center rounded-[9px]"
-                      style={{
-                        background: isPremium
-                          ? "var(--emerald-wash)"
-                          : "var(--line-faint)",
-                        color: isPremium ? "var(--emerald)" : "var(--ink-3)",
-                      }}
+                <div className="flex items-center justify-between gap-2">
+                  <div
+                    className="flex min-w-0 items-center gap-2 cursor-pointer select-none"
+                    onClick={() => nav("dashboard")}
+                  >
+                    <motion.div
+                      className="relative h-8 w-8 shrink-0 overflow-hidden rounded-xl border border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.3)]"
                       whileTap={{ scale: 0.9 }}
                       transition={SPRING_SNAP}
                     >
-                      <Activity className="h-3.5 w-3.5" strokeWidth={2.6} />
-                    </motion.span>
+                      <img src="/app-logo.jpg" alt="APEX PULSE" className="h-full w-full object-cover" />
+                    </motion.div>
                     <div className="min-w-0">
-                      <p
-                        className="truncate text-[10px] font-extrabold uppercase tracking-[0.14em]"
-                        style={{
-                          color: isPremium ? "var(--emerald)" : "var(--ink-3)",
-                        }}
-                      >
-                        {isPremium ? "Premium" : "Basic"}
+                      <p className="truncate text-xs font-black tracking-tight text-white flex items-center gap-1">
+                        APEX <span className="bg-gradient-to-r from-cyan-400 to-amber-400 bg-clip-text text-transparent">PULSE</span>
                       </p>
-                      <p className="truncate text-[9px] font-bold text-ink-4">
-                        {derivedProfile.totalWorkouts} sessions logged
+                      <p className="truncate text-[9px] font-bold text-cyan-400">
+                        {isPremium ? "PRO APEX" : "FREE ATHLETE"} · {derivedProfile.totalWorkouts} logged
                       </p>
                     </div>
                   </div>
 
                   <div className="flex shrink-0 items-center gap-1.5">
+                    <LofiMusicButton size="sm" />
+                    {user ? (
+                      <motion.button
+                        type="button"
+                        onClick={() => nav("profile-hub")}
+                        className="relative flex h-7 w-7 items-center justify-center rounded-full border border-cyan-500/50 bg-cyan-950/60 text-cyan-300 shadow-sm"
+                        whileTap={{ scale: 0.9 }}
+                        title={user.displayName || user.email || "Athlete Profile & Settings"}
+                      >
+                        {user.photoURL ? (
+                          <img src={user.photoURL} alt="" className="h-full w-full rounded-full object-cover" />
+                        ) : (
+                          <span className="text-[10px] font-black uppercase">
+                            {(user.displayName || user.email || "A")[0]}
+                          </span>
+                        )}
+                        <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-400 ring-1 ring-black" />
+                      </motion.button>
+                    ) : (
+                      <motion.button
+                        type="button"
+                        onClick={() => nav("profile-hub")}
+                        className="flex items-center gap-1 rounded-full border border-cyan-500/40 bg-cyan-950/40 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-cyan-300 transition hover:bg-cyan-900/60"
+                        whileTap={{ scale: 0.92 }}
+                        title="Athlete Profile & Settings"
+                      >
+                        <UserRound className="h-3 w-3" />
+                        <span>Profile</span>
+                      </motion.button>
+                    )}
                     <MagneticButton
                       size="sm"
                       icon
@@ -706,7 +873,7 @@ export default function App() {
             )}
 
             <main
-              className={inSession ? "" : "px-4 pt-5 sm:px-6 lg:px-0 lg:pt-8"}
+              className={inSession ? "" : "px-4 pt-4 sm:px-5 lg:px-4 lg:pt-5"}
               style={
                 inSession
                   ? undefined
@@ -737,7 +904,36 @@ export default function App() {
                       favorites={favorites}
                       onEditProfile={() => setPersonalizeMode("edit")}
                       onOpenAnalytics={() => setAnalyticsOpen(true)}
+                      onOpenSettings={() => nav("profile-hub")}
+                      onOpenStoryReel={(idx) => {
+                        setStoryReelIndex(idx);
+                        setStoryReelOpen(true);
+                      }}
+                      onOpenDuels={() => nav("beast-duels")}
+                      onOpenFlexStudio={(stats) => {
+                        setFlexStudioStats(stats);
+                        setFlexStudioOpen(true);
+                      }}
+                    />
+                  )}
+
+                  {currentView === "reels" && (
+                    <ReelsFeedView
+                      onOpenStoryReel={(idx) => {
+                        setStoryReelIndex(idx);
+                        setStoryReelOpen(true);
+                      }}
+                    />
+                  )}
+
+                  {currentView === "profile-hub" && (
+                    <AthleteProfileHub
+                      profile={derivedProfile}
+                      setProfile={setProfile}
+                      logs={logs}
                       onOpenSettings={() => nav("settings")}
+                      onEditProfile={() => setPersonalizeMode("edit")}
+                      onNavigateToWorkout={() => nav("dashboard")}
                     />
                   )}
 
@@ -759,6 +955,10 @@ export default function App() {
                       favorites={favorites}
                       onToggleFavorite={toggleFavorite}
                       profile={derivedProfile}
+                      onOpenFormScanner={(exName) => {
+                        setScannerExercise(exName);
+                        setScannerOpen(true);
+                      }}
                     />
                   )}
 
@@ -793,6 +993,7 @@ export default function App() {
                     <SettingsPage
                       onBack={() => nav("dashboard")}
                       onOpenCommunity={() => nav("community")}
+                      onOpenAuth={() => nav("auth")}
                       theme={theme === "daylight" ? "light" : "dark"}
                       onToggleTheme={toggleTheme}
                       onEditProfile={() => setPersonalizeMode("edit")}
@@ -802,6 +1003,20 @@ export default function App() {
 
                   {currentView === "community" && (
                     <CommunityGallery onBack={() => nav("settings")} />
+                  )}
+
+                  {currentView === "beast-duels" && (
+                    <BeastDuelArena
+                      onBack={() => nav("dashboard")}
+                      onLogWorkout={handleLogWorkout}
+                    />
+                  )}
+
+                  {currentView === "auth" && (
+                    <AuthScreen
+                      onBack={() => nav("dashboard")}
+                      onAuthed={() => nav("dashboard")}
+                    />
                   )}
 
                   {inSession && selectedWorkout && (
@@ -854,6 +1069,36 @@ export default function App() {
         onClose={() => setPaletteOpen(false)}
         commands={commands}
       />
+
+      {storyReelOpen && (
+        <Suspense fallback={null}>
+          <GymBeastMotivationReel
+            isOpen={storyReelOpen}
+            initialIndex={storyReelIndex}
+            onClose={() => setStoryReelOpen(false)}
+          />
+        </Suspense>
+      )}
+
+      {flexStudioOpen && (
+        <Suspense fallback={null}>
+          <ViralFlexStudio
+            isOpen={flexStudioOpen}
+            onClose={() => setFlexStudioOpen(false)}
+            defaultStats={flexStudioStats}
+          />
+        </Suspense>
+      )}
+
+      {scannerOpen && (
+        <Suspense fallback={null}>
+          <SmartFormScanner
+            isOpen={scannerOpen}
+            onClose={() => setScannerOpen(false)}
+            exerciseName={scannerExercise}
+          />
+        </Suspense>
+      )}
 
       {/* Premium gate for the AI generator. */}
       <AnimatePresence>

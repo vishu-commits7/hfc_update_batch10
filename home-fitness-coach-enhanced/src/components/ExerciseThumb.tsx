@@ -1,40 +1,26 @@
-import { useMemo } from "react";
+import { useMemo, useState, useRef, useEffect, memo } from "react";
 import type { FigureGender } from "./HumanFigure";
 import ExerciseAnimation from "./ExerciseAnimation";
 import ExerciseFlipbook, { hasPhotosFor } from "./ExerciseFlipbook";
 import { photoSetForMotion, type DemoTone } from "../lib/exercisePhotos.generated";
 import { resolveMotion } from "../anim/resolve";
 import type { Accent } from "../design/accents";
+import { accent } from "../design/accents";
+import { getExerciseVideo } from "../lib/exerciseVideos";
+import { getCustomAcademyExercises } from "../lib/customExercises";
 
 /**
  * The exercise demo used everywhere in the app.
  *
- * PHOTOGRAPHS FIRST, DRAWN FIGURE AS THE FLOOR.
+ * VIDEO FIRST WHEN ACTIVE / PLAYING (!still), PHOTOGRAPHS FOR THUMBNAILS (still).
  *
- * The movement resolver does the work. `resolveMotion("Wide Push-ups")`
- * already returns the motion id `pushup`, so the photo layer just asks
- * whether `pushup` has been shot. That means there is no second name
- * table to keep in sync, and every exercise name the AI generator invents
- * gets photography for free as long as the resolver can place it.
+ * When an exercise is playing (e.g. inside the active workout or opened in detail),
+ * it swaps the photo flipbook ("ppt") with the real exercise video form demonstration.
  *
- * Three rules decide which renderer runs:
- *
- *  1. The resolver must have placed the name EXACTLY or by SCORE. A
- *     `pattern` match means it only recognised the movement *family* —
- *     "Sled Push" lands on the push family — and showing push-up
- *     photographs for that would be telling the user this is what a sled
- *     push looks like. It is not. Those get the drawn figure, labelled
- *     "closest match".
- *  2. The photography must exist FOR THAT GENDER. Every photograph in the
- *     app is currently of a male model, so female selections fall to the
- *     figure rather than silently showing a man — which is the bug that
- *     made the setting meaningless before.
- *  3. Otherwise the drawn figure, which covers any name at any gender.
- *
- * Both renderers share a container, a framing, a cue row and a `still`
- * mode, so a list that mixes them reads as one component rather than two.
+ * When `still` is true (thumbnails in library grid, workout cards, sequence lists),
+ * it retains the signature still frame without playing video.
  */
-export default function ExerciseThumb({
+function ExerciseThumbInner({
   name,
   targetMuscle,
   gender = "male",
@@ -48,6 +34,8 @@ export default function ExerciseThumb({
   tone = "emerald",
   showCue = false,
   paused = false,
+  isBlankPhoto: _isBlankPhoto,
+  signaturePose,
 }: {
   name: string;
   /** Improves resolution accuracy for unfamiliar names. */
@@ -69,11 +57,59 @@ export default function ExerciseThumb({
   tone?: Accent;
   showCue?: boolean;
   paused?: boolean;
+  isBlankPhoto?: boolean;
+  signaturePose?: string;
 }) {
+  const activeSignaturePose = useMemo(() => {
+    if (signaturePose) return signaturePose;
+    try {
+      const customs = getCustomAcademyExercises();
+      const norm = name.trim().toLowerCase();
+      const found = customs.find((c) => c.name.trim().toLowerCase() === norm);
+      return found?.signaturePose;
+    } catch {
+      return undefined;
+    }
+  }, [name, signaturePose]);
+
+  if (activeSignaturePose) {
+    return (
+      <div className={bare ? "absolute inset-0 overflow-hidden bg-slate-950" : `relative overflow-hidden rounded-lg2`}>
+        <img
+          src={activeSignaturePose}
+          alt={name}
+          className="h-full w-full object-cover"
+        />
+      </div>
+    );
+  }
+
   const match = useMemo(
     () => resolveMotion(name, targetMuscle),
     [name, targetMuscle],
   );
+
+  // Look up exercise video when not rendering a static thumbnail
+  const videoSrc = useMemo(
+    () => (!still ? getExerciseVideo(name, undefined, match.motion.id) : null),
+    [still, name, match.motion.id],
+  );
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [videoError, setVideoError] = useState(false);
+
+  useEffect(() => {
+    setVideoError(false);
+  }, [name, videoSrc]);
+
+  useEffect(() => {
+    if (!videoRef.current) return;
+    if (paused) {
+      videoRef.current.pause();
+    } else {
+      videoRef.current.play().catch(() => {});
+    }
+  }, [paused]);
 
   // "neutral" has no photographic counterpart, so it uses the figure.
   const photoGender = gender === "female" ? "female" : gender === "male" ? "male" : null;
@@ -90,6 +126,71 @@ export default function ExerciseThumb({
     : "";
   const className = bare ? "absolute inset-0" : ring;
 
+  const a = accent(tone);
+
+  // 1. Play video when active/playing (!still) and video exists
+  if (!still && videoSrc && !videoError) {
+    const stage = (
+      <div className="absolute inset-0 overflow-hidden bg-black/40">
+        <video
+          ref={videoRef}
+          key={videoSrc}
+          src={videoSrc}
+          autoPlay
+          loop
+          muted
+          playsInline
+          onError={() => setVideoError(true)}
+          className="h-full w-full object-contain"
+        />
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "linear-gradient(to top, color-mix(in srgb, var(--void) 40%, transparent) 0%, transparent 34%)",
+          }}
+        />
+      </div>
+    );
+
+    if (bare) {
+      return (
+        <div className={`overflow-hidden ${className}`}>
+          {stage}
+        </div>
+      );
+    }
+
+    return (
+      <div
+        className={[
+          "flex flex-col overflow-hidden rounded-lg2",
+          fill ? "absolute inset-0" : "relative shrink-0",
+          className,
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        style={{
+          ...(fill ? {} : { width: size, height: size }),
+          background: `radial-gradient(120% 100% at 50% 0%, color-mix(in srgb, ${a.color} 12%, var(--graphite)) 0%, var(--obsidian) 72%)`,
+          boxShadow: "inset 0 0 0 1px var(--line)",
+        }}
+      >
+        <div className="relative min-h-0 flex-1">{stage}</div>
+
+        {showCue && (
+          <div className="shrink-0 border-t border-line px-3 py-2">
+            <p className="truncate text-[11px] font-bold" style={{ color: a.color }}>
+              {name}
+            </p>
+            {match.motion.cue && <p className="truncate text-[10px] text-ink-3">{match.motion.cue}</p>}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // 2. Photographs for thumbnails (still) or fallback
   if (set && photoGender) {
     return (
       <ExerciseFlipbook
@@ -110,6 +211,7 @@ export default function ExerciseThumb({
     );
   }
 
+  // 3. Pose-based figure animation fallback
   return (
     <ExerciseAnimation
       name={name}
@@ -127,3 +229,6 @@ export default function ExerciseThumb({
     />
   );
 }
+
+const ExerciseThumb = memo(ExerciseThumbInner);
+export default ExerciseThumb;

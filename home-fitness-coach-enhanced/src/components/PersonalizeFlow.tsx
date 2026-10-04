@@ -1,16 +1,15 @@
 import React, { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  Mars, Venus, NonBinary, ChevronRight, ChevronLeft, X, Sparkles,
+  Mars, NonBinary, ChevronRight, ChevronLeft, X, Sparkles,
   Ruler, Weight, Cake, Check, Minus, Plus, SkipForward
 } from "lucide-react";
 import { calculateBMI, bmiCategory, cmToFtIn, ftInToCm, kgToLb, lbToKg } from "../lib/wellness";
 import Dumbbell3D from "./Dumbbell3DLazy";
 import { audio } from "../lib/audio";
 import coachMalePhoto from "../assets/coach/coach-male.png";
-import coachFemalePhoto from "../assets/coach/coach-female.png";
 
-type Gender = "male" | "female" | "other";
+type Gender = "male" | "other";
 
 export interface PersonalizeData {
   gender?: Gender;
@@ -217,7 +216,9 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
   const [stepIndex, setStepIndex] = useState(0);
   const [direction, setDirection] = useState(1);
 
-  const [gender, setGender] = useState<Gender | undefined>(initial.gender);
+  const [gender, setGender] = useState<Gender | undefined>(
+    initial.gender === ("female" as any) ? "male" : (initial.gender ?? "male")
+  );
   const [age, setAge] = useState(initial.age ?? 25);
   const [heightCm, setHeightCm] = useState(initial.heightCm ?? 170);
   const [weightKg, setWeightKg] = useState(initial.weightKg ?? 65);
@@ -366,10 +367,9 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
                   <p className="text-center text-[10px] font-black uppercase tracking-[0.2em] text-lime-300">Question {questionPosition + 1} of {questionSteps.length}</p>
                   <h2 className="font-display mt-3 text-center text-2xl font-black text-white">What's your gender?</h2>
                   <p className="mt-1.5 text-center text-xs text-white/40">Used only to fine-tune calorie & recovery estimates.</p>
-                  <div className="mt-8 flex gap-3">
+                  <div className="mt-8 flex justify-center gap-4">
                     <GenderCard active={gender === "male"} onClick={() => setGender("male")} icon={Mars} label="Male" glow="bg-blue-500/20" ringColors="#60a5fa, #22d3ee, #818cf8, #60a5fa" photo={coachMalePhoto} />
-                    <GenderCard active={gender === "female"} onClick={() => setGender("female")} icon={Venus} label="Female" glow="bg-rose-500/20" ringColors="#fb7185, #f472b6, #fbbf24, #fb7185" photo={coachFemalePhoto} />
-                    <GenderCard active={gender === "other"} onClick={() => setGender("other")} icon={NonBinary} label="Other" glow="bg-violet-500/20" ringColors="#a78bfa, #818cf8, #c084fc, #a78bfa" />
+                    <GenderCard active={gender === "other"} onClick={() => setGender("other")} icon={NonBinary} label="Prefer not to say" glow="bg-violet-500/20" ringColors="#a78bfa, #818cf8, #c084fc, #a78bfa" />
                   </div>
                   <motion.button
                     whileTap={{ scale: 0.97 }}

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useDeferredValue } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import {
   ArrowUpRight,
@@ -22,6 +22,8 @@ import {
   Trophy,
   UserRound,
   Zap,
+  Swords,
+  Camera,
 } from "lucide-react";
 
 import type { ProgressLog, UserProfile, Workout, WorkoutLog } from "../types";
@@ -53,6 +55,14 @@ import {
 import { accent } from "../design/accents";
 import { staggerChild, staggerParent, SPRING_SNAP } from "../design/motion";
 import { duration } from "../design/format";
+import gymHeroImg from "../assets/ui/gym-hero-dashboard.jpg";
+import gymPremiumBeastImg from "../assets/ui/gym-premium-beast.jpg";
+import gymDailyMotivationImg from "../assets/ui/gym-daily-motivation.jpg";
+import gymBeastIron from "../assets/ui/gym-beast-iron.jpg";
+import gymBeastChalk from "../assets/ui/gym-beast-chalk.jpg";
+import GymMotivationGallery from "./GymMotivationGallery";
+import { MOTIVATION_STORIES } from "./GymBeastMotivationReel";
+import BiometricRecoveryHub from "./BiometricRecoveryHub";
 
 /**
  * Coach roster, derived from the same photo/name pairing the routine
@@ -76,7 +86,8 @@ type NavTarget =
   | "history-logs"
   | "exercise-library"
   | "progress-tracker"
-  | "premium-hub";
+  | "premium-hub"
+  | "beast-duels";
 
 interface DashboardProps {
   profile: UserProfile;
@@ -95,6 +106,9 @@ interface DashboardProps {
   onOpenAnalytics?: () => void;
   /** Opens the full app settings screen — notifications, haptics, backup. */
   onOpenSettings?: () => void;
+  onOpenStoryReel?: (index: number) => void;
+  onOpenDuels?: () => void;
+  onOpenFlexStudio?: (stats?: any) => void;
 }
 
 const CATEGORIES = [
@@ -128,7 +142,7 @@ function greeting(): string {
  * holds the top-left mass and the stat tiles always sit in one visual
  * row. Nothing is hidden at any breakpoint.
  */
-export default function Dashboard({
+function DashboardInner({
   profile,
   setProfile,
   savedWorkouts,
@@ -142,9 +156,13 @@ export default function Dashboard({
   onEditProfile,
   onOpenAnalytics,
   onOpenSettings,
+  onOpenStoryReel,
+  onOpenDuels,
+  onOpenFlexStudio,
 }: DashboardProps) {
   const reduced = useReducedMotion();
   const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const [activeCoach, setActiveCoach] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -208,9 +226,35 @@ export default function Dashboard({
     );
   };
 
-  const filterWorkouts = (list: Workout[]) =>
-    list.filter((w) => {
-      const q = searchQuery.toLowerCase();
+  const filteredCurated = useMemo(() => {
+    const q = deferredSearchQuery.toLowerCase();
+    return CURATED_WORKOUTS.filter((w) => {
+      const matchesSearch =
+        !q ||
+        w.workoutTitle.toLowerCase().includes(q) ||
+        w.workoutDescription.toLowerCase().includes(q) ||
+        w.targetArea.toLowerCase().includes(q);
+
+      if (!matchesSearch) return false;
+      if (activeCategory !== "All") {
+        const cat = activeCategory.toLowerCase();
+        const matchesCategory =
+          w.targetArea.toLowerCase().includes(cat) ||
+          w.workoutTitle.toLowerCase().includes(cat) ||
+          w.workoutDescription.toLowerCase().includes(cat);
+        if (!matchesCategory) return false;
+      }
+
+      if (activeCoach && CURATED_COACH_MEDIA[w.id]?.coach !== activeCoach) {
+        return false;
+      }
+      return true;
+    });
+  }, [deferredSearchQuery, activeCategory, activeCoach]);
+
+  const filteredSaved = useMemo(() => {
+    const q = deferredSearchQuery.toLowerCase();
+    return savedWorkouts.filter((w) => {
       const matchesSearch =
         !q ||
         w.workoutTitle.toLowerCase().includes(q) ||
@@ -227,11 +271,7 @@ export default function Dashboard({
         w.workoutDescription.toLowerCase().includes(cat)
       );
     });
-
-  const filteredCurated = filterWorkouts(CURATED_WORKOUTS).filter(
-    (w) => !activeCoach || CURATED_COACH_MEDIA[w.id]?.coach === activeCoach,
-  );
-  const filteredSaved = filterWorkouts(savedWorkouts);
+  }, [deferredSearchQuery, activeCategory, savedWorkouts]);
 
   /** The session the hero offers. Most recent AI routine, else the first
    *  curated one — never an empty CTA. */
@@ -316,7 +356,11 @@ export default function Dashboard({
             id="btn-open-settings"
             onClick={() => {
               tapFeedback();
-              setShowSettings(true);
+              if (onOpenSettings) {
+                onOpenSettings();
+              } else {
+                setShowSettings(true);
+              }
             }}
             className="border border-line"
           >
@@ -324,6 +368,53 @@ export default function Dashboard({
           </MagneticButton>
         </div>
       </motion.header>
+
+      {/* ====================== DAILY SAVAGE REELS BUBBLES ====================== */}
+      <motion.div variants={staggerChild} className="w-full">
+        <div className="flex items-center justify-between mb-2 px-1">
+          <span className="text-[10px] font-black uppercase tracking-widest text-amber-400 flex items-center gap-1">
+            <Flame className="h-3 w-3 fill-amber-400" /> Savage Daily Fuel
+          </span>
+          <span className="text-[9px] font-bold text-ink-4">Tap to fuel up</span>
+        </div>
+        <div className="flex gap-3.5 overflow-x-auto pb-1 no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
+          {MOTIVATION_STORIES.map((st, idx) => (
+            <button
+              key={st.id}
+              type="button"
+              onClick={() => {
+                tapFeedback();
+                onOpenStoryReel?.(idx);
+              }}
+              className="flex flex-col items-center gap-1.5 shrink-0 group active:scale-95 transition-transform"
+            >
+              <div
+                className="relative h-15 w-15 rounded-full p-[2.5px] shadow-md group-hover:scale-105 transition-transform"
+                style={{
+                  background: `linear-gradient(135deg, ${st.accentColor}, #ec4899, #06b6d4)`,
+                }}
+              >
+                <div className="h-full w-full rounded-full overflow-hidden bg-black p-[1px]">
+                  <img
+                    src={st.image}
+                    alt={st.title}
+                    className="h-full w-full rounded-full object-cover"
+                  />
+                </div>
+                <span
+                  className="absolute bottom-0 right-0 h-4 w-4 rounded-full flex items-center justify-center text-[8px] font-black text-black border border-black shadow"
+                  style={{ background: st.accentColor }}
+                >
+                  ⚡
+                </span>
+              </div>
+              <span className="text-[10px] font-extrabold text-ink-2 group-hover:text-ink max-w-[62px] truncate">
+                {st.title}
+              </span>
+            </button>
+          ))}
+        </div>
+      </motion.div>
 
       {/* ============================ BENTO =========================== */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
@@ -372,29 +463,25 @@ export default function Dashboard({
               }}
             />
 
-            {/* Dynamic background: the featured routine's own artwork,
-                blurred to near-abstraction so it reads as light and
-                colour rather than as a photo competing with the copy. */}
-            {featuredMedia && (
+            {/* Dynamic motivational background: AI generated gym workout athlete */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-2xl2"
+            >
+              <img
+                src={featuredMedia?.photo ?? gymHeroImg}
+                alt=""
+                className="h-full w-full object-cover object-[80%_20%] opacity-85 transition-transform duration-700 hover:scale-105"
+                draggable={false}
+              />
               <div
-                aria-hidden
-                className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-2xl2"
-              >
-                <img
-                  src={featuredMedia.photo}
-                  alt=""
-                  className="h-full w-full scale-125 object-cover opacity-20 blur-2xl"
-                  draggable={false}
-                />
-                <div
-                  className="absolute inset-0"
-                  style={{
-                    background:
-                      "linear-gradient(115deg, var(--carbon) 22%, color-mix(in srgb, var(--carbon) 60%, transparent) 70%)",
-                  }}
-                />
-              </div>
-            )}
+                className="absolute inset-0"
+                style={{
+                  background:
+                    "linear-gradient(90deg, var(--carbon) 0%, var(--carbon) 36%, color-mix(in srgb, var(--carbon) 60%, transparent) 68%, transparent 100%)",
+                }}
+              />
+            </div>
 
             <div className="relative z-10 flex h-full flex-col justify-between gap-5">
               <div className="flex items-start justify-between gap-4">
@@ -649,7 +736,124 @@ export default function Dashboard({
           className="col-span-1 lg:col-span-2"
           onClick={() => onNavigate("premium-hub")}
         />
+
+        {/* ---- 1v1 Beast Arena & Viral Duels ---- */}
+        <motion.div
+          variants={staggerChild}
+          className="col-span-2 sm:col-span-2 lg:col-span-3"
+        >
+          <GlassCard
+            glow="ember"
+            variant="aurora"
+            neon
+            grain
+            radius="2xl"
+            className="group relative flex h-full min-h-[170px] flex-col justify-between overflow-hidden p-5 cursor-pointer"
+            onClick={() => {
+              tapFeedback();
+              onOpenDuels ? onOpenDuels() : onNavigate("beast-duels");
+            }}
+          >
+            {/* Background image tint */}
+            <div className="absolute inset-0 z-0">
+              <img
+                src={gymBeastIron}
+                alt=""
+                className="h-full w-full object-cover opacity-25 group-hover:scale-105 transition-transform duration-500"
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-black via-black/80 to-transparent" />
+            </div>
+
+            <div className="relative z-10 flex items-start justify-between">
+              <div>
+                <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                  <Swords className="h-3 w-3" /> 1v1 Duel Arena
+                </span>
+                <h3 className="font-display mt-2 text-base font-black text-ink">
+                  Challenge Rivals
+                </h3>
+                <p className="mt-1 text-xs text-ink-3 max-w-[26ch]">
+                  100-rep deathmatches, streak wagers, & live leaderboards.
+                </p>
+              </div>
+
+              <span className="grid h-8 w-8 place-items-center rounded-full bg-amber-400 text-black shadow-md group-hover:scale-110 transition-transform">
+                <Play className="h-3.5 w-3.5 fill-black" />
+              </span>
+            </div>
+
+            <div className="relative z-10 mt-3 flex items-center justify-between text-[11px] font-bold text-amber-400">
+              <span>Enter Arena</span>
+              <span className="text-ink-4 font-mono font-normal">Ranked Duels</span>
+            </div>
+          </GlassCard>
+        </motion.div>
+
+        {/* ---- Viral Beast Flex Studio Card ---- */}
+        <motion.div
+          variants={staggerChild}
+          className="col-span-2 sm:col-span-2 lg:col-span-3"
+        >
+          <GlassCard
+            glow="cyan"
+            variant="aurora"
+            neon
+            grain
+            radius="2xl"
+            className="group relative flex h-full min-h-[170px] flex-col justify-between overflow-hidden p-5 cursor-pointer"
+            onClick={() => {
+              tapFeedback();
+              onOpenFlexStudio?.();
+            }}
+          >
+            {/* Background image tint */}
+            <div className="absolute inset-0 z-0">
+              <img
+                src={gymBeastChalk}
+                alt=""
+                className="h-full w-full object-cover opacity-25 group-hover:scale-105 transition-transform duration-500"
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-black via-black/80 to-transparent" />
+            </div>
+
+            <div className="relative z-10 flex items-start justify-between">
+              <div>
+                <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                  <Camera className="h-3 w-3" /> Flex Studio 2.0
+                </span>
+                <h3 className="font-display mt-2 text-base font-black text-ink">
+                  Viral Story Maker
+                </h3>
+                <p className="mt-1 text-xs text-ink-3 max-w-[26ch]">
+                  Craft aesthetic 9:16 Instagram & WhatsApp story cards.
+                </p>
+              </div>
+
+              <span className="grid h-8 w-8 place-items-center rounded-full bg-cyan-400 text-black shadow-md group-hover:scale-110 transition-transform">
+                <Share2 className="h-3.5 w-3.5" />
+              </span>
+            </div>
+
+            <div className="relative z-10 mt-3 flex items-center justify-between text-[11px] font-bold text-cyan-400">
+              <span>Create Story</span>
+              <span className="text-ink-4 font-mono font-normal">HD Export</span>
+            </div>
+          </GlassCard>
+        </motion.div>
       </div>
+
+      {/* ===================== BIOMETRIC RECOVERY & STRAIN ===================== */}
+      <motion.div variants={staggerChild} className="my-7">
+        <BiometricRecoveryHub
+          logs={logs}
+          profile={profile}
+          onNavigateToWorkout={() => {
+            tapFeedback();
+            if (featured) onSelectWorkout(featured);
+            else onNavigate("ai-generator");
+          }}
+        />
+      </motion.div>
 
       {/* ============================ BROWSE ========================== */}
       <motion.div variants={staggerChild} className="space-y-3.5">
@@ -740,6 +944,90 @@ export default function Dashboard({
         )}
       </section>
 
+      {/* ===================== DAILY MOTIVATION SPOTLIGHT ===================== */}
+      <motion.div variants={staggerChild}>
+        <div className="relative overflow-hidden rounded-[26px] border border-cyan-500/30 bg-[var(--graphite)] shadow-2xl">
+          <div className="flex flex-col sm:flex-row items-stretch">
+            {/* Left text column */}
+            <div className="relative z-10 flex flex-1 flex-col justify-between p-6 sm:p-7">
+              <div>
+                <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                  <Flame className="h-3 w-3 text-amber-400" /> Daily Athlete Spotlight
+                </span>
+                <h3 className="font-display mt-3 text-xl font-black tracking-tight text-ink sm:text-2xl">
+                  Unstoppable Discipline
+                </h3>
+                <p className="mt-2 text-xs leading-relaxed text-ink-3 max-w-[38ch] sm:text-sm">
+                  "The pain of discipline is temporary. The pride of achievement lasts forever." Step up and conquer your workout today.
+                </p>
+              </div>
+
+              <div className="mt-5 flex items-center gap-3">
+                <MagneticButton
+                  size="md"
+                  tone="cyan"
+                  onClick={() => {
+                    tapFeedback();
+                    onNavigate("ai-generator");
+                  }}
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Engineered Workout
+                </MagneticButton>
+                <button
+                  type="button"
+                  onClick={() => {
+                    tapFeedback();
+                    if (CURATED_WORKOUTS[0]) onSelectWorkout(CURATED_WORKOUTS[0]);
+                  }}
+                  className="rounded-full border border-line px-3.5 py-2 text-xs font-bold text-ink-2 hover:text-ink transition-colors"
+                >
+                  Quick Start
+                </button>
+              </div>
+            </div>
+
+            {/* Right photo banner: 100% visible, crisp AI gym graphic */}
+            <div className="relative h-56 sm:h-auto sm:w-[48%] shrink-0 overflow-hidden">
+              <img
+                src={gymDailyMotivationImg}
+                alt="Explosive Battle Ropes Training"
+                className="h-full w-full object-cover object-[50%_25%] transition-transform duration-700 hover:scale-105"
+                draggable={false}
+              />
+              {/* Directional gradient to seamlessly blend into card background */}
+              <div
+                className="absolute inset-0 hidden sm:block"
+                style={{
+                  background:
+                    "linear-gradient(to right, var(--graphite) 0%, color-mix(in srgb, var(--graphite) 50%, transparent) 25%, transparent 60%)",
+                }}
+              />
+              <div
+                className="absolute inset-0 sm:hidden"
+                style={{
+                  background:
+                    "linear-gradient(to bottom, transparent 60%, var(--graphite) 100%)",
+                }}
+              />
+              <span className="absolute bottom-3 right-3 rounded-full bg-slate-950/70 backdrop-blur-md border border-white/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-cyan-300">
+                Battle Ropes Core &amp; Power
+              </span>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* ===================== SAVAGE VISUALS GALLERY ===================== */}
+      <motion.div variants={staggerChild} className="mt-2">
+        <GymMotivationGallery
+          onOpenStoryReel={(idx) => {
+            tapFeedback();
+            onOpenStoryReel?.(idx);
+          }}
+        />
+      </motion.div>
+
       {/* ======================= CURATED ROUTINES ===================== */}
       <section className="space-y-4">
         <SectionHeader
@@ -825,6 +1113,26 @@ export default function Dashboard({
             }
           }}
         >
+          {/* Motivational luxury gym powerhouse background */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-2xl"
+          >
+            <img
+              src={gymPremiumBeastImg}
+              alt=""
+              className="h-full w-full object-cover object-[80%_25%] opacity-75"
+              draggable={false}
+            />
+            <div
+              className="absolute inset-0"
+              style={{
+                background:
+                  "linear-gradient(90deg, var(--carbon) 0%, var(--carbon) 38%, color-mix(in srgb, var(--carbon) 55%, transparent) 70%, transparent 100%)",
+              }}
+            />
+          </div>
+
           {/* Gold ambient bloom — large, soft, top-right */}
           <div
             aria-hidden
@@ -1229,6 +1537,9 @@ function CoachPip({
         {label}
       </span>
     </motion.button>
-
   );
 }
+
+const Dashboard = React.memo(DashboardInner);
+export default Dashboard;
+

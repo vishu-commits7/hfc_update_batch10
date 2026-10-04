@@ -47,7 +47,7 @@ export interface UserProfile {
   heightCm?: number;
   weightKg?: number;
   age?: number;
-  gender?: "male" | "female" | "other";
+  gender?: "male" | "other";
   // Which model demonstrates the (small, growing) set of real-photo
   // exercise demos — purely a display preference for the Academy /
   // in-workout demo cards, never used for anything else.

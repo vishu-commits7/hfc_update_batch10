@@ -13,7 +13,8 @@
  * etc.) instead. Set it in `.env` before running `npm run build` — Vite
  * bakes it into the compiled app at build time.
  */
-export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+export const DEFAULT_BACKEND_URL = "https://hfc-update-batch10.onrender.com";
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || DEFAULT_BACKEND_URL).replace(/\/+$/, "");
 
 // Sent alongside API requests when the backend has API_SHARED_SECRET
 // configured — see the comment on `checkSharedSecret` in server.ts for what

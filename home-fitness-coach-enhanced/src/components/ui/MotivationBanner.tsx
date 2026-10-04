@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { X, ChevronRight } from "lucide-react";
 import { SPRING_SNAP, SPRING_WEIGHTED } from "../../design/motion";

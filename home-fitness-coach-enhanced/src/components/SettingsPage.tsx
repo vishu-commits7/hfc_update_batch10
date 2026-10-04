@@ -21,6 +21,7 @@ import { planNudge, shouldNudgeToday } from "../lib/smartNudge";
 interface SettingsPageProps {
   onBack: () => void;
   onOpenCommunity: () => void;
+  onOpenAuth?: () => void;
   theme: "light" | "dark";
   onToggleTheme: () => void;
   onEditProfile: () => void;
@@ -61,7 +62,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-export default function SettingsPage({ onBack, onOpenCommunity, theme, onToggleTheme, onEditProfile, onResetAllData }: SettingsPageProps) {
+export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, theme, onToggleTheme, onEditProfile, onResetAllData }: SettingsPageProps) {
   const { user } = useAuthUser();
   const [profile, setProfile] = useState<UserProfileDoc | null>(null);
   const [muted, setMuted] = useState(() => localStorage.getItem("kinetic_sound_muted") === "true");
@@ -214,7 +215,7 @@ export default function SettingsPage({ onBack, onOpenCommunity, theme, onToggleT
           <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
         </button>
         <div>
-          <span className="text-[10px] font-extrabold uppercase tracking-widest text-blue-600">Kinetic App</span>
+          <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-500">APEX PULSE</span>
           <h1 className="font-sans text-2xl font-black uppercase tracking-tight text-slate-900">Settings</h1>
         </div>
       </div>
@@ -241,7 +242,12 @@ export default function SettingsPage({ onBack, onOpenCommunity, theme, onToggleT
               <Row icon={<LogOut className="h-4 w-4" />} label="Log out" onClick={() => logOut()} />
             </>
           ) : (
-            <Row icon={<UserCircle2 className="h-4 w-4" />} label="Log in or sign up" sub="To use the Community Gallery, likes & comments" onClick={onOpenCommunity} />
+            <Row
+              icon={<UserCircle2 className="h-4 w-4 text-cyan-600" />}
+              label="Log In or Sign Up"
+              sub="1-Tap Google (Gmail) or Email & Password sync"
+              onClick={onOpenAuth || onOpenCommunity}
+            />
           )}
         </Section>
 

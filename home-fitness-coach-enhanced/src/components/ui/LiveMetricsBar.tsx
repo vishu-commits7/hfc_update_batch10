@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
-import { Clock, Flame, Target, Zap } from "lucide-react";
+import { Clock, Flame, Zap } from "lucide-react";
 import { SPRING_SNAP } from "../../design/motion";
 
 export interface LiveMetricsBarProps {

@@ -155,7 +155,7 @@ export function WeeklyHeatmap({
         style={{ gap, paddingLeft: cellSize + gap + 2 }}
         aria-hidden
       >
-        {grid.map((col, ci) => {
+        {grid.map((_col, ci) => {
           const ml = monthLabels.find((m) => m.colIndex === ci);
           return (
             <div

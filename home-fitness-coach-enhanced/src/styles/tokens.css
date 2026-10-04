@@ -91,8 +91,8 @@
   --glass-tint: rgb(255 255 255 / 0.04);
   --glass-tint-strong: rgb(255 255 255 / 0.07);
   --glass-tint-heavy: rgb(255 255 255 / 0.11);
-  --glass-blur: 24px;
-  --glass-blur-heavy: 40px;
+  --glass-blur: 8px;
+  --glass-blur-heavy: 12px;
   --glass-solid: linear-gradient(
     180deg,
     rgb(255 255 255 / 0.045) 0%,

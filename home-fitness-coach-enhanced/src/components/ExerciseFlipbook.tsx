@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { DemoGender, DemoTone, PhotoSet } from "../lib/exercisePhotos.generated";
 import { usePingPongFrame } from "../lib/usePingPongFrame";
 import { accent, type Accent } from "../design/accents";
+import { getExerciseVideo } from "../lib/exerciseVideos";
 
 export interface ExerciseFlipbookProps {
   set: PhotoSet;
@@ -77,10 +78,30 @@ export default function ExerciseFlipbook({
   const rootRef = useRef<HTMLDivElement>(null);
   const [onScreen, setOnScreen] = useState(false);
 
+  const videoSrc = useMemo(
+    () => (!still && label ? getExerciseVideo(label) : null),
+    [still, label]
+  );
+  const [videoError, setVideoError] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
   const frames = pickFrames(set, gender, model);
   const frozen = paused || still || !!reduced;
-  const showcase = fill || bare || size >= 120;
+  const showcase = (fill || bare || size >= 120) && !still;
   const a = accent(tone);
+
+  useEffect(() => {
+    setVideoError(false);
+  }, [videoSrc]);
+
+  useEffect(() => {
+    if (!videoRef.current) return;
+    if (frozen) {
+      videoRef.current.pause();
+    } else {
+      videoRef.current.play().catch(() => {});
+    }
+  }, [frozen]);
 
   useEffect(() => {
     const el = rootRef.current;
@@ -103,11 +124,7 @@ export default function ExerciseFlipbook({
 
   const stage = (
     <div className="absolute inset-0 overflow-hidden">
-      {/* Matte: the same frame, blurred and pushed back, so a contained
-          photograph sits in its own colour instead of on a black bar.
-          Outside AnimatePresence and un-animated on purpose — a hard cut
-          under 20px of blur is invisible, and animating it would double
-          the compositing work of every demo on screen. */}
+      {/* Matte: blurred background copy only for large active showcase cards, never for still thumbnails */}
       {showcase && (
         <img
           src={frame}
@@ -117,51 +134,78 @@ export default function ExerciseFlipbook({
           decoding="async"
           draggable={false}
           className="absolute inset-0 h-full w-full scale-110 select-none object-cover"
-          style={{ filter: "blur(20px) saturate(1.25)", opacity: 0.3 }}
+          style={{ filter: "blur(12px) saturate(1.2)", opacity: 0.25 }}
         />
       )}
 
-      <AnimatePresence>
-        <motion.img
-          key={frame}
+      {still || frozen ? (
+        <img
           src={frame}
           alt={label ? `${label} demonstration` : "Exercise demonstration"}
           loading="lazy"
           decoding="async"
           draggable={false}
-          initial={frozen ? false : { opacity: 0, scale: 1.05, x: panRight ? -4 : 4 }}
-          animate={
-            frozen
-              ? { opacity: 1, scale: 1, x: 0 }
-              : {
-                  opacity: 1,
-                  scale: set.isHold ? [1.02, 1.06, 1.02] : [1, 1.05],
-                  x: set.isHold ? 0 : panRight ? [0, 5] : [0, -5],
-                }
-          }
-          exit={{ opacity: 0, transition: { duration: 0.85, ease: [0.4, 0, 0.2, 1] } }}
-          transition={
-            frozen
-              ? { duration: 0 }
-              : {
-                  opacity: { duration: 0.85, ease: [0.4, 0, 0.2, 1] },
-                  scale: {
-                    duration: set.isHold ? 2.6 : interval / 1000,
-                    repeat: set.isHold ? Infinity : 0,
-                    ease: "easeInOut",
-                  },
-                  x: {
-                    duration: set.isHold ? 2.6 : interval / 1000,
-                    repeat: set.isHold ? Infinity : 0,
-                    ease: "easeInOut",
-                  },
-                }
-          }
-          className={`absolute inset-0 h-full w-full select-none object-center will-change-transform ${
+          className={`absolute inset-0 h-full w-full select-none object-center ${
             showcase ? "object-contain" : "object-cover"
           }`}
         />
-      </AnimatePresence>
+      ) : !still && videoSrc && !videoError ? (
+        <video
+          ref={videoRef}
+          key={videoSrc}
+          src={videoSrc}
+          autoPlay
+          loop
+          muted
+          playsInline
+          onError={() => setVideoError(true)}
+          className={`absolute inset-0 h-full w-full select-none ${
+            showcase ? "object-contain" : "object-cover"
+          }`}
+        />
+      ) : (
+        <AnimatePresence>
+          <motion.img
+            key={frame}
+            src={frame}
+            alt={label ? `${label} demonstration` : "Exercise demonstration"}
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            initial={frozen ? false : { opacity: 0, scale: 1.05, x: panRight ? -4 : 4 }}
+            animate={
+              frozen
+                ? { opacity: 1, scale: 1, x: 0 }
+                : {
+                    opacity: 1,
+                    scale: set.isHold ? [1.02, 1.06, 1.02] : [1, 1.05],
+                    x: set.isHold ? 0 : panRight ? [0, 5] : [0, -5],
+                  }
+            }
+            exit={{ opacity: 0, transition: { duration: 0.85, ease: [0.4, 0, 0.2, 1] } }}
+            transition={
+              frozen
+                ? { duration: 0 }
+                : {
+                    opacity: { duration: 0.85, ease: [0.4, 0, 0.2, 1] },
+                    scale: {
+                      duration: set.isHold ? 2.6 : interval / 1000,
+                      repeat: set.isHold ? Infinity : 0,
+                      ease: "easeInOut",
+                    },
+                    x: {
+                      duration: set.isHold ? 2.6 : interval / 1000,
+                      repeat: set.isHold ? Infinity : 0,
+                      ease: "easeInOut",
+                    },
+                  }
+            }
+            className={`absolute inset-0 h-full w-full select-none object-center will-change-transform ${
+              showcase ? "object-contain" : "object-cover"
+            }`}
+          />
+        </AnimatePresence>
+      )}
 
       {/* Shallow scrim. Heavier reads fine on a 250px hero and swallows the
           legs on a 44px thumbnail, which is the part of a squat worth

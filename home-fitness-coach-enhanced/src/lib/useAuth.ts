@@ -14,6 +14,9 @@ import {
   signOut,
   sendPasswordResetEmail,
   updateProfile,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInAnonymously,
 } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "./firebase";
@@ -35,7 +38,7 @@ export interface UserProfileDoc {
   totalWorkouts?: number;
 }
 
-const DEFAULT_PROFILE_FIELDS = { avatarUrl: null, bio: "", public: true };
+const DEFAULT_PROFILE_FIELDS = { avatarUrl: null, bio: "Apex Athlete grinding daily.", public: true };
 
 export function useAuthUser() {
   const [user, setUser] = useState<User | null>(() => auth.currentUser);
@@ -69,6 +72,44 @@ export async function logIn(email: string, password: string) {
   return cred.user;
 }
 
+export async function logInWithGoogle() {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
+  const cred = await signInWithPopup(auth, provider);
+  const user = cred.user;
+  
+  // Check if profile exists, otherwise create it from Google profile data
+  const existing = await getUserProfile(user.uid);
+  if (!existing) {
+    await setDoc(doc(db, "users", user.uid), {
+      uid: user.uid,
+      displayName: user.displayName || user.email?.split("@")[0] || "Apex Beast",
+      avatarUrl: user.photoURL || null,
+      bio: "Apex Athlete crushing daily milestones.",
+      public: true,
+      createdAt: serverTimestamp(),
+    });
+  }
+  return user;
+}
+
+export async function logInAsGuest() {
+  const cred = await signInAnonymously(auth);
+  const user = cred.user;
+  const existing = await getUserProfile(user.uid);
+  if (!existing) {
+    await setDoc(doc(db, "users", user.uid), {
+      uid: user.uid,
+      displayName: "Guest Athlete #" + Math.floor(1000 + Math.random() * 9000),
+      avatarUrl: null,
+      bio: "Unstoppable Guest Beast.",
+      public: true,
+      createdAt: serverTimestamp(),
+    });
+  }
+  return user;
+}
+
 export async function logOut() {
   await signOut(auth);
 }
@@ -97,8 +138,12 @@ export function friendlyAuthError(err: unknown): string {
     case "auth/user-not-found":
     case "auth/wrong-password":
     case "auth/invalid-credential": return "Email or password is incorrect.";
+    case "auth/popup-closed-by-user": return "Google sign-in was closed before finishing.";
+    case "auth/popup-blocked": return "Pop-up was blocked by browser. Please allow popups for this app.";
+    case "auth/cancelled-popup-request": return "Sign-in request was cancelled.";
+    case "auth/operation-not-allowed": return "Google Sign-in is not yet enabled in your Firebase Console. Turn it on under Firebase Auth -> Sign-in method.";
     case "auth/too-many-requests": return "Too many attempts — please wait a bit and try again.";
     case "auth/network-request-failed": return "Network error — check your connection and try again.";
-    default: return "Something went wrong. Please try again.";
+    default: return (err as { message?: string })?.message || "Something went wrong. Please try again.";
   }
 }

@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   AlertTriangle,
   Check,
+  CheckCircle2,
   ChevronLeft,
   Clipboard,
   Flame,
@@ -14,11 +15,17 @@ import {
   Volume2,
   VolumeX,
   X,
+  Sparkles,
 } from "lucide-react";
 
 import type { UserProfile, Workout, WorkoutLog } from "../types";
 import { audio } from "../lib/audio";
+import { lofiMusic } from "../lib/lofiMusic";
 import { estimateCaloriesBurned } from "../lib/fitness";
+import { getScientificRest } from "../lib/scientificRest";
+import { registerWorkoutExercises } from "../lib/customExercises";
+import RestWindow from "./RestWindow";
+import LofiMusicButton from "./LofiMusicButton";
 import {
   celebrateFeedback,
   successFeedback,
@@ -27,6 +34,7 @@ import {
 } from "../lib/haptics";
 import ExerciseThumb from "./ExerciseThumb";
 import FlexCardSheet from "./FlexCardSheet";
+import ViralFlexStudio from "./ViralFlexStudio";
 import { sessionCard } from "../lib/flexCard";
 import type { FigureGender } from "./HumanFigure";
 import { readDemoGender, readDemoModel } from "../lib/demoPrefs";
@@ -44,6 +52,8 @@ import {
 } from "../design/motion";
 import { clock, ratio } from "../design/format";
 import { useWakeLock } from "../hooks/useWakeLock";
+import gymWorkoutVictory from "../assets/ui/gym-workout-victory.jpg";
+import gymHeroImg from "../assets/ui/gym-hero-dashboard.jpg";
 
 interface ActiveWorkoutProps {
   workout: Workout;
@@ -100,6 +110,7 @@ export default function ActiveWorkout({
   const [gameState, setGameState] = useState<WorkoutState>("ready");
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
   const [timeLeft, setTimeLeft] = useState(0);
+  const [totalRestDuration, setTotalRestDuration] = useState(45);
   const [isPaused, setIsPaused] = useState(false);
   const [currentSet, setCurrentSet] = useState(1);
   const [isMuted, setIsMuted] = useState(
@@ -111,6 +122,7 @@ export default function ActiveWorkout({
   const [caption, setCaption] = useState<string | null>(null);
   const [confirmQuit, setConfirmQuit] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [showViralFlex, setShowViralFlex] = useState(false);
 
   const figureGender: FigureGender = readDemoGender(profile?.gender);
   const demoModel = readDemoModel();
@@ -123,18 +135,32 @@ export default function ActiveWorkout({
   useWakeLock(isRunning && !isPaused);
 
   /* ---------------------------------------------------------------- */
-  /*  Timing engine — preserved from the previous build                */
+  /*  Timing engine & background audio                                */
   /* ---------------------------------------------------------------- */
+
+  const gameStateRef = useRef(gameState);
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
 
   useEffect(() => {
     audio.setMute(isMuted);
-    audio.playStartChime();
+    lofiMusic.play("cinematic");
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       audio.stopSpeaking();
+      lofiMusic.pause();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (isPaused) {
+      lofiMusic.pause();
+    } else if (gameState === "active" || gameState === "rest") {
+      lofiMusic.play(gameState === "active" ? "cinematic" : "soothing");
+    }
+  }, [isPaused, gameState]);
 
   // Depends only on whether a timer *should* be running — never on
   // `timeLeft` — so one interval ticks steadily instead of being torn
@@ -150,7 +176,12 @@ export default function ActiveWorkout({
             handleTimerExpiryRef.current();
             return 0;
           }
-          if (prev <= 4) audio.playTick();
+          // Crisp tick-tick sound in the last 5 seconds of active exercise (5, 4, 3, 2, 1)
+          if (gameStateRef.current === "active" && prev <= 6 && prev > 1) {
+            audio.playCountdownTick(prev - 1);
+          } else if (prev <= 4) {
+            audio.playTick();
+          }
           return prev - 1;
         });
       }, 1000);
@@ -204,26 +235,45 @@ export default function ActiveWorkout({
 
   const startWorkoutSession = () => {
     if (workout.exercises.length === 0) return;
+    registerWorkoutExercises(workout.exercises);
     tapFeedback();
     setGameState("active");
     setCurrentExerciseIndex(0);
     setCurrentSet(1);
     setTimeLeft(blockSeconds(0));
     setIsPaused(false);
+    audio.playExerciseStartBell();
+    lofiMusic.play("cinematic");
+  };
+
+  const finishActiveSetEarly = () => {
+    if (gameState !== "active" || !currentExercise) return;
+    tapFeedback();
+    successFeedback();
+    audio.playExerciseEndBell();
+    const sci = getScientificRest(
+      currentExercise.name,
+      currentExercise.targetMuscle,
+      currentExercise.restSeconds
+    );
+    setTotalRestDuration(sci.durationSeconds);
+    setGameState("rest");
+    setTimeLeft(sci.durationSeconds);
   };
 
   const handleTimerExpiry = () => {
     if (gameState === "active") {
       successFeedback();
-      audio.playRestStart();
-      if (currentExercise.restSeconds > 0) {
-        setGameState("rest");
-        setTimeLeft(currentExercise.restSeconds);
-      } else {
-        advanceWorkoutFlow();
-      }
+      audio.playExerciseEndBell();
+      const sci = getScientificRest(
+        currentExercise.name,
+        currentExercise.targetMuscle,
+        currentExercise.restSeconds
+      );
+      setTotalRestDuration(sci.durationSeconds);
+      setGameState("rest");
+      setTimeLeft(sci.durationSeconds);
     } else if (gameState === "rest") {
-      audio.playStartChime();
       advanceWorkoutFlow();
     }
   };
@@ -237,28 +287,21 @@ export default function ActiveWorkout({
       setCurrentSet((prev) => prev + 1);
       setGameState("active");
       setTimeLeft(blockSeconds(currentExerciseIndex));
+      audio.playExerciseStartBell();
     } else if (currentExerciseIndex + 1 < workout.exercises.length) {
       setCurrentExerciseIndex((prev) => prev + 1);
       setCurrentSet(1);
       setGameState("active");
       setTimeLeft(blockSeconds(currentExerciseIndex + 1));
+      audio.playExerciseStartBell();
     } else {
       completeWorkoutSession();
     }
   };
 
   const skipCurrentExercise = () => {
-    tapFeedback();
-    audio.stopSpeaking();
-    if (currentExerciseIndex + 1 < workout.exercises.length) {
-      setCurrentExerciseIndex((prev) => prev + 1);
-      setCurrentSet(1);
-      setGameState("active");
-      setTimeLeft(blockSeconds(currentExerciseIndex + 1));
-      audio.playStartChime();
-    } else {
-      completeWorkoutSession();
-    }
+    // Mandatorily enter scientific recovery window instead of jumping cold to next exercise
+    finishActiveSetEarly();
   };
 
   const completeWorkoutSession = () => {
@@ -415,22 +458,42 @@ export default function ActiveWorkout({
                 </MagneticButton>
               </motion.div>
 
-              <motion.header variants={staggerChild} className="space-y-3">
-                <span
-                  className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em]"
-                  style={{
-                    background: "var(--cyan-wash)",
-                    color: "var(--cyan)",
-                  }}
-                >
-                  Ready to train
-                </span>
-                <h1 className="font-display text-3xl font-extrabold leading-[1.05] tracking-tight text-ink sm:text-4xl">
-                  {workout.workoutTitle}
-                </h1>
-                <p className="max-w-2xl text-sm leading-relaxed text-ink-3">
-                  {workout.workoutDescription}
-                </p>
+              <motion.header
+                variants={staggerChild}
+                className="relative overflow-hidden rounded-[26px] border border-line bg-[var(--graphite)] p-6 shadow-xl"
+              >
+                <div className="absolute inset-0 pointer-events-none">
+                  <img
+                    src={gymHeroImg}
+                    alt=""
+                    className="h-full w-full object-cover object-[75%_25%] opacity-80"
+                    draggable={false}
+                  />
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      background:
+                        "linear-gradient(90deg, var(--carbon) 0%, var(--carbon) 38%, color-mix(in srgb, var(--carbon) 55%, transparent) 70%, transparent 100%)",
+                    }}
+                  />
+                </div>
+                <div className="relative z-10 space-y-2.5">
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em]"
+                    style={{
+                      background: "var(--cyan-wash)",
+                      color: "var(--cyan)",
+                    }}
+                  >
+                    Ready to train
+                  </span>
+                  <h1 className="font-display text-2xl font-extrabold leading-[1.05] tracking-tight text-ink sm:text-4xl">
+                    {workout.workoutTitle}
+                  </h1>
+                  <p className="max-w-xl text-xs leading-relaxed text-ink-3 sm:text-sm">
+                    {workout.workoutDescription}
+                  </p>
+                </div>
               </motion.header>
 
               <motion.div
@@ -570,10 +633,57 @@ export default function ActiveWorkout({
             </motion.div>
           )}
 
-          {/* ==================== ACTIVE / REST ==================== */}
-          {isRunning && currentExercise && (
+          {/* ==================== SCIENTIFIC REST WINDOW ==================== */}
+          {gameState === "rest" && currentExercise && (
+            <RestWindow
+              currentExercise={currentExercise}
+              currentSet={currentSet}
+              totalSets={currentExercise.sets}
+              nextExercise={
+                currentSet < currentExercise.sets
+                  ? currentExercise
+                  : workout.exercises[currentExerciseIndex + 1]
+              }
+              isNextExerciseDifferent={currentSet >= currentExercise.sets}
+              nextSetNumber={currentSet < currentExercise.sets ? currentSet + 1 : 1}
+              totalNextSets={
+                currentSet < currentExercise.sets
+                  ? currentExercise.sets
+                  : workout.exercises[currentExerciseIndex + 1]?.sets || 1
+              }
+              timeLeft={timeLeft}
+              totalRestDuration={totalRestDuration}
+              isPaused={isPaused}
+              onTogglePause={() => {
+                tapFeedback();
+                setIsPaused((p) => !p);
+              }}
+              onAdjustTime={(delta) => {
+                tapFeedback();
+                setTimeLeft((prev) => Math.max(5, prev + delta));
+              }}
+              onSkipRest={() => {
+                tapFeedback();
+                audio.playStartChime();
+                advanceWorkoutFlow();
+              }}
+              exerciseIndex={currentExerciseIndex}
+              totalExercises={workout.exercises.length}
+              isMuted={isMuted}
+              onToggleMute={toggleMute}
+              onEndSession={() => {
+                warnFeedback();
+                setConfirmQuit(true);
+              }}
+              figureGender={figureGender}
+              demoModel={demoModel}
+            />
+          )}
+
+          {/* ==================== ACTIVE SET VIEW ==================== */}
+          {gameState === "active" && currentExercise && (
             <motion.div
-              key="running"
+              key="active-set"
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 1.01 }}
@@ -605,21 +715,24 @@ export default function ActiveWorkout({
                   </span>
                 </div>
 
-                <MagneticButton
-                  size="sm"
-                  variant="ghost"
-                  tone="neutral"
-                  id="btn-active-toggle-sound"
-                  onClick={toggleMute}
-                  className="border border-line"
-                >
-                  {isMuted ? (
-                    <VolumeX className="h-3.5 w-3.5" />
-                  ) : (
-                    <Volume2 className="h-3.5 w-3.5" />
-                  )}
-                  {isMuted ? "Muted" : "Voice"}
-                </MagneticButton>
+                <div className="flex items-center gap-1.5">
+                  <LofiMusicButton mode="cinematic" />
+                  <MagneticButton
+                    size="sm"
+                    variant="ghost"
+                    tone="neutral"
+                    id="btn-active-toggle-sound"
+                    onClick={toggleMute}
+                    className="border border-line"
+                  >
+                    {isMuted ? (
+                      <VolumeX className="h-3.5 w-3.5" />
+                    ) : (
+                      <Volume2 className="h-3.5 w-3.5" />
+                    )}
+                    {isMuted ? "Muted" : "Voice"}
+                  </MagneticButton>
+                </div>
               </header>
 
               {/* ---------- THE DEMO ----------
@@ -834,6 +947,45 @@ export default function ActiveWorkout({
                 >
                   <SkipForward className="h-5 w-5" />
                 </TactileControl>
+
+                <TactileControl
+                  label="Beast Hype Coach"
+                  id="btn-beast-hype"
+                  onClick={() => {
+                    celebrateFeedback();
+                    audio.playBeastDrop();
+                    const lines = [
+                      "Light weight baby! You've got this!",
+                      "One more rep for glory! Don't you dare stop!",
+                      "Leave nothing in the tank! Finish strong!",
+                      "Pain is temporary, pride is forever! Push!",
+                      "Champions are forged in the final seconds!",
+                      "Dig deep! Own this workout!",
+                    ];
+                    const pick = lines[Math.floor(Math.random() * lines.length)];
+                    audio.speak(pick, { gender: "male" });
+                  }}
+                >
+                  <Flame className="h-5 w-5 text-amber-400 fill-amber-400" />
+                </TactileControl>
+              </section>
+
+              {/* ---------- COMPLETE EXERCISE & RECOVERY CTA ---------- */}
+              <section className="flex flex-col items-center gap-1.5 pt-1">
+                <motion.button
+                  type="button"
+                  id="btn-finish-set-rest"
+                  onClick={finishActiveSetEarly}
+                  whileTap={{ scale: 0.96 }}
+                  whileHover={{ scale: 1.02 }}
+                  className="flex items-center gap-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 px-7 py-3 text-xs font-black text-slate-950 shadow-md shadow-emerald-500/25 hover:opacity-95 transition-all"
+                >
+                  <CheckCircle2 className="h-4 w-4 text-slate-950" />
+                  <span>Complete Exercise · Recover</span>
+                </motion.button>
+                <p className="text-[10px] font-semibold tracking-wide text-emerald-400/90">
+                  ⚡ Scientific recovery window automatically follows each exercise
+                </p>
               </section>
 
               {/* ---------- PACING ---------- */}
@@ -939,53 +1091,65 @@ export default function ActiveWorkout({
               style={{ paddingTop: "calc(var(--safe-t) + 32px)" }}
               id="completed-survey-view"
             >
-              <motion.div variants={staggerChild} className="text-center">
-                <span className="relative mx-auto block h-24 w-24">
-                  {/* Two rings breaking outward from the badge. The screen
-                      is the only genuine reward the app has to give, so it
-                      is worth one deliberate beat of celebration before
-                      the form asks for anything. */}
-                  {!reduced &&
-                    [0, 0.45].map((delay) => (
-                      <motion.span
-                        key={delay}
-                        aria-hidden
-                        className="absolute inset-0 rounded-full"
-                        style={{ border: "2px solid var(--emerald)" }}
-                        initial={{ opacity: 0.5, scale: 0.75 }}
-                        animate={{ opacity: 0, scale: 1.75 }}
-                        transition={{ duration: 1.5, delay: 0.25 + delay, ease: "easeOut" }}
-                      />
-                    ))}
-                  <motion.span
-                    initial={{ scale: 0.4, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ ...SPRING_BOUNCE, delay: 0.1 }}
-                    className="absolute inset-2 grid place-items-center rounded-full"
-                    style={{
-                      background: "var(--emerald-wash)",
-                      color: "var(--emerald)",
-                      boxShadow: "0 0 60px -10px var(--emerald)",
-                    }}
-                  >
-                    <Check className="h-9 w-9" strokeWidth={3} />
-                  </motion.span>
-                </span>
+              <motion.div
+                variants={staggerChild}
+                className="relative overflow-hidden rounded-[28px] border border-emerald-500/30 bg-slate-950 p-6 shadow-2xl text-center"
+              >
+                <div className="absolute inset-0 pointer-events-none">
+                  <img
+                    src={gymWorkoutVictory}
+                    alt="Workout Victory"
+                    className="h-full w-full object-cover object-[50%_25%] opacity-75"
+                    draggable={false}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[var(--carbon)] via-[var(--carbon)]/50 to-transparent" />
+                </div>
 
-                <p
-                  className="mt-5 text-[10px] font-extrabold uppercase tracking-[0.2em]"
-                  style={{ color: "var(--emerald)" }}
-                >
-                  Routine finished
-                </p>
-                <h1 className="font-display mt-2 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
-                  Session complete
-                </h1>
-                <p className="mx-auto mt-2.5 max-w-[40ch] text-sm leading-relaxed text-ink-3">
-                  You finished{" "}
-                  <strong className="text-ink">{workout.workoutTitle}</strong>.
-                  Log it to update your streak and statistics.
-                </p>
+                <div className="relative z-10">
+                  <span className="relative mx-auto block h-24 w-24">
+                    {/* Two rings breaking outward from the badge. */}
+                    {!reduced &&
+                      [0, 0.45].map((delay) => (
+                        <motion.span
+                          key={delay}
+                          aria-hidden
+                          className="absolute inset-0 rounded-full"
+                          style={{ border: "2px solid var(--emerald)" }}
+                          initial={{ opacity: 0.5, scale: 0.75 }}
+                          animate={{ opacity: 0, scale: 1.75 }}
+                          transition={{ duration: 1.5, delay: 0.25 + delay, ease: "easeOut" }}
+                        />
+                      ))}
+                    <motion.span
+                      initial={{ scale: 0.4, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ ...SPRING_BOUNCE, delay: 0.1 }}
+                      className="absolute inset-2 grid place-items-center rounded-full"
+                      style={{
+                        background: "var(--emerald-wash)",
+                        color: "var(--emerald)",
+                        boxShadow: "0 0 60px -10px var(--emerald)",
+                      }}
+                    >
+                      <Check className="h-9 w-9" strokeWidth={3} />
+                    </motion.span>
+                  </span>
+
+                  <p
+                    className="mt-5 text-[10px] font-extrabold uppercase tracking-[0.2em]"
+                    style={{ color: "var(--emerald)" }}
+                  >
+                    Victory Achieved · Routine finished
+                  </p>
+                  <h1 className="font-display mt-2 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+                    Session Complete!
+                  </h1>
+                  <p className="mx-auto mt-2.5 max-w-[42ch] text-xs leading-relaxed text-slate-300 sm:text-sm">
+                    Incredible effort on{" "}
+                    <strong className="text-white">{workout.workoutTitle}</strong>.
+                    Log your stats to lock in your daily streak and progress.
+                  </p>
+                </div>
               </motion.div>
 
               <motion.div
@@ -1008,14 +1172,24 @@ export default function ActiveWorkout({
                 />
               </motion.div>
 
-              {/* Share sits ABOVE the log form, not after it.
-                  The moment somebody is proudest of a session is the
-                  second it ends — not after they have filled in a mood
-                  picker and a notes field. Putting it behind the form
-                  costs most of the intent, and it is deliberately a ghost
-                  button so it never competes with Save log, which is the
-                  action that actually keeps their streak alive. */}
-              <motion.div variants={staggerChild}>
+              {/* Share sits ABOVE the log form, not after it. */}
+              <motion.div variants={staggerChild} className="space-y-2">
+                <motion.button
+                  type="button"
+                  whileTap={{ scale: 0.96 }}
+                  onClick={() => {
+                    tapFeedback();
+                    setShowViralFlex(true);
+                  }}
+                  className="flex items-center justify-center gap-2.5 w-full py-3.5 px-4 rounded-xl2 font-black text-xs uppercase tracking-wider text-black shadow-lg"
+                  style={{
+                    background: "linear-gradient(135deg, #f59e0b, #06b6d4)",
+                  }}
+                >
+                  <Sparkles className="h-4 w-4 fill-black" />
+                  <span>Create Viral Beast Story (IG / WhatsApp)</span>
+                </motion.button>
+
                 <MagneticButton
                   type="button"
                   size="lg"
@@ -1134,6 +1308,20 @@ export default function ActiveWorkout({
                   })}
                   shareText={`${minutesElapsed} min · ${workout.workoutTitle}`}
                   onClose={() => setShowShare(false)}
+                />
+              )}
+
+              {showViralFlex && (
+                <ViralFlexStudio
+                  isOpen={showViralFlex}
+                  onClose={() => setShowViralFlex(false)}
+                  defaultStats={{
+                    title: workout.workoutTitle,
+                    calories: estimatedBurn,
+                    durationMinutes: minutesElapsed,
+                    streakDays: profile?.streakDays || 1,
+                    exercisesCompleted: workout.exercises.length,
+                  }}
                 />
               )}
             </motion.div>

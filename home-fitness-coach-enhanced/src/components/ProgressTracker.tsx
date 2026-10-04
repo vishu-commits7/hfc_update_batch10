@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { ProgressLog, ProgressExercise } from "../types";
-import heroTreadmill from "../assets/ui/hero-treadmill.jpg";
+import gymWorkoutVictory from "../assets/ui/gym-workout-victory.jpg";
 import { 
   Plus, 
   Trash2, 
@@ -264,10 +264,10 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
       {/* Real-photo hero banner — a dark, moody header to open the numbers
           with the same "this is a real person training" energy as the
           Academy, before the page turns into charts and tables. */}
-      <div className="relative mb-6 overflow-hidden rounded-[24px] bg-slate-950">
+      <div className="relative mb-6 overflow-hidden rounded-[24px] bg-slate-950 border border-slate-800 shadow-lg">
         <div className="absolute inset-0">
-          <img src={heroTreadmill} alt="" className="h-full w-full object-cover object-[65%_15%] opacity-70" draggable={false} />
-          <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/60 to-transparent" />
+          <img src={gymWorkoutVictory} alt="Progress Athlete" className="h-full w-full object-cover object-[50%_25%] opacity-80" draggable={false} />
+          <div className="absolute inset-0 bg-gradient-to-r from-slate-950 0%, color-mix(in srgb, var(--carbon) 70%, transparent) 55%, transparent 100%" />
         </div>
         <div className="relative z-10 max-w-[70%] px-5 py-6 sm:max-w-[60%] sm:px-7 sm:py-8">
           <span className="text-[10px] font-black uppercase tracking-widest text-blue-300">Your journey</span>

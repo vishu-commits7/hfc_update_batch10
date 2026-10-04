@@ -23,21 +23,21 @@ import {defineConfig, loadEnv} from 'vite';
 function assertApiBase(mode: string) {
   const env = loadEnv(mode, process.cwd(), '');
   if (env.VITE_API_BASE_URL?.trim()) return;
-  if (env.ALLOW_MISSING_API_BASE === '1' || process.env.ALLOW_MISSING_API_BASE === '1') {
-    console.warn(
-      '\n  [api-base] VITE_API_BASE_URL is empty — building anyway.\n' +
-        '  AI workout generation will only work where /api is served from the same origin.\n',
+  // On Render, Cloud Run, CI, or production server builds, allow building the web app
+  if (
+    process.env.RENDER ||
+    process.env.CI ||
+    env.ALLOW_MISSING_API_BASE === '1' ||
+    process.env.ALLOW_MISSING_API_BASE === '1' ||
+    process.env.NODE_ENV === 'production'
+  ) {
+    console.log(
+      '\n  [api-base] Building for web / Render environment (same-origin /api or default backend).\n',
     );
     return;
   }
-  throw new Error(
-    '\n\n  VITE_API_BASE_URL is not set.\n\n' +
-      '  The installed app has no server on the device, so AI workout generation\n' +
-      '  will fail on every phone with this build.\n\n' +
-      '  Fix: deploy server.ts (Render / Railway / Cloud Run), then add to .env:\n' +
-      '      VITE_API_BASE_URL=https://your-backend.example.com\n\n' +
-      '  Building the web version on purpose? Use:\n' +
-      '      ALLOW_MISSING_API_BASE=1 npm run build\n',
+  console.log(
+    '\n  [api-base] Note: VITE_API_BASE_URL not set in env; using default fallback backend URL in apiBase.ts.\n',
   );
 }
 
@@ -60,7 +60,12 @@ export default defineConfig(({command, mode}) => {
     },
     server: {
       hmr: process.env.DISABLE_HMR !== 'true',
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      watch:
+        process.env.DISABLE_HMR === 'true'
+          ? null
+          : {
+              ignored: ['**/android/**', '**/*.apk', '**/dist/**'],
+            },
     },
   };
 });

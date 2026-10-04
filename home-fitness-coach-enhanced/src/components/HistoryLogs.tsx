@@ -1,5 +1,6 @@
 import { WorkoutLog } from "../types";
 import { ArrowLeft, Trash2, Calendar, Award, Flame, Smile, BarChart2 } from "lucide-react";
+import gymHeroImg from "../assets/ui/gym-hero-dashboard.jpg";
 
 interface HistoryLogsProps {
   logs: WorkoutLog[];
@@ -54,6 +55,23 @@ export default function HistoryLogs({ logs, onBack, onClearLogs, onDeleteLog }: 
             Clear All
           </button>
         )}
+      </div>
+ 
+      {/* Motivational Hero Banner */}
+      <div className="relative mb-8 overflow-hidden rounded-[24px] bg-slate-950 border border-slate-800 shadow-lg">
+        <div className="absolute inset-0">
+          <img src={gymHeroImg} alt="Motivational Gym" className="h-full w-full object-cover object-[70%_25%] opacity-80" draggable={false} />
+          <div className="absolute inset-0 bg-gradient-to-r from-slate-950 0%, color-mix(in srgb, var(--carbon) 70%, transparent) 55%, transparent 100%" />
+        </div>
+        <div className="relative z-10 max-w-[70%] px-5 py-6 sm:max-w-[60%] sm:px-7 sm:py-7">
+          <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Consistency Ledger</span>
+          <h2 className="mt-1 font-display text-xl font-black tracking-tight text-white sm:text-2xl">Every Rep Builds The Legend</h2>
+          <p className="mt-1 text-xs leading-5 text-slate-300">
+            {logs.length > 0 
+              ? `${logs.length} sessions logged into your athletic legacy. Keep the momentum alive.`
+              : "Complete your first workout to stamp your mark on your fitness journey."}
+          </p>
+        </div>
       </div>
 
       {logs.length === 0 ? (

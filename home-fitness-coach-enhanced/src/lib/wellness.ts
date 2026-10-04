@@ -74,3 +74,28 @@ export function kgToLb(kg: number): number {
 export function lbToKg(lb: number): number {
   return Math.round((lb / 2.20462) * 10) / 10;
 }
+
+/* ---------------------------- Hydration helpers ---------------------------- */
+
+export function getTodayWaterGlasses(): number {
+  if (typeof window === "undefined") return 0;
+  try {
+    const saved = localStorage.getItem("kinetic_water_intake");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed.date === todayKey()) return typeof parsed.glasses === "number" ? parsed.glasses : 0;
+    }
+  } catch {}
+  return 0;
+}
+
+export function logWaterGlass(delta: number = 1): number {
+  if (typeof window === "undefined") return 0;
+  try {
+    const current = getTodayWaterGlasses();
+    const next = Math.max(0, current + delta);
+    localStorage.setItem("kinetic_water_intake", JSON.stringify({ date: todayKey(), glasses: next }));
+    return next;
+  } catch {}
+  return 0;
+}

@@ -19,25 +19,15 @@ import type { DemoTone } from "./exercisePhotos.generated";
 const GENDER_KEY = "kinetic_demo_gender";
 const MODEL_KEY = "kinetic_demo_model";
 
-export function readDemoGender(profileGender?: string): FigureGender {
-  if (typeof window !== "undefined") {
-    const saved = window.localStorage.getItem(GENDER_KEY);
-    if (saved === "male" || saved === "female" || saved === "neutral") {
-      return saved;
-    }
-  }
-  if (profileGender === "male" || profileGender === "female") {
-    return profileGender;
-  }
+export function readDemoGender(_profileGender?: string): FigureGender {
   return "male";
 }
 
-export function writeDemoGender(g: FigureGender) {
+export function writeDemoGender(_g: FigureGender) {
   try {
-    window.localStorage.setItem(GENDER_KEY, g);
+    window.localStorage.setItem(GENDER_KEY, "male");
   } catch {
-    // Private mode or blocked storage — the preference just does not
-    // survive the session, which is not worth breaking the screen over.
+    // Private mode or blocked storage
   }
 }
 

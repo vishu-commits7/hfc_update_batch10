@@ -11,10 +11,11 @@ import { PROGRAM_PLANS, CURATED_WORKOUTS } from "../constants";
 import { ACHIEVEMENTS, computeUnlockedAchievements } from "../lib/achievements";
 import { calculateBMI, bmiCategory, calculateTDEE, ACTIVITY_LABELS, todayKey } from "../lib/wellness";
 import { DEMO_EXERCISES } from "./ExerciseLibrary";
-import progFoundation from "../assets/coaches/coach-ironcore.jpg";
-import progStrength from "../assets/coaches/hero-strength.jpg";
-import progCardio from "../assets/coaches/cat-cardio.jpg";
-import progMobility from "../assets/coaches/cat-mobility.jpg";
+import progFoundation from "../assets/coaches/coach-core-male.jpg";
+import progStrength from "../assets/ui/gym-upper-body.jpg";
+import progCardio from "../assets/ui/gym-hiit-beast.jpg";
+import progMobility from "../assets/coaches/coach-mobility-male.jpg";
+import gymPremiumBeast from "../assets/ui/gym-premium-beast.jpg";
 
 const PROGRAM_COVER: Record<string, string> = {
   prog_foundation: progFoundation,
@@ -92,7 +93,7 @@ function ToolkitTab({ profile, setProfile }: { profile?: UserProfile; setProfile
   const [heightCm, setHeightCm] = useState(p?.heightCm ?? 0);
   const [weightKg, setWeightKg] = useState(p?.weightKg ?? 0);
   const [age, setAge] = useState(p?.age ?? 0);
-  const [gender, setGender] = useState<"male" | "female" | "other">(p?.gender ?? "other");
+  const [gender, setGender] = useState<"male" | "other">((p?.gender as string) === "female" ? "male" : (p?.gender ?? "male"));
   const [activityLevel, setActivityLevel] = useState(p?.activityLevel ?? "moderate");
 
   const [water, setWater] = useState(0);
@@ -228,7 +229,6 @@ function ToolkitTab({ profile, setProfile }: { profile?: UserProfile; setProfile
           <label className="space-y-1.5">
             <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Gender</span>
             <select value={gender} onChange={e => setGender(e.target.value as any)} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-bold text-slate-800">
-              <option value="female">Female</option>
               <option value="male">Male</option>
               <option value="other">Other / Prefer not to say</option>
             </select>
@@ -519,9 +519,18 @@ export default function PremiumHub({ isPremium = true, onTogglePremium, profile,
 
   return (
     <section className="space-y-5" id="premium-feature-hub">
-      <div className={`overflow-hidden rounded-[32px] text-white shadow-xl ${theme === "focus" ? "bg-[#0b0f0a]" : "bg-slate-950"}`}>
+      <div className={`overflow-hidden rounded-[32px] text-white shadow-xl ${theme === "focus" ? "bg-[#0b0f0a]" : "bg-slate-950"} relative border border-white/10`}>
+        <div className="absolute inset-0 pointer-events-none">
+          <img
+            src={gymPremiumBeast}
+            alt="Powerhouse Strength Athlete"
+            className="h-full w-full object-cover object-[78%_20%] opacity-75"
+            draggable={false}
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-slate-950 0%, color-mix(in srgb, var(--carbon) 75%, transparent) 55%, transparent 100%" />
+        </div>
         <div className="relative p-6 sm:p-8">
-          <div className="absolute -right-20 -top-24 h-64 w-64 rounded-full bg-lime-300/10 blur-3xl" />
+          <div className="absolute -right-20 -top-24 h-64 w-64 rounded-full bg-lime-300/10 blur-3xl pointer-events-none" />
           <div className="relative z-10">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[.18em] text-lime-300">

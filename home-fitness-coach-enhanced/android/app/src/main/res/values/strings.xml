@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Home Fitness Coach</string>
-    <string name="title_activity_main">Home Fitness Coach</string>
+    <string name="app_name">APEX PULSE</string>
+    <string name="title_activity_main">APEX PULSE</string>
     <string name="package_name">com.homefitnesscoach.app</string>
     <string name="custom_url_scheme">com.homefitnesscoach.app</string>
 </resources>

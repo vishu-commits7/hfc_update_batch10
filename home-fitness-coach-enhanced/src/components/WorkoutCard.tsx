@@ -7,12 +7,13 @@ import ExerciseThumb from "./ExerciseThumb";
 import { accent, accentVars, type Accent } from "../design/accents";
 import { SPRING_SNAP, SPRING_WEIGHTED, staggerChild } from "../design/motion";
 
-import coverMorning from "../assets/coaches/coach-smile-hip.jpg";
-import coverCore from "../assets/coaches/cat-core.jpg";
-import coverLower from "../assets/coaches/coach-squat.jpg";
-import coverUpper from "../assets/coaches/coach-flex-towel.jpg";
-import coverCardio from "../assets/coaches/cat-hiit.jpg";
-import coverFlex from "../assets/coaches/cat-mobility.jpg";
+import coverMorning from "../assets/coaches/coach-beast-male.jpg";
+import coverCore from "../assets/coaches/coach-core-male.jpg";
+import coverLower from "../assets/coaches/coach-lower-male.jpg";
+import coverUpper from "../assets/coaches/coach-upper-male.jpg";
+import coverCardio from "../assets/coaches/coach-cardio-male.jpg";
+import coverFlex from "../assets/coaches/coach-mobility-male.jpg";
+import coverAiWorkout from "../assets/ui/gym-ai-generator.jpg";
 
 interface WorkoutCardProps {
   workout: Workout;
@@ -33,11 +34,11 @@ export const CURATED_COACH_MEDIA: Record<
   { photo: string; coach: string }
 > = {
   curated_1: { photo: coverMorning, coach: "Coach Sam" },
-  curated_2: { photo: coverCore, coach: "Coach Priya" },
+  curated_2: { photo: coverCore, coach: "Coach Marcus" },
   curated_3: { photo: coverLower, coach: "Coach Ryan" },
   curated_4: { photo: coverUpper, coach: "Coach Theo" },
   curated_5: { photo: coverCardio, coach: "Coach Devon" },
-  curated_6: { photo: coverFlex, coach: "Coach Mia" },
+  curated_6: { photo: coverFlex, coach: "Coach David" },
 };
 
 /** Target area drives the accent, so the grid is colour-coded by focus. */
@@ -66,7 +67,7 @@ function toneForArea(area: string): Accent {
  * depth from two layers moving at different rates, rather than a scale
  * transform pretending to be depth.
  */
-export default function WorkoutCard({
+function WorkoutCardComponent({
   workout,
   onSelect,
   onDelete,
@@ -125,60 +126,56 @@ export default function WorkoutCard({
             "border-color 320ms var(--ease-out-expo), box-shadow 320ms var(--ease-out-expo)",
         }}
       >
-        {media && (
+        <div
+          className={`relative w-full shrink-0 overflow-hidden ${
+            dense ? "h-28" : "h-44"
+          }`}
+        >
+          <motion.img
+            src={media ? media.photo : coverAiWorkout}
+            alt=""
+            draggable={false}
+            className="absolute inset-0 h-full w-full object-cover"
+            // Over-scaled at rest so the parallax translate never
+            // exposes an edge.
+            initial={false}
+            animate={
+              reduced
+                ? { scale: 1.06 }
+                : { scale: hovered ? 1.14 : 1.06, y: hovered ? -6 : 0 }
+            }
+            transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+          />
+
+          {/* Smooth bottom gradient scrim for text readability while leaving the gym photo crisp and clear */}
           <div
-            className={`relative w-full shrink-0 overflow-hidden ${
-              dense ? "h-24" : "h-36"
-            }`}
+            aria-hidden
+            className="absolute inset-0"
+            style={{
+              background: `linear-gradient(to top, var(--carbon) 0%, color-mix(in srgb, var(--carbon) 70%, transparent) 26%, transparent 65%)`,
+            }}
+          />
+          <div
+            aria-hidden
+            className="absolute inset-0 mix-blend-color opacity-10 pointer-events-none"
+            style={{ background: t.color }}
+          />
+
+          <span
+            className="absolute left-3.5 top-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-[0.14em] backdrop-blur-md"
+            style={{
+              background: "rgb(0 0 0 / 0.35)",
+              color: t.color,
+              boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.12)",
+            }}
           >
-            <motion.img
-              src={media.photo}
-              alt=""
-              draggable={false}
-              className="absolute inset-0 h-full w-full object-cover"
-              // Over-scaled at rest so the parallax translate never
-              // exposes an edge.
-              initial={false}
-              animate={
-                reduced
-                  ? { scale: 1.06 }
-                  : { scale: hovered ? 1.14 : 1.06, y: hovered ? -6 : 0 }
-              }
-              transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-            />
+            {media ? "Pro routine" : "AI Engineered"}
+          </span>
 
-            {/* Two-stop scrim: a hard floor for the caption plus a wash of
-                the card's accent, which is what ties six different stock
-                photos into one visual system. */}
-            <div
-              aria-hidden
-              className="absolute inset-0"
-              style={{
-                background: `linear-gradient(to top, var(--carbon) 2%, color-mix(in srgb, var(--carbon) 72%, transparent) 34%, transparent 78%)`,
-              }}
-            />
-            <div
-              aria-hidden
-              className="absolute inset-0 mix-blend-color opacity-35"
-              style={{ background: t.color }}
-            />
-
-            <span
-              className="absolute left-3.5 top-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-[0.14em] backdrop-blur-md"
-              style={{
-                background: "rgb(0 0 0 / 0.35)",
-                color: t.color,
-                boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.12)",
-              }}
-            >
-              Pro routine
-            </span>
-
-            <span className="absolute bottom-3 left-3.5 text-[11px] font-extrabold uppercase tracking-wider text-ink drop-shadow">
-              {media.coach}
-            </span>
-          </div>
-        )}
+          <span className="absolute bottom-3 left-3.5 text-[11px] font-extrabold uppercase tracking-wider text-ink drop-shadow">
+            {media ? media.coach : "Gemini AI Coach"}
+          </span>
+        </div>
 
         <div className={dense ? "p-4" : "p-5"}>
           <div className="flex items-start justify-between gap-2">
@@ -293,3 +290,6 @@ export default function WorkoutCard({
     </motion.article>
   );
 }
+
+const WorkoutCard = React.memo(WorkoutCardComponent);
+export default WorkoutCard;

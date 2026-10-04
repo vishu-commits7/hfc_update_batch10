@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.homefitnesscoach.app',
-  appName: 'Home Fitness Coach',
+  appName: 'APEX PULSE',
   webDir: 'dist',
   server: {
     androidScheme: 'https',

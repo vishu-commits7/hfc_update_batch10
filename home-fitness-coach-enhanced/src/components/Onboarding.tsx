@@ -25,8 +25,8 @@ const SLIDES = [
     icon: Dumbbell,
     hero3d: true,
     heroPhoto: false,
-    title: `${DEMO_EXERCISES.length} illustrated exercises`,
-    body: "The Exercise Academy has a fully illustrated, looping demo for every movement — with a male and a female figure to choose from — plus form cues and common mistakes. No video downloads required.",
+    title: `${DEMO_EXERCISES.length} HD video & illustrated moves`,
+    body: "The Exercise Academy has video demonstrations and a fully illustrated, looping biomechanical demo for every movement — plus coach cues, targeted muscle anatomy, and common mistakes.",
   },
   {
     icon: Wind,
