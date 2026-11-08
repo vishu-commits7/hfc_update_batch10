@@ -4,7 +4,7 @@
  * src/assets/exercises/. See tools/photo-manifest.mjs for the filename
  * contract and how the signature frame is chosen.
  *
- * 138 photographs · 37 exercises · 72 gender/tone variants
+ * 145 photographs · 39 exercises · 76 gender/tone variants
  */
 import p0 from "../assets/exercises/bentrow-black-1.jpg";
 import p1 from "../assets/exercises/bentrow-black-2.jpg";
@@ -118,32 +118,36 @@ import p108 from "../assets/exercises/shouldertaps-white-2.jpg";
 import p109 from "../assets/exercises/shouldertaps-white-3.jpg";
 import p110 from "../assets/exercises/sideplank-black-1.jpg";
 import p111 from "../assets/exercises/sideplank-white-1.jpg";
-import p112 from "../assets/exercises/situps-black-1.jpg";
-import p113 from "../assets/exercises/situps-black-2.jpg";
-import p114 from "../assets/exercises/situps-white-1.jpg";
-import p115 from "../assets/exercises/situps-white-2.jpg";
-import p116 from "../assets/exercises/spinaltwist-black-1.jpg";
-import p117 from "../assets/exercises/spinaltwist-white-1.jpg";
-import p118 from "../assets/exercises/squat-black-1.jpg";
-import p119 from "../assets/exercises/squat-black-2.jpg";
-import p120 from "../assets/exercises/squat-black-3.jpg";
-import p121 from "../assets/exercises/squat-white-1.jpg";
-import p122 from "../assets/exercises/squat-white-2.jpg";
-import p123 from "../assets/exercises/squat-white-3.jpg";
-import p124 from "../assets/exercises/stepup-black-1.jpg";
-import p125 from "../assets/exercises/stepup-white-1.jpg";
-import p126 from "../assets/exercises/sumosquat-black-1.jpg";
-import p127 from "../assets/exercises/sumosquat-black-2.jpg";
-import p128 from "../assets/exercises/sumosquat-white-1.jpg";
-import p129 from "../assets/exercises/sumosquat-white-2.jpg";
-import p130 from "../assets/exercises/superman-black-1.jpg";
-import p131 from "../assets/exercises/superman-white-1.jpg";
-import p132 from "../assets/exercises/wallsit-black-1.jpg";
-import p133 from "../assets/exercises/wallsit-black-2.jpg";
-import p134 from "../assets/exercises/wallsit-white-1.jpg";
-import p135 from "../assets/exercises/wallsit-white-2.jpg";
-import p136 from "../assets/exercises/worldsgreatest-black-1.jpg";
-import p137 from "../assets/exercises/worldsgreatest-white-1.jpg";
+import p112 from "../assets/exercises/singleleg-black-1.webp";
+import p113 from "../assets/exercises/singleleg-white-1.webp";
+import p114 from "../assets/exercises/situps-black-1.jpg";
+import p115 from "../assets/exercises/situps-black-2.jpg";
+import p116 from "../assets/exercises/situps-white-1.jpg";
+import p117 from "../assets/exercises/situps-white-2.jpg";
+import p118 from "../assets/exercises/skaterhop-black-1.webp";
+import p119 from "../assets/exercises/skaterhop-white-1.webp";
+import p120 from "../assets/exercises/spinaltwist-black-1.jpg";
+import p121 from "../assets/exercises/spinaltwist-white-1.jpg";
+import p122 from "../assets/exercises/squat-black-1.jpg";
+import p123 from "../assets/exercises/squat-black-2.jpg";
+import p124 from "../assets/exercises/squat-black-3.jpg";
+import p125 from "../assets/exercises/squat-white-1.jpg";
+import p126 from "../assets/exercises/squat-white-2.jpg";
+import p127 from "../assets/exercises/squat-white-3.jpg";
+import p128 from "../assets/exercises/stepup-black-1.jpg";
+import p129 from "../assets/exercises/stepup-white-1.jpg";
+import p130 from "../assets/exercises/sumosquat-black-1.jpg";
+import p131 from "../assets/exercises/sumosquat-black-2.jpg";
+import p132 from "../assets/exercises/sumosquat-white-1.jpg";
+import p133 from "../assets/exercises/sumosquat-white-2.jpg";
+import p134 from "../assets/exercises/superman-black-1.jpg";
+import p135 from "../assets/exercises/superman-white-1.jpg";
+import p136 from "../assets/exercises/wallsit-black-1.jpg";
+import p137 from "../assets/exercises/wallsit-black-2.jpg";
+import p138 from "../assets/exercises/wallsit-white-1.jpg";
+import p139 from "../assets/exercises/wallsit-white-2.jpg";
+import p140 from "../assets/exercises/worldsgreatest-black-1.jpg";
+import p141 from "../assets/exercises/worldsgreatest-white-1.jpg";
 
 export type DemoGender = "male" | "female";
 export type DemoTone = "black" | "white";
@@ -389,74 +393,90 @@ export const PHOTO_SETS: Record<string, PhotoSet> = {
       "male:white": [p111],
     },
   },
+  "singleleg": {
+    signature: 0,
+    isHold: true,
+    frames: {
+      "male:black": [p112],
+      "male:white": [p113],
+    },
+  },
   "situps": {
     signature: 1,
     isHold: false,
     frames: {
-      "male:black": [p112, p113],
-      "male:white": [p114, p115],
+      "male:black": [p114, p115],
+      "male:white": [p116, p117],
+    },
+  },
+  "skaterhop": {
+    signature: 0,
+    isHold: true,
+    frames: {
+      "male:black": [p118],
+      "male:white": [p119],
     },
   },
   "spinaltwist": {
     signature: 0,
     isHold: true,
     frames: {
-      "male:black": [p116],
-      "male:white": [p117],
+      "male:black": [p120],
+      "male:white": [p121],
     },
   },
   "squat": {
     signature: 2,
     isHold: false,
     frames: {
-      "male:black": [p118, p119, p120],
-      "male:white": [p121, p122, p123],
+      "male:black": [p122, p123, p124],
+      "male:white": [p125, p126, p127],
     },
   },
   "stepup": {
     signature: 0,
     isHold: true,
     frames: {
-      "male:black": [p124],
-      "male:white": [p125],
+      "male:black": [p128],
+      "male:white": [p129],
     },
   },
   "sumosquat": {
     signature: 1,
     isHold: false,
     frames: {
-      "male:black": [p126, p127],
-      "male:white": [p128, p129],
+      "male:black": [p130, p131],
+      "male:white": [p132, p133],
     },
   },
   "superman": {
     signature: 0,
     isHold: true,
     frames: {
-      "male:black": [p130],
-      "male:white": [p131],
+      "male:black": [p134],
+      "male:white": [p135],
     },
   },
   "wallsit": {
     signature: 1,
     isHold: false,
     frames: {
-      "male:black": [p132, p133],
-      "male:white": [p134, p135],
+      "male:black": [p136, p137],
+      "male:white": [p138, p139],
     },
   },
   "worldsgreatest": {
     signature: 0,
     isHold: true,
     frames: {
-      "male:black": [p136],
-      "male:white": [p137],
+      "male:black": [p140],
+      "male:white": [p141],
     },
   },
 };
 
 /** Motion id → photo slug, for the ids the two spell differently. */
-const MOTION_TO_SLUG: Record<string, string> = {
+export const MOTION_TO_SLUG: Record<string, string> = {
   "bent-row": "bentrow",
   "bicep-curl": "bicepcurl",
   "bird-dog": "birddog",
@@ -479,7 +499,14 @@ const MOTION_TO_SLUG: Record<string, string> = {
   "seated-fold": "seatedfold",
   "shoulder-taps": "shouldertaps",
   "side-plank": "sideplank",
+  "single-leg-deadlift": "singleleg",
+  "single-leg": "singleleg",
+  "deadlift": "singleleg",
   "situp": "situps",
+  "skater": "skaterhop",
+  "skater-hop": "skaterhop",
+  "skater-hops": "skaterhop",
+  "skaterhop": "skaterhop",
   "spinal-twist": "spinaltwist",
   "step-up": "stepup",
   "sumo-squat": "sumosquat",
@@ -489,5 +516,13 @@ const MOTION_TO_SLUG: Record<string, string> = {
 
 /** The photo set for a resolved motion id, or null if none was shot. */
 export function photoSetForMotion(motionId: string): PhotoSet | null {
-  return PHOTO_SETS[MOTION_TO_SLUG[motionId] ?? motionId] ?? null;
+  if (!motionId) return null;
+  const slug = MOTION_TO_SLUG[motionId] ?? motionId;
+  if (PHOTO_SETS[slug]) return PHOTO_SETS[slug];
+
+  // Also check without hyphens
+  const compact = slug.replace(/[^a-z0-9]/g, "");
+  if (PHOTO_SETS[compact]) return PHOTO_SETS[compact];
+
+  return null;
 }

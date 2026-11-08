@@ -45,13 +45,6 @@ const ICON_SIZES: Record<Size, string> = {
   xl: "h-14 w-14",
 };
 
-const PRESS: Record<Size, number> = {
-  sm: 0.9,
-  md: 0.94,
-  lg: 0.96,
-  xl: 0.97,
-};
-
 /**
  * The app's button.
  *
@@ -149,7 +142,6 @@ export function MagneticButton({
           .filter(Boolean)
           .join(" ")}
         style={surfaceStyle[variant]}
-        whileTap={disabled ? undefined : { scale: PRESS[size] }}
         whileHover={disabled ? undefined : { scale: 1.03 }}
         transition={SPRING_SNAP}
       >
@@ -203,7 +195,6 @@ export function PressableRow({
       className={["relative block w-full text-left", className]
         .filter(Boolean)
         .join(" ")}
-      whileTap={{ scale: 0.985 }}
       transition={SPRING_WEIGHTED}
       {...rest}
     >

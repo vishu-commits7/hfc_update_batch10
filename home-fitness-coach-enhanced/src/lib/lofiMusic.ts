@@ -12,6 +12,8 @@
  * and a small play/pause toggle for in-app controls.
  */
 
+import { getSharedAudioContext } from "./audio";
+
 export type LofiMode = "soothing" | "cinematic";
 
 interface LofiState {
@@ -26,11 +28,22 @@ class LofiMusicEngine {
   private ctx: AudioContext | null = null;
   private isPlaying: boolean = false;
   private mode: LofiMode = "soothing";
-  private baseVolume: number = 0.26; // Hearable, balanced, non-fatiguing
+  private baseVolume: number = 0.5;
+  /**
+   * The synthesized notes peak around 0.02-0.09 each, so at the old 0.26
+   * master level the music sat roughly 40 dB down and was effectively
+   * inaudible even with the phone at full volume. The boost brings the mix
+   * to a normal listening level; the compressor below keeps stacked chords
+   * from clipping.
+   */
+  private readonly boost: number = 3.6;
+  private compressor: DynamicsCompressorNode | null = null;
   private masterGain: GainNode | null = null;
   private isDucked: boolean = false;
   private timerId: number | null = null;
   private vinylNode: AudioBufferSourceNode | null = null;
+  private vinylBuffer: AudioBuffer | null = null;
+  private hiHatBuffer: AudioBuffer | null = null;
   private listeners: Set<StateListener> = new Set();
 
   // Musical sequences
@@ -63,16 +76,22 @@ class LofiMusicEngine {
 
   private initAudio() {
     if (!this.ctx) {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      this.ctx = new AudioCtx();
+      this.ctx = getSharedAudioContext();
     }
-    if (this.ctx.state === "suspended") {
+    if (this.ctx && this.ctx.state === "suspended") {
       this.ctx.resume().catch(() => {});
     }
     if (!this.masterGain && this.ctx) {
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.setValueAtTime(this.baseVolume, this.ctx.currentTime);
-      this.masterGain.connect(this.ctx.destination);
+      this.masterGain.gain.setValueAtTime(this.baseVolume * this.boost, this.ctx.currentTime);
+      this.compressor = this.ctx.createDynamicsCompressor();
+      this.compressor.threshold.value = -18;
+      this.compressor.knee.value = 24;
+      this.compressor.ratio.value = 6;
+      this.compressor.attack.value = 0.01;
+      this.compressor.release.value = 0.25;
+      this.masterGain.connect(this.compressor);
+      this.compressor.connect(this.ctx.destination);
     }
   }
 
@@ -104,7 +123,7 @@ class LofiMusicEngine {
   public setVolume(vol: number) {
     this.baseVolume = Math.max(0, Math.min(1, vol));
     if (this.masterGain && this.ctx && !this.isDucked) {
-      this.masterGain.gain.setTargetAtTime(this.baseVolume, this.ctx.currentTime, 0.1);
+      this.masterGain.gain.setTargetAtTime(this.baseVolume * this.boost, this.ctx.currentTime, 0.1);
     }
     this.notify();
   }
@@ -112,7 +131,7 @@ class LofiMusicEngine {
   public duck(ducked: boolean) {
     this.isDucked = ducked;
     if (!this.masterGain || !this.ctx) return;
-    const targetGain = ducked ? 0.07 : this.baseVolume;
+    const targetGain = (ducked ? 0.07 : this.baseVolume) * this.boost;
     this.masterGain.gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.15);
   }
 
@@ -120,12 +139,18 @@ class LofiMusicEngine {
     if (this.isPlaying) {
       this.pause();
     } else {
-      this.play();
+      // An explicit tap on the music button always wins over the global
+      // "coach voice muted" flag — otherwise the button silently did nothing.
+      this.play(undefined, true);
     }
     return this.isPlaying;
   }
 
-  public play(mode?: LofiMode) {
+  public play(mode?: LofiMode, force: boolean = false) {
+    if (!force && typeof localStorage !== "undefined" && localStorage.getItem("kinetic_sound_muted") === "true") {
+      this.isPlaying = false;
+      return;
+    }
     if (mode) this.mode = mode;
     this.initAudio();
     if (!this.ctx || !this.masterGain) return;
@@ -137,20 +162,42 @@ class LofiMusicEngine {
 
     this.isPlaying = true;
     localStorage.setItem("kinetic_lofi_music_muted", "false");
-    this.masterGain.gain.setTargetAtTime(this.baseVolume, this.ctx.currentTime, 0.4);
-
-    this.startVinylCrackle();
-    this.startSequencer();
+    this.masterGain.gain.cancelScheduledValues(this.ctx.currentTime);
+    this.masterGain.gain.setValueAtTime(this.baseVolume * this.boost, this.ctx.currentTime);
     this.notify();
+
+    // Android WebView starts the context suspended until a gesture resumes
+    // it. Scheduling notes against a frozen clock is what produced silence,
+    // so only start the sequencer once the context is actually running.
+    const ctx = this.ctx;
+    const begin = () => {
+      if (!this.isPlaying) return;
+      this.startVinylCrackle();
+      this.startSequencer();
+    };
+    if (ctx.state === "running") {
+      begin();
+    } else {
+      ctx.resume().then(begin).catch(begin);
+    }
   }
 
-  public pause() {
-    if (!this.isPlaying) return;
+  public pause(immediate: boolean = false) {
+    if (!this.isPlaying) {
+      if (immediate && this.masterGain && this.ctx) {
+        this.masterGain.gain.setValueAtTime(0, this.ctx.currentTime);
+      }
+      return;
+    }
     this.isPlaying = false;
     localStorage.setItem("kinetic_lofi_music_muted", "true");
 
     if (this.masterGain && this.ctx) {
-      this.masterGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3);
+      if (immediate) {
+        this.masterGain.gain.setValueAtTime(0, this.ctx.currentTime);
+      } else {
+        this.masterGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.15);
+      }
     }
 
     if (this.timerId !== null) {
@@ -159,38 +206,43 @@ class LofiMusicEngine {
     }
 
     this.stopVinylCrackle();
+    // The context is shared with the coach voice and chimes, so it must not
+    // be suspended here — silencing the gain is enough.
     this.notify();
   }
 
   /**
-   * Generates a vintage vinyl crackle buffer for authentic lofi warmth
+   * Generates a vintage vinyl crackle buffer for authentic lofi warmth (cached in memory)
    */
   private startVinylCrackle() {
     if (!this.ctx || !this.masterGain || this.vinylNode) return;
     try {
-      const bufferSize = this.ctx.sampleRate * 4;
-      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-      const data = buffer.getChannelData(0);
+      if (!this.vinylBuffer) {
+        const bufferSize = this.ctx.sampleRate * 4;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
 
-      // Warm pink noise with occasional tiny dust pops
-      let b0 = 0, b1 = 0, b2 = 0;
-      for (let i = 0; i < bufferSize; i++) {
-        const white = Math.random() * 2 - 1;
-        b0 = 0.99886 * b0 + white * 0.0555179;
-        b1 = 0.99332 * b1 + white * 0.0750759;
-        b2 = 0.96900 * b2 + white * 0.1538520;
-        let pink = b0 + b1 + b2 + white * 0.5362;
+        // Warm pink noise with occasional tiny dust pops
+        let b0 = 0, b1 = 0, b2 = 0;
+        for (let i = 0; i < bufferSize; i++) {
+          const white = Math.random() * 2 - 1;
+          b0 = 0.99886 * b0 + white * 0.0555179;
+          b1 = 0.99332 * b1 + white * 0.0750759;
+          b2 = 0.96900 * b2 + white * 0.1538520;
+          let pink = b0 + b1 + b2 + white * 0.5362;
 
-        // Random subtle crackle pop
-        if (Math.random() < 0.0006) {
-          pink += (Math.random() - 0.5) * 4.5;
+          // Random subtle crackle pop
+          if (Math.random() < 0.0006) {
+            pink += (Math.random() - 0.5) * 4.5;
+          }
+
+          data[i] = pink * 0.008; // very soft and cozy
         }
-
-        data[i] = pink * 0.008; // very soft and cozy
+        this.vinylBuffer = buffer;
       }
 
       const source = this.ctx.createBufferSource();
-      source.buffer = buffer;
+      source.buffer = this.vinylBuffer;
       source.loop = true;
 
       const filter = this.ctx.createBiquadFilter();
@@ -294,6 +346,14 @@ class LofiMusicEngine {
       filter.connect(gain);
       gain.connect(this.masterGain);
 
+      osc.onended = () => {
+        try {
+          osc.disconnect();
+          filter.disconnect();
+          gain.disconnect();
+        } catch {}
+      };
+
       osc.start(noteStart);
       osc.stop(noteStart + duration + 0.1);
     });
@@ -322,6 +382,14 @@ class LofiMusicEngine {
     osc.connect(filter);
     filter.connect(gain);
     gain.connect(this.masterGain);
+
+    osc.onended = () => {
+      try {
+        osc.disconnect();
+        filter.disconnect();
+        gain.disconnect();
+      } catch {}
+    };
 
     osc.start(startTime);
     osc.stop(startTime + duration + 0.1);
@@ -358,6 +426,14 @@ class LofiMusicEngine {
       osc.connect(filter);
       filter.connect(gain);
       gain.connect(this.masterGain);
+
+      osc.onended = () => {
+        try {
+          osc.disconnect();
+          filter.disconnect();
+          gain.disconnect();
+        } catch {}
+      };
 
       osc.start(startTime);
       osc.stop(startTime + duration + 0.5);
@@ -410,6 +486,13 @@ class LofiMusicEngine {
     osc.connect(gain);
     gain.connect(this.masterGain);
 
+    osc.onended = () => {
+      try {
+        osc.disconnect();
+        gain.disconnect();
+      } catch {}
+    };
+
     osc.start(time);
     osc.stop(time + 0.18);
   }
@@ -429,6 +512,13 @@ class LofiMusicEngine {
     osc.connect(gain);
     gain.connect(this.masterGain);
 
+    osc.onended = () => {
+      try {
+        osc.disconnect();
+        gain.disconnect();
+      } catch {}
+    };
+
     osc.start(time);
     osc.stop(time + 0.1);
   }
@@ -436,15 +526,18 @@ class LofiMusicEngine {
   private playHiHat(time: number, vol = 0.015) {
     if (!this.ctx || !this.masterGain) return;
 
-    const bufferSize = this.ctx.sampleRate * 0.04;
-    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.25));
+    if (!this.hiHatBuffer) {
+      const bufferSize = Math.floor(this.ctx.sampleRate * 0.04);
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.25));
+      }
+      this.hiHatBuffer = buffer;
     }
 
     const source = this.ctx.createBufferSource();
-    source.buffer = buffer;
+    source.buffer = this.hiHatBuffer;
 
     const filter = this.ctx.createBiquadFilter();
     filter.type = "highpass";
@@ -457,6 +550,14 @@ class LofiMusicEngine {
     source.connect(filter);
     filter.connect(gain);
     gain.connect(this.masterGain);
+
+    source.onended = () => {
+      try {
+        source.disconnect();
+        filter.disconnect();
+        gain.disconnect();
+      } catch {}
+    };
 
     source.start(time);
     source.stop(time + 0.05);

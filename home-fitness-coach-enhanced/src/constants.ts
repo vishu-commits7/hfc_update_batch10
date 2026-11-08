@@ -1,12 +1,12 @@
 import { Workout, ProgramPlan, ProgramWeek, ProgramDay } from "./types";
 
 export const AVAILABLE_EQUIPMENT = [
-  { id: "bodyweight", name: "Bodyweight Only", icon: "🧍" },
-  { id: "dumbbells", name: "Dumbbells", icon: "🏋️" },
-  { id: "resistance_bands", name: "Resistance Bands", icon: "🎗️" },
-  { id: "yoga_mat", name: "Yoga Mat", icon: "🧘" },
-  { id: "chair", name: "Chair / Stool", icon: "🪑" },
-  { id: "kettlebell", name: "Kettlebell", icon: "⚱️" },
+  { id: "bodyweight", name: "Bodyweight Only", icon: "bodyweight" },
+  { id: "dumbbells", name: "Dumbbells", icon: "dumbbells" },
+  { id: "resistance_bands", name: "Resistance Bands", icon: "bands" },
+  { id: "yoga_mat", name: "Yoga Mat", icon: "mat" },
+  { id: "chair", name: "Chair / Stool", icon: "chair" },
+  { id: "kettlebell", name: "Kettlebell", icon: "kettlebell" },
 ];
 
 export const FITNESS_LEVELS = [
@@ -16,10 +16,10 @@ export const FITNESS_LEVELS = [
 ];
 
 export const WORKOUT_GOALS = [
-  { value: "Strength", label: "Build Strength", icon: "⚡", desc: "Tone muscle and improve baseline strength." },
-  { value: "Cardio / Fat Loss", label: "Cardio & Fat Loss", icon: "🔥", desc: "Elevate heart rate and burn calories." },
-  { value: "Flexibility", label: "Flexibility & Recovery", icon: "🧘", desc: "Stretch, release tension, and improve mobility." },
-  { value: "General Health", label: "General Health & Tone", icon: "❤️", desc: "Stay active, improve posture, and feel great." },
+  { value: "Strength", label: "Build Strength", icon: "Zap", desc: "Tone muscle and improve baseline strength." },
+  { value: "Cardio / Fat Loss", label: "Cardio & Fat Loss", icon: "Flame", desc: "Elevate heart rate and burn calories." },
+  { value: "Flexibility", label: "Flexibility & Recovery", icon: "Activity", desc: "Stretch, release tension, and improve mobility." },
+  { value: "General Health", label: "General Health & Tone", icon: "Heart", desc: "Stay active, improve posture, and feel great." },
 ];
 
 export const TARGET_AREAS = [

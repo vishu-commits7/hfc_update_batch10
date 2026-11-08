@@ -118,7 +118,7 @@ export function StreakGraph({
                   initial={{ opacity: 0, y: 4, scale: 0.9 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   transition={{ duration: 0.14 }}
-                  className="pointer-events-none absolute inset-x-0 -top-1 z-20 mx-auto w-max rounded-md2 border border-line px-1.5 py-0.5 text-[10px] font-bold"
+                  className="pointer-events-none absolute inset-x-0 -top-1 z-20 mx-auto w-max rounded-md2 border border-line px-1.5 py-0.5 text-[11px] font-bold"
                   style={{ background: "var(--graphite)", color: a.color }}
                 >
                   {p.value}
@@ -180,7 +180,7 @@ export function StreakGraph({
         {points.map((p, i) => (
           <span
             key={`l-${p.label}-${i}`}
-            className="flex-1 text-center text-[10px] font-bold tabular-nums"
+            className="flex-1 text-center text-[11px] font-bold tabular-nums"
             style={{
               color: p.current || active === i ? a.color : "var(--ink-4)",
             }}

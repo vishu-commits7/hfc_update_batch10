@@ -10,9 +10,15 @@
  * in the console, not in keeping this value hidden.
  */
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import {
+  getAuth,
+  setPersistence,
+  browserLocalPersistence,
+  indexedDBLocalPersistence,
+} from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAWzHg12CHHF7Vla4-uk1t-c4QXz8CJoXE",
@@ -28,6 +34,27 @@ const firebaseConfig = {
 // Vite's hot-reload in dev, where this module can otherwise re-run.
 export const firebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
+// App Check proves requests come from the real app (blocks scripts that abuse your backend and bill).
+// Optional until configured: set VITE_APPCHECK_SITE_KEY (reCAPTCHA v3 site key) in .env, then deploy
+// with ENFORCE_APPCHECK=true in functions/.env. See BUGFIX_NOTES Batch 8.
+if (typeof window !== "undefined") {
+  const env = (import.meta as any).env || {};
+  if (env.VITE_APPCHECK_SITE_KEY) {
+    try {
+      if (env.VITE_APPCHECK_DEBUG) (self as any).FIREBASE_APPCHECK_DEBUG_TOKEN = env.VITE_APPCHECK_DEBUG === "true" ? true : env.VITE_APPCHECK_DEBUG;
+      initializeAppCheck(firebaseApp, { provider: new ReCaptchaV3Provider(env.VITE_APPCHECK_SITE_KEY), isTokenAutoRefreshEnabled: true });
+    } catch (e) { console.warn("App Check init failed", e); }
+  }
+}
+
 export const auth = getAuth(firebaseApp);
+
+// Configure robust persistence to prevent state loss across mobile browser tabs and reloads
+if (typeof window !== "undefined") {
+  setPersistence(auth, indexedDBLocalPersistence).catch(() => {
+    setPersistence(auth, browserLocalPersistence).catch(() => {});
+  });
+}
+
 export const db = getFirestore(firebaseApp);
 export const storage = getStorage(firebaseApp);

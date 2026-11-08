@@ -1,3 +1,4 @@
+import { shareContent } from "../lib/nativeBridge";
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
@@ -24,14 +25,14 @@ interface SmartFormScannerProps {
 const MOVEMENTS = [
   {
     id: "squat",
-    name: "Barbell / Bodyweight Squat",
+    name: "Bodyweight Squat",
     targetAngle: 90,
     unit: "knee flexion",
-    cues: ["Chest proud", "Knees track over toes", "Drive through midfoot"],
+    cues: ["Chest upright", "Knees track over toes", "Drive through midfoot"],
   },
   {
     id: "pushup",
-    name: "Standard Athletic Pushup",
+    name: "Athletic Pushup",
     targetAngle: 85,
     unit: "elbow angle",
     cues: ["45° elbow flare", "Glutes locked", "Full range of motion"],
@@ -56,7 +57,7 @@ export default function SmartFormScanner({
   const [currentAngle, setCurrentAngle] = useState(90);
   const [symmetry, setSymmetry] = useState(98);
   const [formScore, setFormScore] = useState(96);
-  const [feedbackCue, setFeedbackCue] = useState("Depth optimal. Drive up!");
+  const [feedbackCue, setFeedbackCue] = useState("Depth optimal. Drive up through heels!");
   const [isMuted, setIsMuted] = useState(false);
   const [completedScan, setCompletedScan] = useState(false);
   const [copiedShare, setCopiedShare] = useState(false);
@@ -66,8 +67,8 @@ export default function SmartFormScanner({
   // Sync initial exercise if passed
   useEffect(() => {
     if (exerciseName) {
-      const match = MOVEMENTS.find(
-        (m) => m.name.toLowerCase().includes(exerciseName.toLowerCase())
+      const match = MOVEMENTS.find((m) =>
+        m.name.toLowerCase().includes(exerciseName.toLowerCase())
       );
       if (match) setSelectedMove(match);
     }
@@ -80,29 +81,24 @@ export default function SmartFormScanner({
       return;
     }
 
-    // Telemetry tick
     const tickInterval = window.setInterval(() => {
-      // Fluctuate angle naturally around optimal
       const variance = Math.round((Math.random() - 0.5) * 6);
       const angle = selectedMove.targetAngle + variance;
       setCurrentAngle(angle);
-
-      // Fluctuate symmetry
       setSymmetry(Math.min(100, Math.max(92, 98 + Math.round((Math.random() - 0.5) * 4))));
     }, 400);
 
-    // Reps loop
     repIntervalRef.current = window.setInterval(() => {
       setRepCount((prev) => {
         const next = prev + 1;
         audio.playBeastClick();
         tapFeedback();
 
-        if (next === 5) {
-          setFeedbackCue("Spot-on cadence! Keep ribs pinned down.");
+        if (next === 4) {
+          setFeedbackCue("Optimal tempo! Core tight, ribs down.");
           if (!isMuted) audio.speak("Great depth! Drive up!", { gender: "female" });
         } else if (next === 8) {
-          setFeedbackCue("Symmetry flawless. 2 reps to Apex certification!");
+          setFeedbackCue("Symmetry flawless. 2 reps to certification!");
           if (!isMuted) audio.speak("Form flawless! Finish strong!", { gender: "female" });
         } else if (next >= 10) {
           handleScanFinish();
@@ -132,26 +128,17 @@ export default function SmartFormScanner({
     setCompletedScan(false);
     setRepCount(0);
     setIsScanning(true);
-    setFeedbackCue("Analyzing joint angles...");
+    setFeedbackCue("Calibrating joint angles...");
   };
 
   const handleShareCertificate = async () => {
     tapFeedback();
-    const shareText = `🎯 AI Bio-Form Certification: Scored 98% APEX ACCURACY on ${selectedMove.name} with Home Fitness Coach!\nCheck your biomechanics and train like a beast! #AIFormCoach #HomeFitnessCoach`;
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: "AI Form Coach Certificate",
-          text: shareText,
-        });
-        return;
-      } catch {
-        // fallback
-      }
+    const shareText = `Biometric Form Certification: Scored 98% Form Accuracy on ${selectedMove.name} with Apex Pulse. #ApexPulse #FormCoach`;
+    const result = await shareContent({ title: "AI Form Coach Certificate", text: shareText });
+    if (result === "copied") {
+      setCopiedShare(true);
+      setTimeout(() => setCopiedShare(false), 2400);
     }
-    navigator.clipboard?.writeText(shareText);
-    setCopiedShare(true);
-    setTimeout(() => setCopiedShare(false), 2400);
   };
 
   if (!isOpen) return null;
@@ -162,31 +149,32 @@ export default function SmartFormScanner({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[105] flex items-center justify-center bg-black/90 backdrop-blur-md select-none p-3 sm:p-6"
+        className="fixed inset-0 z-[105] flex items-center justify-center bg-black/85 select-none p-3 sm:p-5"
       >
-        <div className="relative h-full w-full max-w-md overflow-hidden bg-slate-950 flex flex-col justify-between rounded-[32px] border border-cyan-500/30 shadow-[0_0_50px_rgba(6,182,212,0.25)]">
-          {/* Top Bar HUD */}
-          <div className="relative z-20 flex items-center justify-between p-4 border-b border-white/10 bg-black/60 backdrop-blur-md">
+        <div className="relative w-full max-w-md overflow-hidden bg-[#0A0A0C] flex flex-col justify-between rounded-2xl border border-zinc-800 shadow-2xl">
+          {/* Top Bar Navigation */}
+          <div className="relative z-20 flex items-center justify-between p-3.5 border-b border-zinc-800 bg-[#141418]/95">
             <div className="flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
-              <div className="flex flex-col">
-                <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400 flex items-center gap-1">
-                  <Scan className="h-3 w-3" /> AI Biometric Scanner
+              <div className="h-2 w-2 rounded-full bg-[#10B981] animate-ping" />
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#E1FF00] flex items-center gap-1">
+                  <Scan className="h-3 w-3" /> Hologram Form Guidance
                 </span>
-                <span className="text-xs font-bold text-white truncate max-w-[200px]">
+                <span className="text-xs font-bold text-white block truncate max-w-[200px]">
                   {selectedMove.name}
                 </span>
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => {
                   tapFeedback();
                   setIsMuted(!isMuted);
                 }}
-                className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center text-white/80 active:scale-90"
+                className="flex min-h-[48px] min-w-[48px] items-center justify-center rounded-xl text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                title={isMuted ? "Unmute" : "Mute"}
               >
                 {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
               </button>
@@ -196,141 +184,125 @@ export default function SmartFormScanner({
                   tapFeedback();
                   onClose();
                 }}
-                className="h-8 w-8 rounded-full bg-white/10 border border-white/15 flex items-center justify-center text-white/80 active:scale-90"
+                className="flex min-h-[48px] min-w-[48px] items-center justify-center rounded-xl text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                title="Close"
               >
-                <X className="h-4 w-4" />
+                <X className="h-5 w-5" />
               </button>
             </div>
           </div>
 
-          {/* Viewfinder Main View */}
-          <div className="relative flex-1 flex flex-col items-center justify-center overflow-hidden">
-            {/* Background Athlete Preview with Biomechanical Overlay */}
-            <div className="absolute inset-0 z-0">
-              <img
-                src={gymBeastSquat}
-                alt=""
-                className="h-full w-full object-cover opacity-40 filter contrast-125"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-slate-950/80" />
-            </div>
+          {/* Locked Viewport Container: Strict 4:5 Aspect Ratio — No CLS */}
+          <div className="relative aspect-[4/5] w-full overflow-hidden bg-zinc-900">
+            {/* Background Athlete Preview with Unobstructed View */}
+            <img
+              src={gymBeastSquat}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover opacity-60 filter contrast-110"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0C] via-transparent to-[#0A0A0C]/50" />
 
             {/* Laser scanning line */}
             {isScanning && !completedScan && (
               <motion.div
-                animate={{ top: ["10%", "85%", "10%"] }}
+                animate={{ top: ["12%", "85%", "12%"] }}
                 transition={{ duration: 3.5, repeat: Infinity, ease: "linear" }}
-                className="absolute inset-x-4 h-0.5 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_12px_#06b6d4] z-10"
+                className="absolute inset-x-4 h-0.5 bg-gradient-to-r from-transparent via-[#E1FF00] to-transparent shadow-sm z-10"
               />
             )}
 
-            {/* Cyber Reticle Frame Corners */}
-            <div className="absolute inset-6 pointer-events-none z-10 border border-cyan-500/20 rounded-2xl">
-              <div className="absolute top-0 left-0 h-6 w-6 border-t-2 border-l-2 border-cyan-400 rounded-tl-xl" />
-              <div className="absolute top-0 right-0 h-6 w-6 border-t-2 border-r-2 border-cyan-400 rounded-tr-xl" />
-              <div className="absolute bottom-0 left-0 h-6 w-6 border-b-2 border-l-2 border-cyan-400 rounded-bl-xl" />
-              <div className="absolute bottom-0 right-0 h-6 w-6 border-b-2 border-r-2 border-cyan-400 rounded-br-xl" />
-            </div>
-
-            {/* Interactive Skeletal Joints Overlay (Simulated Pose Nodes) */}
+            {/* Skeletal Joints Overlay (Simulated Pose Nodes) */}
             <svg
-              className="absolute inset-0 h-full w-full pointer-events-none z-10"
+              className="absolute inset-0 h-full w-full pointer-events-none z-10 opacity-80"
               viewBox="0 0 400 600"
             >
-              {/* Spine connection */}
-              <line
-                x1="200"
-                y1="160"
-                x2="200"
-                y2="320"
-                stroke="#06b6d4"
-                strokeWidth="2.5"
-                strokeDasharray="4 2"
-              />
-              {/* Shoulders */}
-              <line x1="140" y1="200" x2="260" y2="200" stroke="#10b981" strokeWidth="3" />
-              {/* Left Leg */}
-              <line x1="170" y1="320" x2="150" y2="430" stroke="#06b6d4" strokeWidth="3" />
-              <line x1="150" y1="430" x2="160" y2="520" stroke="#06b6d4" strokeWidth="3" />
-              {/* Right Leg */}
-              <line x1="230" y1="320" x2="250" y2="430" stroke="#06b6d4" strokeWidth="3" />
-              <line x1="250" y1="430" x2="240" y2="520" stroke="#06b6d4" strokeWidth="3" />
+              <line x1="200" y1="160" x2="200" y2="320" stroke="#E1FF00" strokeWidth="2" strokeDasharray="3 3" />
+              <line x1="140" y1="200" x2="260" y2="200" stroke="#10B981" strokeWidth="2.5" />
+              <line x1="170" y1="320" x2="150" y2="430" stroke="#E1FF00" strokeWidth="2.5" />
+              <line x1="150" y1="430" x2="160" y2="520" stroke="#E1FF00" strokeWidth="2.5" />
+              <line x1="230" y1="320" x2="250" y2="430" stroke="#E1FF00" strokeWidth="2.5" />
+              <line x1="250" y1="430" x2="240" y2="520" stroke="#E1FF00" strokeWidth="2.5" />
 
-              {/* Joint Nodes */}
               {[
-                { cx: 200, cy: 150, color: "#10b981", label: "Cervical" },
-                { cx: 140, cy: 200, color: "#06b6d4", label: "L Shoulder" },
-                { cx: 260, cy: 200, color: "#06b6d4", label: "R Shoulder" },
-                { cx: 200, cy: 320, color: "#10b981", label: "Pelvis" },
-                { cx: 150, cy: 430, color: "#f59e0b", label: "Knee" },
-                { cx: 250, cy: 430, color: "#f59e0b", label: "Knee" },
-                { cx: 160, cy: 520, color: "#06b6d4", label: "Ankle" },
-                { cx: 240, cy: 520, color: "#06b6d4", label: "Ankle" },
+                { cx: 200, cy: 150, color: "#10B981" },
+                { cx: 140, cy: 200, color: "#E1FF00" },
+                { cx: 260, cy: 200, color: "#E1FF00" },
+                { cx: 200, cy: 320, color: "#10B981" },
+                { cx: 150, cy: 430, color: "#F59E0B" },
+                { cx: 250, cy: 430, color: "#F59E0B" },
+                { cx: 160, cy: 520, color: "#E1FF00" },
+                { cx: 240, cy: 520, color: "#E1FF00" },
               ].map((node, i) => (
                 <circle
                   key={i}
                   cx={node.cx}
                   cy={node.cy}
-                  r="5"
+                  r="4.5"
                   fill={node.color}
                   stroke="#ffffff"
-                  strokeWidth="2"
-                  className="animate-pulse"
+                  strokeWidth="1.5"
                 />
               ))}
             </svg>
 
-            {/* Live Center HUD Gauge */}
-            {!completedScan ? (
-              <div className="relative z-20 flex flex-col items-center">
-                <div className="relative h-32 w-32 rounded-full border-2 border-cyan-400/40 flex flex-col items-center justify-center bg-black/60 backdrop-blur-md shadow-2xl">
-                  <span className="text-[10px] font-mono text-cyan-400 font-bold uppercase">
-                    REPS COUNTED
+            {/* UN-OBSTRUCTED HUD OVERLAYS: PINNED TO COMPACT CORNERS */}
+            {!completedScan && (
+              <>
+                {/* Top-Left: Reps Pill Badge */}
+                <div className="absolute top-3 left-3 z-20 rounded-xl border border-zinc-800 bg-[#0A0A0C]/90 px-3 py-1.5 backdrop-blur-md">
+                  <span className="text-[11px] uppercase font-bold tracking-wider text-zinc-400 block">
+                    Reps Counted
                   </span>
-                  <span className="text-5xl font-black font-mono text-white">
-                    {repCount}
-                  </span>
-                  <span className="text-[9px] text-white/50 font-bold">/ 10 REPS</span>
+                  <p className="text-xl font-bold tabular-nums text-[#E1FF00] leading-tight">
+                    {repCount} <span className="text-xs text-zinc-500 font-normal">/ 10</span>
+                  </p>
                 </div>
 
-                <div className="mt-4 px-3.5 py-1.5 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 text-xs font-bold shadow-lg backdrop-blur-md flex items-center gap-1.5">
-                  <Activity className="h-3.5 w-3.5 text-emerald-400 animate-pulse" />
-                  <span>{feedbackCue}</span>
+                {/* Top-Right: Joint Angle Depth Badge */}
+                <div className="absolute top-3 right-3 z-20 rounded-xl border border-zinc-800 bg-[#0A0A0C]/90 px-3 py-1.5 backdrop-blur-md text-right">
+                  <span className="text-[11px] uppercase font-bold tracking-wider text-zinc-400 block">
+                    {selectedMove.unit}
+                  </span>
+                  <p className="text-xl font-bold tabular-nums text-white leading-tight">
+                    {currentAngle}°
+                  </p>
                 </div>
-              </div>
-            ) : (
-              /* CERTIFICATE POPUP */
+              </>
+            )}
+
+            {/* Completed Certificate Popup */}
+            {completedScan && (
               <motion.div
-                initial={{ scale: 0.88, opacity: 0 }}
+                initial={{ scale: 0.92, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                className="relative z-30 p-5 rounded-3xl bg-slate-900/90 border border-amber-400/40 backdrop-blur-xl shadow-2xl text-center max-w-[90%]"
+                className="absolute inset-4 z-30 flex flex-col items-center justify-center rounded-2xl border border-zinc-800 bg-[#141418]/95 p-5 text-center shadow-xl backdrop-blur-md"
               >
-                <div className="h-12 w-12 rounded-full bg-amber-400 text-black mx-auto flex items-center justify-center mb-2 shadow-lg">
-                  <Sparkles className="h-6 w-6 fill-black" />
+                <div className="h-11 w-11 rounded-xl bg-[#E1FF00] text-black flex items-center justify-center mb-2 shadow-sm">
+                  <Sparkles className="h-5 w-5 fill-black" />
                 </div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-amber-400 block">
-                  APEX BIOMETRIC PASS
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#E1FF00]">
+                  Form Certified
                 </span>
-                <h3 className="text-xl font-black uppercase text-white mt-1">
-                  Form Certified: {formScore}%
+                <h3 className="text-lg font-bold uppercase text-white mt-0.5">
+                  Accuracy: {formScore}%
                 </h3>
-                <p className="text-xs text-white/70 mt-1 leading-relaxed">
-                  Flawless joint alignment, optimal {selectedMove.targetAngle}° depth, zero valgus knee collapse across 10 reps.
+                <p className="text-xs text-zinc-400 mt-1 max-w-[280px] leading-relaxed">
+                  Optimal {selectedMove.targetAngle}° depth maintained with neutral spine and balanced symmetry across 10 reps.
                 </p>
 
-                <div className="mt-4 flex gap-2">
+                <div className="mt-4 flex gap-2 w-full max-w-[260px]">
                   <button
                     type="button"
                     onClick={handleShareCertificate}
-                    className="flex-1 py-3 rounded-xl bg-amber-400 text-black font-black text-xs uppercase tracking-wider active:scale-95 flex items-center justify-center gap-1.5 shadow-lg"
+                    className="flex-1 min-h-[44px] py-2.5 rounded-xl bg-[#E1FF00] text-black font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
                   >
                     <Share2 className="h-3.5 w-3.5" />
-                    {copiedShare ? "Link Copied!" : "Share Certificate"}
+                    {copiedShare ? "Copied!" : "Share Pass"}
                   </button>
                   <button
                     type="button"
                     onClick={handleResetScan}
-                    className="h-11 w-11 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-white active:scale-90"
+                    className="min-h-[44px] min-w-[44px] rounded-xl border border-zinc-800 bg-[#1E1E24] text-zinc-300 hover:text-white flex items-center justify-center active:scale-95 cursor-pointer"
                     title="Rescan"
                   >
                     <RotateCcw className="h-4 w-4" />
@@ -340,42 +312,44 @@ export default function SmartFormScanner({
             )}
           </div>
 
-          {/* Bottom Telemetry Metrics Strip */}
-          <div className="relative z-20 p-4 border-t border-white/10 bg-black/80 backdrop-blur-md">
+          {/* Bottom Control Bar & Real-time Cues */}
+          <div className="relative z-20 p-3.5 border-t border-zinc-800 bg-[#141418] space-y-3">
+            {/* Live Real-time Cue Banner Pinned Cleanly to Bottom Bar */}
+            <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-[#1E1E24] px-3 py-2 text-xs font-semibold text-white">
+              <Activity className="h-4 w-4 text-[#E1FF00] shrink-0" />
+              <span className="truncate">{feedbackCue}</span>
+            </div>
+
+            {/* Telemetry Metrics Grid */}
             <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="p-2.5 rounded-xl bg-white/5 border border-white/10">
-                <span className="text-[9px] font-black uppercase tracking-wider text-white/50 block">
+              <div className="p-2 rounded-xl border border-zinc-800 bg-[#0A0A0C]">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 block">
                   Angle Depth
                 </span>
-                <span className="text-base font-black font-mono text-cyan-400">
+                <span className="text-base font-bold tabular-nums text-white">
                   {currentAngle}°
                 </span>
-                <span className="text-[8px] text-emerald-400 block font-bold">Optimal</span>
               </div>
-
-              <div className="p-2.5 rounded-xl bg-white/5 border border-white/10">
-                <span className="text-[9px] font-black uppercase tracking-wider text-white/50 block">
+              <div className="p-2 rounded-xl border border-zinc-800 bg-[#0A0A0C]">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 block">
                   Symmetry
                 </span>
-                <span className="text-base font-black font-mono text-emerald-400">
+                <span className="text-base font-bold tabular-nums text-[#10B981]">
                   {symmetry}%
                 </span>
-                <span className="text-[8px] text-white/40 block">Balanced</span>
               </div>
-
-              <div className="p-2.5 rounded-xl bg-white/5 border border-white/10">
-                <span className="text-[9px] font-black uppercase tracking-wider text-white/50 block">
-                  Form Accuracy
+              <div className="p-2 rounded-xl border border-zinc-800 bg-[#0A0A0C]">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 block">
+                  Accuracy
                 </span>
-                <span className="text-base font-black font-mono text-amber-400">
+                <span className="text-base font-bold tabular-nums text-[#E1FF00]">
                   {formScore}%
                 </span>
-                <span className="text-[8px] text-amber-300 block font-bold">Apex Tier</span>
               </div>
             </div>
 
-            {/* Quick movement switcher */}
-            <div className="flex gap-1.5 mt-3 overflow-x-auto pb-0.5 no-scrollbar">
+            {/* Quick Movement Switcher Segmented Pills */}
+            <div className="flex gap-1.5 overflow-x-auto pb-0.5">
               {MOVEMENTS.map((m) => (
                 <button
                   key={m.id}
@@ -385,13 +359,13 @@ export default function SmartFormScanner({
                     setSelectedMove(m);
                     handleResetScan();
                   }}
-                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap transition-colors ${
+                  className={`min-h-[40px] px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-colors cursor-pointer select-none ${
                     selectedMove.id === m.id
-                      ? "bg-cyan-400 text-black font-black"
-                      : "bg-white/5 text-white/60 hover:text-white"
+                      ? "bg-[#E1FF00] text-black"
+                      : "bg-[#1E1E24] text-zinc-400 border border-zinc-800 hover:text-white"
                   }`}
                 >
-                  {m.name.split(" ")[0]}
+                  {m.name}
                 </button>
               ))}
             </div>

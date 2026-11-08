@@ -87,3 +87,19 @@ export function ratio(part: number, whole: number): number {
   const r = part / whole;
   return Number.isFinite(r) ? clamp(r) : 0;
 }
+
+/**
+ * Robust counter pluralizer.
+ * e.g., pluralize(1, "day") -> "1 day", pluralize(5, "day") -> "5 days"
+ * pluralize(1, "day", "days", false) -> "day", pluralize(2, "day", "days", false) -> "days"
+ */
+export function pluralize(
+  count: number,
+  singular: string,
+  plural = `${singular}s`,
+  includeCount = true
+): string {
+  const c = Math.max(0, Math.round(count));
+  const unit = c === 1 ? singular : plural;
+  return includeCount ? `${c} ${unit}` : unit;
+}

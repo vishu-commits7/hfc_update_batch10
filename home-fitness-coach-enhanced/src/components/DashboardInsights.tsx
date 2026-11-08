@@ -1,3 +1,4 @@
+import { shareContent } from "../lib/nativeBridge";
 import { useEffect, useRef, useState } from "react";
 import { WorkoutLog } from "../types";
 import { computeWeeklyRecap, trendDelta } from "../lib/weeklyRecap";
@@ -10,10 +11,10 @@ import { Moon, TrendingUp, TrendingDown, Minus, Share2, Download, X, CalendarRan
 function TrendBadge({ current, previous }: { current: number; previous: number }) {
   const t = trendDelta(current, previous);
   if (t.direction === "flat") {
-    return <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-slate-400"><Minus className="h-3 w-3" /> same</span>;
+    return <span className="inline-flex items-center gap-0.5 text-[11px] font-bold text-slate-400"><Minus className="h-3 w-3" /> same</span>;
   }
   return (
-    <span className={`inline-flex items-center gap-0.5 text-[10px] font-bold ${t.direction === "up" ? "text-emerald-600" : "text-amber-600"}`}>
+    <span className={`inline-flex items-center gap-0.5 text-[11px] font-bold ${t.direction === "up" ? "text-emerald-600" : "text-amber-600"}`}>
       {t.direction === "up" ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />} {t.pct}%
     </span>
   );
@@ -54,9 +55,9 @@ export default function DashboardInsights({ logs, onGoToRecovery }: { logs: Work
     ctx.fillText("Weekly Recap · Last 7 days", 70, 165);
 
     const stats: [string, string][] = [
-      ["🏋️ Workouts", `${recap.workouts}`],
-      ["⏱️ Minutes trained", `${recap.minutes}`],
-      ["⚡ Calories burned", `${recap.calories} kcal`],
+      ["Workouts Completed", `${recap.workouts}`],
+      ["Minutes Trained", `${recap.minutes}`],
+      ["Calories Burned", `${recap.calories} kcal`],
     ];
     let y = 320;
     stats.forEach(([label, value]) => {
@@ -98,14 +99,13 @@ export default function DashboardInsights({ logs, onGoToRecovery }: { logs: Work
   const shareImage = async () => {
     canvasRef.current?.toBlob(async blob => {
       if (!blob) return;
-      const file = new File([blob], "weekly-recap.png", { type: "image/png" });
-      try {
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], title: "My Weekly Recap" });
-          return;
-        }
-      } catch {}
-      downloadImage();
+      const result = await shareContent({
+        title: "My Weekly Recap",
+        text: "My weekly recap on Apex Pulse",
+        blob,
+        fileName: "weekly-recap.png",
+      });
+      if (result === "failed") downloadImage();
     }, "image/png");
   };
 
@@ -122,7 +122,7 @@ export default function DashboardInsights({ logs, onGoToRecovery }: { logs: Work
               <p className="mt-1 text-xs text-amber-700/80">Recovery is part of training too. A light stretch session today keeps you fresh for tomorrow.</p>
               <div className="mt-2.5 flex flex-wrap gap-1.5">
                 {RECOVERY_SUGGESTIONS.slice(0, 3).map(s => (
-                  <span key={s.name} className="rounded-full bg-white/70 px-2.5 py-1 text-[10px] font-bold text-amber-700">{s.name}</span>
+                  <span key={s.name} className="rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-bold text-amber-700">{s.name}</span>
                 ))}
               </div>
               <div className="mt-3 flex gap-2">
@@ -154,17 +154,17 @@ export default function DashboardInsights({ logs, onGoToRecovery }: { logs: Work
           <div className="mt-4 grid grid-cols-3 gap-2">
             <div className="rounded-2xl bg-slate-50 p-3">
               <p className="text-lg font-black text-slate-900">{recap.workouts}</p>
-              <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Workouts</p>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Workouts</p>
               <TrendBadge current={recap.workouts} previous={recap.prevWorkouts} />
             </div>
             <div className="rounded-2xl bg-slate-50 p-3">
               <p className="text-lg font-black text-slate-900">{recap.minutes}</p>
-              <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Minutes</p>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Minutes</p>
               <TrendBadge current={recap.minutes} previous={recap.prevMinutes} />
             </div>
             <div className="rounded-2xl bg-slate-50 p-3">
               <p className="text-lg font-black text-slate-900">{recap.calories}</p>
-              <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Calories</p>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Calories</p>
               <TrendBadge current={recap.calories} previous={recap.prevCalories} />
             </div>
           </div>

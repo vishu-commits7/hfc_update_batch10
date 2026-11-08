@@ -6,6 +6,8 @@ export interface Exercise {
   sets: number;
   restSeconds: number;
   targetMuscle: string;
+  signaturePose?: string;
+  videoUrl?: string;
 }
 
 export interface Workout {
@@ -31,6 +33,8 @@ export interface WorkoutLog {
   feeling: "Energetic" | "Tired" | "Satisfied" | "Sore" | "Exhausted";
   userNotes?: string;
   estimatedCaloriesBurned: number;
+  /** Focus of the workout (e.g. "Upper Body"); powers discipline trophies. */
+  targetArea?: string;
 }
 
 export interface UserProfile {

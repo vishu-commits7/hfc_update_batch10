@@ -6,6 +6,7 @@ import { useMagnetic } from "../hooks/useMagnetic";
 import ExerciseThumb from "./ExerciseThumb";
 import { accent, accentVars, type Accent } from "../design/accents";
 import { SPRING_SNAP, SPRING_WEIGHTED, staggerChild } from "../design/motion";
+import { pluralize } from "../design/format";
 
 import coverMorning from "../assets/coaches/coach-beast-male.jpg";
 import coverCore from "../assets/coaches/coach-core-male.jpg";
@@ -13,7 +14,7 @@ import coverLower from "../assets/coaches/coach-lower-male.jpg";
 import coverUpper from "../assets/coaches/coach-upper-male.jpg";
 import coverCardio from "../assets/coaches/coach-cardio-male.jpg";
 import coverFlex from "../assets/coaches/coach-mobility-male.jpg";
-import coverAiWorkout from "../assets/ui/gym-ai-generator.jpg";
+import coverAiWorkout from "../assets/ui/gym-hero-dashboard.jpg";
 
 interface WorkoutCardProps {
   workout: Workout;
@@ -40,6 +41,29 @@ export const CURATED_COACH_MEDIA: Record<
   curated_5: { photo: coverCardio, coach: "Coach Devon" },
   curated_6: { photo: coverFlex, coach: "Coach David" },
 };
+
+function resolveCoverPhoto(workout: Workout) {
+  if (CURATED_COACH_MEDIA[workout.id]) {
+    return CURATED_COACH_MEDIA[workout.id];
+  }
+  const area = (workout.targetArea || "").toLowerCase();
+  if (area.includes("core") || area.includes("abs")) {
+    return { photo: coverCore, coach: "Coach Marcus" };
+  }
+  if (area.includes("lower")) {
+    return { photo: coverLower, coach: "Coach Ryan" };
+  }
+  if (area.includes("upper")) {
+    return { photo: coverUpper, coach: "Coach Theo" };
+  }
+  if (area.includes("cardio")) {
+    return { photo: coverCardio, coach: "Coach Devon" };
+  }
+  if (area.includes("flex")) {
+    return { photo: coverFlex, coach: "Coach David" };
+  }
+  return { photo: coverAiWorkout, coach: "Apex Coach" };
+}
 
 /** Target area drives the accent, so the grid is colour-coded by focus. */
 function toneForArea(area: string): Accent {
@@ -76,7 +100,7 @@ function WorkoutCardComponent({
   const reduced = useReducedMotion();
   const [hovered, setHovered] = useState(false);
   const isCurated = workout.id.startsWith("curated_");
-  const media = isCurated ? CURATED_COACH_MEDIA[workout.id] : undefined;
+  const media = resolveCoverPhoto(workout);
   const tone = toneForArea(workout.targetArea);
   const t = accent(tone);
 
@@ -95,49 +119,24 @@ function WorkoutCardComponent({
       style={{ ...accentVars(tone), x: m.x, y: m.y }}
       className="group relative"
     >
-      {/* Ambient bloom behind the card. Sits outside the clipped surface
-          so it can spill past the corners — the effect reads as light
-          coming off the card, which it cannot do if it is clipped by it. */}
-      <div
-        aria-hidden
-        className="bloom pointer-events-none absolute -inset-3 -z-10 opacity-0 transition-opacity duration-500 group-hover:opacity-40"
-      />
-
       <motion.button
         type="button"
         onClick={() => onSelect(workout)}
-        whileTap={{ scale: 0.985 }}
         transition={SPRING_WEIGHTED}
         aria-label={`Start ${workout.workoutTitle}`}
-        className="aurora-card grain block w-full overflow-hidden rounded-xl2 text-left"
-        style={{
-          borderColor: hovered
-            ? `color-mix(in srgb, ${t.color} 42%, var(--line))`
-            : undefined,
-          boxShadow: hovered
-            ? [
-                "var(--bevel)",
-                `0 0 0 1px color-mix(in srgb, ${t.color} 16%, transparent)`,
-                `0 8px 32px -8px color-mix(in srgb, ${t.color} 22%, transparent)`,
-                "var(--shadow-md)",
-              ].join(", ")
-            : undefined,
-          transition:
-            "border-color 320ms var(--ease-out-expo), box-shadow 320ms var(--ease-out-expo)",
-        }}
+        className="block w-full overflow-hidden rounded-2xl border border-line bg-carbon text-left transition-colors hover:border-line-strong cursor-pointer"
       >
         <div
-          className={`relative w-full shrink-0 overflow-hidden ${
-            dense ? "h-28" : "h-44"
+          className={`relative w-full shrink-0 overflow-hidden bg-carbon ${
+            dense ? "h-28" : "aspect-video"
           }`}
         >
           <motion.img
-            src={media ? media.photo : coverAiWorkout}
+            src={media.photo}
             alt=""
             draggable={false}
-            className="absolute inset-0 h-full w-full object-cover"
-            // Over-scaled at rest so the parallax translate never
-            // exposes an edge.
+            className="absolute inset-0 h-full w-full object-cover object-[center_20%]"
+            // Over-scaled at rest so the parallax translate never exposes an edge.
             initial={false}
             animate={
               reduced
@@ -162,42 +161,41 @@ function WorkoutCardComponent({
           />
 
           <span
-            className="absolute left-3.5 top-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-[0.14em] backdrop-blur-md"
+            className="absolute left-3.5 top-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-[0.14em] bg-black/85"
             style={{
-              background: "rgb(0 0 0 / 0.35)",
               color: t.color,
-              boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.12)",
+              boxShadow: "inset 0 0 0 1px rgb(255 255 255 / 0.14)",
             }}
           >
-            {media ? "Pro routine" : "AI Engineered"}
+            {isCurated ? "Coach Curated" : "Smart Protocol"}
           </span>
 
           <span className="absolute bottom-3 left-3.5 text-[11px] font-extrabold uppercase tracking-wider text-ink drop-shadow">
-            {media ? media.coach : "Gemini AI Coach"}
+            {media.coach}
           </span>
         </div>
 
-        <div className={dense ? "p-4" : "p-5"}>
+        <div className="p-4">
           <div className="flex items-start justify-between gap-2">
             <span
-              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold"
+              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold"
               style={{ background: t.wash, color: t.color }}
             >
               <Timer className="h-3 w-3" strokeWidth={2.6} />
-              {workout.totalDurationMinutes} min
+              <span className="font-numeric tabular-nums">{workout.totalDurationMinutes} min</span>
             </span>
 
             <div className="flex shrink-0 items-center gap-1">
-              {!media && (
+              {!isCurated && (
                 <span
-                  className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-[0.12em]"
+                  className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-[0.12em]"
                   style={{
-                    background: "var(--emerald-wash)",
-                    color: "var(--emerald)",
+                    background: "rgba(255, 255, 255, 0.08)",
+                    color: "var(--ink-2)",
                   }}
                 >
-                  <Sparkles className="h-2.5 w-2.5" />
-                  AI
+                  <Sparkles className="h-2.5 w-2.5 text-cyan-400" />
+                  SMART
                 </span>
               )}
 
@@ -217,7 +215,6 @@ function WorkoutCardComponent({
                       onDelete(workout.id);
                     }
                   }}
-                  whileTap={{ scale: 0.86 }}
                   whileHover={{ scale: 1.12 }}
                   transition={SPRING_SNAP}
                   className="grid h-7 w-7 cursor-pointer place-items-center rounded-full text-ink-4 transition-colors hover:text-crimson-glow"
@@ -236,54 +233,68 @@ function WorkoutCardComponent({
             {workout.workoutDescription}
           </p>
 
-          {/* Animated preview of the first movements in the routine. A
-              still list of exercise names tells you what the session
-              contains; three looping figures tell you what it will feel
-              like, before committing to it. Capped at three so the strip
-              stays a glance rather than a second list. */}
+          {/* Clean circular exercise thumbnails */}
           {workout.exercises.length > 0 && (
-            <div className="mt-4 flex gap-1.5">
-              {workout.exercises.slice(0, 3).map((ex, i) => (
-                <ExerciseThumb
-                  key={`${ex.name}-${i}`}
-                  name={ex.name}
-                  targetMuscle={ex.targetMuscle}
-                  tone={tone}
-                  size={44}
-                />
-              ))}
+            <div className="mt-3.5 flex items-center gap-2">
+              <div className="flex -space-x-2 overflow-hidden">
+                {workout.exercises.slice(0, 3).map((ex, i) => (
+                  <div
+                    key={`${ex.name}-${i}`}
+                    className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full border-2 border-[#12141c] bg-[#1a1d28] shadow-sm"
+                  >
+                    <ExerciseThumb
+                      name={ex.name}
+                      targetMuscle={ex.targetMuscle}
+                      tone={tone}
+                      size={40}
+                      still
+                      bare
+                    />
+                  </div>
+                ))}
+              </div>
               {workout.exercises.length > 3 && (
-                <span className="font-numeric grid h-11 min-w-11 shrink-0 place-items-center rounded-md2 border border-line px-2 text-[11px] font-bold text-ink-4">
-                  +{workout.exercises.length - 3}
+                <span className="font-numeric text-[11px] font-semibold text-ink-3">
+                  +{workout.exercises.length - 3} moves
                 </span>
               )}
             </div>
           )}
 
-          <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-3.5">
-            <div className="flex min-w-0 items-center gap-3 text-[11px] text-ink-4">
-              <span className="inline-flex items-center gap-1">
+          <div className="mt-4 flex flex-col gap-2.5 border-t border-line pt-3.5">
+            {/* Equipment badge pills with 56px right padding so they never collide with Play button */}
+            <div className="flex flex-wrap items-center gap-1.5 pr-14">
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-ink-4 mr-0.5">
                 <Dumbbell className="h-3 w-3" />
-                <span className="truncate">
-                  {workout.equipmentNeeded.join(", ") || "Bodyweight"}
+              </span>
+              {(workout.equipmentNeeded.length > 0 ? workout.equipmentNeeded : ["Bodyweight"]).map((item, idx) => (
+                <span
+                  key={idx}
+                  className="inline-flex items-center rounded-md border border-line bg-graphite px-2 py-0.5 text-[11px] font-medium text-ink-3"
+                >
+                  {item}
                 </span>
-              </span>
-              <span className="shrink-0 font-semibold">
-                {workout.exercises.length} moves
-              </span>
+              ))}
             </div>
 
-            {/* Affordance, not the target — the card itself is the button.
-                It advances on hover to confirm the whole surface is live. */}
-            <motion.span
-              aria-hidden
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-full"
-              style={{ background: t.color, color: "var(--void)" }}
-              animate={{ scale: hovered ? 1.1 : 1, x: hovered ? 2 : 0 }}
-              transition={SPRING_SNAP}
-            >
-              <Play className="h-3.5 w-3.5 translate-x-px fill-current" />
-            </motion.span>
+            {/* Bottom row in card flow: Moves count and aligned Play action */}
+            <div className="flex items-center justify-between gap-3 pt-0.5">
+              <span className="font-numeric text-[11px] font-bold text-ink-4">
+                {pluralize(workout.exercises.length, "move")}
+              </span>
+
+              {/* Affordance inside card flow — advances on hover */}
+              <motion.span
+                aria-hidden
+                className="flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wider shadow-sm"
+                style={{ background: t.color, color: "var(--void)" }}
+                animate={{ scale: hovered ? 1.05 : 1, x: hovered ? 2 : 0 }}
+                transition={SPRING_SNAP}
+              >
+                <span>Start</span>
+                <Play className="h-3 w-3 fill-current translate-x-px" />
+              </motion.span>
+            </div>
           </div>
         </div>
       </motion.button>

@@ -44,7 +44,6 @@ export function SectionHeader({
         <motion.button
           type="button"
           onClick={onAction}
-          whileTap={{ scale: 0.95 }}
           className="group inline-flex shrink-0 items-center gap-0.5 text-[11px] font-bold text-cyan-glow"
         >
           {actionLabel}

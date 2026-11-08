@@ -179,7 +179,6 @@ export function Drawer({
                 <motion.button
                   onClick={onClose}
                   aria-label="Close"
-                  whileTap={{ scale: 0.9 }}
                   whileHover={{ scale: 1.06 }}
                   className="grid h-9 w-9 place-items-center rounded-full border border-line text-ink-3 transition-colors hover:text-ink"
                 >

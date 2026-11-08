@@ -163,7 +163,7 @@
   background-color: var(--graphite);
 }
 .theme-obsidian .bg-slate-950,
-.theme-obsidian .bg-\[\#05070c\] {
+.theme-obsidian [class*="bg-[#05070c]"] {
   background-color: var(--obsidian);
 }
 .theme-obsidian .hover\:bg-slate-800:hover {
@@ -259,3 +259,87 @@
 .theme-obsidian .shadow-2xl {
   box-shadow: var(--bevel), var(--shadow-md);
 }
+
+/* ---------------------------------------------------------------------
+   C. Daylight mode adaptations
+   Prevents invisible text and ensures clean, crisp daylight surfaces
+   ------------------------------------------------------------------ */
+.theme-daylight .text-white:not([data-overlay-text="true"]):not(.keep-white) {
+  color: var(--ink) !important;
+}
+.theme-daylight .text-zinc-100:not(.keep-white),
+.theme-daylight .text-zinc-200:not(.keep-white),
+.theme-daylight .text-slate-100:not(.keep-white),
+.theme-daylight .text-slate-200:not(.keep-white) {
+  color: var(--ink) !important;
+}
+.theme-daylight .text-zinc-300:not(.keep-white),
+.theme-daylight .text-zinc-400:not(.keep-white),
+.theme-daylight .text-slate-300:not(.keep-white),
+.theme-daylight .text-slate-400:not(.keep-white) {
+  color: var(--ink-2) !important;
+}
+.theme-daylight .text-zinc-500:not(.keep-white),
+.theme-daylight .text-slate-500:not(.keep-white) {
+  color: var(--ink-3) !important;
+}
+
+/* Background surfaces in daylight - matches exact or arbitrary Tailwind classes */
+.theme-daylight [class*="bg-[#0a0a0c]"],
+.theme-daylight [class*="bg-[#0A0A0C]"],
+.theme-daylight .bg-black:not(.keep-dark):not([data-overlay="true"]) {
+  background-color: var(--obsidian) !important;
+}
+
+.theme-daylight [class*="bg-[#141418]"],
+.theme-daylight [class*="bg-[#12141c]"],
+.theme-daylight [class*="bg-[#090a0f]"],
+.theme-daylight [class*="bg-[#05070c]"],
+.theme-daylight .bg-zinc-900:not(.keep-dark):not([data-overlay="true"]),
+.theme-daylight .bg-zinc-950:not(.keep-dark):not([data-overlay="true"]),
+.theme-daylight .bg-slate-900:not(.keep-dark):not([data-overlay="true"]),
+.theme-daylight .bg-slate-950:not(.keep-dark):not([data-overlay="true"]) {
+  background-color: var(--carbon) !important;
+}
+
+.theme-daylight [class*="bg-[#1e1e24]"],
+.theme-daylight [class*="bg-[#1E1E24]"],
+.theme-daylight [class*="bg-white/5"],
+.theme-daylight [class*="bg-white/10"],
+.theme-daylight [class*="bg-white/[0.03]"],
+.theme-daylight [class*="bg-white/[0.04]"],
+.theme-daylight [class*="bg-white/[0.05]"],
+.theme-daylight [class*="bg-white/[0.06]"],
+.theme-daylight [class*="bg-white/[0.08]"],
+.theme-daylight .bg-zinc-800:not(.keep-dark),
+.theme-daylight [class*="bg-zinc-800/60"]:not(.keep-dark),
+.theme-daylight [class*="bg-zinc-800/80"]:not(.keep-dark) {
+  background-color: var(--graphite) !important;
+}
+
+/* Borders in daylight */
+.theme-daylight [class*="border-zinc-800"],
+.theme-daylight [class*="border-zinc-700"],
+.theme-daylight [class*="border-[#26262e]"],
+.theme-daylight [class*="border-[#26262E]"],
+.theme-daylight [class*="border-white/5"],
+.theme-daylight [class*="border-white/10"],
+.theme-daylight [class*="border-white/15"],
+.theme-daylight [class*="border-white/20"],
+.theme-daylight [class*="border-white/[0.06]"],
+.theme-daylight [class*="border-white/[0.08]"],
+.theme-daylight [class*="border-white/[0.1]"] {
+  border-color: var(--line) !important;
+}
+
+/* Volt accent in daylight */
+.theme-daylight [class*="text-[#7AA2FF]"],
+.theme-daylight [class*="text-[#7AA2FF]"] {
+  color: #0f172a !important;
+}
+.theme-daylight [class*="bg-[#7AA2FF]"],
+.theme-daylight [class*="bg-[#7AA2FF]"] {
+  background-color: #0f172a !important;
+  color: #ffffff !important;
+}
+

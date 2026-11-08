@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { WorkoutLog } from "../types";
-import { ArrowLeft, Trash2, Calendar, Award, Flame, Smile, BarChart2 } from "lucide-react";
+import { ArrowLeft, Trash2, Calendar, Award, Flame, Smile, BarChart2, Zap, Clock, CheckCircle2, BatteryLow } from "lucide-react";
 import gymHeroImg from "../assets/ui/gym-hero-dashboard.jpg";
+import ConfirmDialog from "./ConfirmDialog";
 
 interface HistoryLogsProps {
   logs: WorkoutLog[];
@@ -10,6 +12,18 @@ interface HistoryLogsProps {
 }
 
 export default function HistoryLogs({ logs, onBack, onClearLogs, onDeleteLog }: HistoryLogsProps) {
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    onConfirm: () => void;
+  }>({
+    open: false,
+    title: "",
+    message: "",
+    onConfirm: () => {}
+  });
   
   // Calculate total statistics
   const totalWorkouts = logs.length;
@@ -36,7 +50,7 @@ export default function HistoryLogs({ logs, onBack, onClearLogs, onDeleteLog }: 
             <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
           </button>
           <div>
-            <span className="text-[10px] uppercase tracking-widest text-blue-600 font-extrabold">Training Registry</span>
+            <span className="text-[11px] uppercase tracking-widest text-blue-600 font-extrabold">Training Registry</span>
             <h1 className="font-sans text-2xl font-black tracking-tight text-slate-900 uppercase">Workout Log History</h1>
           </div>
         </div>
@@ -44,9 +58,16 @@ export default function HistoryLogs({ logs, onBack, onClearLogs, onDeleteLog }: 
         {logs.length > 0 && (
           <button
             onClick={() => {
-              if (confirm("Are you sure you want to clear your entire fitness history? This will reset your metrics.")) {
-                onClearLogs();
-              }
+              setConfirmDialog({
+                open: true,
+                title: "Clear Fitness History",
+                message: "Are you sure you want to clear your entire workout history? This will reset all your logged activity metrics and cannot be undone.",
+                confirmLabel: "Clear History",
+                onConfirm: () => {
+                  onClearLogs();
+                  setConfirmDialog(c => ({ ...c, open: false }));
+                }
+              });
             }}
             className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-bold text-rose-600 hover:bg-rose-100 transition-all"
             id="btn-clear-all-history"
@@ -64,7 +85,7 @@ export default function HistoryLogs({ logs, onBack, onClearLogs, onDeleteLog }: 
           <div className="absolute inset-0 bg-gradient-to-r from-slate-950 0%, color-mix(in srgb, var(--carbon) 70%, transparent) 55%, transparent 100%" />
         </div>
         <div className="relative z-10 max-w-[70%] px-5 py-6 sm:max-w-[60%] sm:px-7 sm:py-7">
-          <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Consistency Ledger</span>
+          <span className="text-[11px] font-black uppercase tracking-widest text-emerald-400">Consistency Ledger</span>
           <h2 className="mt-1 font-display text-xl font-black tracking-tight text-white sm:text-2xl">Every Rep Builds The Legend</h2>
           <p className="mt-1 text-xs leading-5 text-slate-300">
             {logs.length > 0 
@@ -95,7 +116,7 @@ export default function HistoryLogs({ logs, onBack, onClearLogs, onDeleteLog }: 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="rounded-2xl border border-slate-100 bg-white p-5 flex items-center justify-between shadow-xs">
               <div>
-                <span className="text-[10px] uppercase tracking-widest text-slate-400 font-extrabold block">Total Sessions</span>
+                <span className="text-[11px] uppercase tracking-widest text-slate-400 font-extrabold block">Total Sessions</span>
                 <span className="text-3xl font-black text-slate-900 mt-1 block">{totalWorkouts}</span>
               </div>
               <div className="rounded-xl bg-blue-50 p-2.5 text-blue-600">
@@ -105,7 +126,7 @@ export default function HistoryLogs({ logs, onBack, onClearLogs, onDeleteLog }: 
 
             <div className="rounded-2xl border border-slate-100 bg-white p-5 flex items-center justify-between shadow-xs">
               <div>
-                <span className="text-[10px] uppercase tracking-widest text-slate-400 font-extrabold block">Total Effort</span>
+                <span className="text-[11px] uppercase tracking-widest text-slate-400 font-extrabold block">Total Effort</span>
                 <span className="text-3xl font-black text-slate-900 mt-1 block">{totalMinutes} Mins</span>
               </div>
               <div className="rounded-xl bg-blue-50 p-2.5 text-blue-600">
@@ -115,7 +136,7 @@ export default function HistoryLogs({ logs, onBack, onClearLogs, onDeleteLog }: 
 
             <div className="rounded-2xl border border-slate-100 bg-white p-5 flex items-center justify-between shadow-xs">
               <div>
-                <span className="text-[10px] uppercase tracking-widest text-slate-400 font-extrabold block">Est. Calories</span>
+                <span className="text-[11px] uppercase tracking-widest text-slate-400 font-extrabold block">Est. Calories</span>
                 <span className="text-3xl font-black text-blue-600 mt-1 block">{totalCalories} kcal</span>
               </div>
               <div className="rounded-xl bg-blue-50 p-2.5 text-blue-600">
@@ -137,15 +158,15 @@ export default function HistoryLogs({ logs, onBack, onClearLogs, onDeleteLog }: 
                 const percentage = totalWorkouts > 0 ? Math.round((count / totalWorkouts) * 100) : 0;
                 return (
                   <div key={feel} className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-center">
-                    <span className="text-lg block">
-                      {feel === "Energetic" && "⚡"}
-                      {feel === "Satisfied" && "😊"}
-                      {feel === "Sore" && "🩹"}
-                      {feel === "Tired" && "🥱"}
-                      {feel === "Exhausted" && "🥵"}
+                    <span className="flex justify-center mb-1 text-slate-700">
+                      {feel === "Energetic" && <Zap className="h-4 w-4 text-amber-500" />}
+                      {feel === "Satisfied" && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+                      {feel === "Sore" && <Flame className="h-4 w-4 text-orange-500" />}
+                      {feel === "Tired" && <Clock className="h-4 w-4 text-blue-500" />}
+                      {feel === "Exhausted" && <BatteryLow className="h-4 w-4 text-rose-500" />}
                     </span>
-                    <span className="text-xs font-bold text-slate-800 block mt-1">{feel}</span>
-                    <span className="text-[10px] text-slate-400 block mt-0.5">{count} ({percentage}%)</span>
+                    <span className="text-xs font-bold text-slate-800 block">{feel}</span>
+                    <span className="text-xs text-slate-400 block mt-0.5 tabular-nums">{count} ({percentage}%)</span>
                   </div>
                 );
               })}
@@ -168,14 +189,15 @@ export default function HistoryLogs({ logs, onBack, onClearLogs, onDeleteLog }: 
                       <span className="text-sm font-bold text-slate-900 truncate max-w-xs sm:max-w-md">
                         {log.workoutTitle}
                       </span>
-                      <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-100 px-2.5 py-0.5 text-[10px] font-extrabold text-blue-600 uppercase">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-100 px-2.5 py-0.5 text-xs font-bold text-blue-600 uppercase">
                         {log.feeling}
                       </span>
                     </div>
 
                     <div className="flex items-center gap-3 text-xs text-slate-400 flex-wrap">
                       <span className="flex items-center gap-1">
-                        📅 {new Date(log.completedAt).toLocaleDateString(undefined, { 
+                        <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                        {new Date(log.completedAt).toLocaleDateString(undefined, { 
                           year: "numeric", 
                           month: "long", 
                           day: "numeric",
@@ -184,9 +206,15 @@ export default function HistoryLogs({ logs, onBack, onClearLogs, onDeleteLog }: 
                         })}
                       </span>
                       <span>•</span>
-                      <span>⏱️ {log.durationMinutes} mins</span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3.5 w-3.5 text-slate-400" />
+                        {log.durationMinutes} mins
+                      </span>
                       <span>•</span>
-                      <span>🔥 {log.estimatedCaloriesBurned} kcal burned</span>
+                      <span className="flex items-center gap-1">
+                        <Flame className="h-3.5 w-3.5 text-orange-500" />
+                        {log.estimatedCaloriesBurned} kcal burned
+                      </span>
                     </div>
 
                     {log.userNotes && (
@@ -197,7 +225,18 @@ export default function HistoryLogs({ logs, onBack, onClearLogs, onDeleteLog }: 
                   </div>
 
                   <button
-                    onClick={() => onDeleteLog(log.id)}
+                    onClick={() => {
+                      setConfirmDialog({
+                        open: true,
+                        title: "Delete Workout Log",
+                        message: "Are you sure you want to delete this recorded session? This action cannot be undone.",
+                        confirmLabel: "Delete Log",
+                        onConfirm: () => {
+                          onDeleteLog(log.id);
+                          setConfirmDialog(c => ({ ...c, open: false }));
+                        }
+                      });
+                    }}
                     className="self-end sm:self-center p-2 rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-500 transition-all"
                     title="Delete log"
                     id={`btn-delete-log-${log.id}`}
@@ -210,6 +249,17 @@ export default function HistoryLogs({ logs, onBack, onClearLogs, onDeleteLog }: 
           </div>
         </div>
       )}
+
+      {/* Confirmation Modal */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmLabel={confirmDialog.confirmLabel}
+        danger={true}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(c => ({ ...c, open: false }))}
+      />
     </div>
   );
 }

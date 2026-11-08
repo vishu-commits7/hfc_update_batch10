@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { ProgressLog, ProgressExercise } from "../types";
 import gymWorkoutVictory from "../assets/ui/gym-workout-victory.jpg";
+import ConfirmDialog from "./ConfirmDialog";
 import { 
   Plus, 
   Trash2, 
@@ -93,8 +94,22 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
     return "Classic Push-ups";
   });
 
-  // Extract unique logged exercise names to populate filter dropdown
-  const getLoggedExerciseNames = (): string[] => {
+  // Form confirmation modal state (replaces native window.confirm)
+  const [confirmState, setConfirmState] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    onConfirm: () => void;
+  }>({
+    open: false,
+    title: "",
+    message: "",
+    onConfirm: () => {}
+  });
+
+  // Extract unique logged exercise names to populate filter dropdown (memoized)
+  const uniqueLoggedExercises = useMemo((): string[] => {
     const names = new Set<string>();
     progLogs.forEach(log => {
       log.exercises.forEach(ex => {
@@ -108,7 +123,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
       DEFAULT_DEMOS.forEach(n => names.add(n));
     }
     return Array.from(names);
-  };
+  }, [progLogs]);
 
   // --- HANDLERS FOR MANUALLY LOGGING EXERCISES ---
 
@@ -191,21 +206,35 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
   };
 
   const handleDeleteLog = (id: string) => {
-    if (confirm("Are you sure you want to delete this workout entry?")) {
-      setProgLogs(prev => prev.filter(log => log.id !== id));
-    }
+    setConfirmState({
+      open: true,
+      title: "Delete Workout Entry",
+      message: "Are you sure you want to delete this workout entry from your registry? This action cannot be undone.",
+      confirmLabel: "Delete Entry",
+      onConfirm: () => {
+        setProgLogs(prev => prev.filter(log => log.id !== id));
+        setConfirmState(c => ({ ...c, open: false }));
+      }
+    });
   };
 
   const handleClearAllProgress = () => {
-    if (confirm("WARNING: This will clear your entire progressive tracking logs. Are you sure?")) {
-      setProgLogs([]);
-    }
+    setConfirmState({
+      open: true,
+      title: "Clear All Progress Logs",
+      message: "WARNING: This will clear your entire progressive tracking registry. Are you sure you want to proceed?",
+      confirmLabel: "Clear All Logs",
+      onConfirm: () => {
+        setProgLogs([]);
+        setConfirmState(c => ({ ...c, open: false }));
+      }
+    });
   };
 
-  // --- ANALYTICS CALCULATIONS ---
+  // --- ANALYTICS CALCULATIONS (Memoized to prevent chart re-computation on every form keystroke) ---
   
   // 1. Weight progression data for selected exercise
-  const getWeightProgressionData = () => {
+  const chartData = useMemo(() => {
     // Filter logs that contain the selected exercise, sort them chronologically (oldest first)
     const sortedLogs = [...progLogs].sort((a, b) => a.date.localeCompare(b.date));
     
@@ -233,11 +262,11 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
     });
     
     return data;
-  };
+  }, [progLogs, chartExName]);
 
   // 2. Workout frequency calculation
   // Group workouts by date to show consistency
-  const getFrequencyData = () => {
+  const freqData = useMemo(() => {
     // Sort logs chronologically (oldest first)
     const sortedLogs = [...progLogs].sort((a, b) => a.date.localeCompare(b.date));
     
@@ -252,11 +281,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
       date: key,
       Sessions: frequencyMap[key]
     }));
-  };
-
-  const chartData = getWeightProgressionData();
-  const freqData = getFrequencyData();
-  const uniqueLoggedExercises = getLoggedExerciseNames();
+  }, [progLogs]);
 
   return (
     <div className="max-w-6xl mx-auto animate-fade-in text-slate-800 pb-12" id="progress-tracker-view">
@@ -270,7 +295,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
           <div className="absolute inset-0 bg-gradient-to-r from-slate-950 0%, color-mix(in srgb, var(--carbon) 70%, transparent) 55%, transparent 100%" />
         </div>
         <div className="relative z-10 max-w-[70%] px-5 py-6 sm:max-w-[60%] sm:px-7 sm:py-8">
-          <span className="text-[10px] font-black uppercase tracking-widest text-blue-300">Your journey</span>
+          <span className="text-[11px] font-black uppercase tracking-widest text-blue-300">Your journey</span>
           <h2 className="mt-1 font-display text-xl font-black tracking-tight text-white sm:text-2xl">Progress that compounds</h2>
           <p className="mt-1.5 text-xs leading-5 text-white/60 sm:text-sm">Every logged set adds to the story. Track it here.</p>
         </div>
@@ -355,7 +380,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
               <div className="rounded-[32px] border border-slate-100 bg-white p-5 sm:p-6 space-y-6 shadow-xs">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
-                    <span className="text-[10px] uppercase tracking-widest text-blue-600 font-extrabold block">Strength Over Time</span>
+                    <span className="text-[11px] uppercase tracking-widest text-blue-600 font-extrabold block">Strength Over Time</span>
                     <h2 className="text-xl font-black text-slate-900 uppercase mt-0.5">Weight Progression</h2>
                   </div>
 
@@ -384,7 +409,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
                     </p>
                   </div>
                 ) : (
-                  <div className="h-72 w-full font-sans text-[10px]">
+                  <div className="h-72 w-full font-sans text-[11px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.04)" />
@@ -418,19 +443,19 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
                 {/* Stats brief for selected ex */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4 border-t border-slate-100 text-xs text-slate-500">
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <span className="text-[10px] uppercase text-slate-400 font-extrabold block">First Logged Load</span>
+                    <span className="text-[11px] uppercase text-slate-400 font-extrabold block">First Logged Load</span>
                     <span className="text-sm font-black text-slate-800 mt-1 block">
                       {chartData[0]?.maxWeight ?? 0} lbs ({chartData[0]?.maxReps ?? 0} reps)
                     </span>
                   </div>
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <span className="text-[10px] uppercase text-slate-400 font-extrabold block">Personal Record (PR)</span>
+                    <span className="text-[11px] uppercase text-slate-400 font-extrabold block">Personal Record (PR)</span>
                     <span className="text-sm font-black text-blue-600 mt-1 block">
-                      🏆 {Math.max(...chartData.map(d => d.maxWeight), 0)} lbs
+                      {Math.max(...chartData.map(d => d.maxWeight), 0)} lbs
                     </span>
                   </div>
                   <div className="bg-blue-50/50 p-3 rounded-xl border border-blue-100/50">
-                    <span className="text-[10px] uppercase text-blue-600 font-extrabold block">Total Rep Volume</span>
+                    <span className="text-[11px] uppercase text-blue-600 font-extrabold block">Total Rep Volume</span>
                     <span className="text-sm font-black text-slate-800 mt-1 block">
                       {chartData.reduce((acc, d) => acc + d.totalVolume, 0)} total rep-lbs
                     </span>
@@ -444,11 +469,11 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
                 {/* Frequency chart container */}
                 <div className="md:col-span-7 rounded-[32px] border border-slate-100 bg-white p-5 shadow-xs space-y-6">
                   <div>
-                    <span className="text-[10px] uppercase tracking-widest text-blue-600 font-extrabold block">Weekly Consistency</span>
+                    <span className="text-[11px] uppercase tracking-widest text-blue-600 font-extrabold block">Weekly Consistency</span>
                     <h2 className="text-lg font-black text-slate-900 uppercase mt-0.5">Workout Frequency</h2>
                   </div>
 
-                  <div className="h-56 w-full font-sans text-[9px]">
+                  <div className="h-56 w-full font-sans text-[11px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={freqData} margin={{ top: 5, right: 5, left: -30, bottom: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.03)" />
@@ -463,14 +488,14 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
                   </div>
 
                   <p className="text-[11px] leading-relaxed text-slate-500 bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-                    🎯 Training consistency generates active muscle remodeling. Keep logging your sessions to maintain a high performance frequency!
+                    Training consistency generates active muscle remodeling. Keep logging your sessions to maintain a high performance frequency!
                   </p>
                 </div>
 
                 {/* Core insights metrics panel */}
                 <div className="md:col-span-5 rounded-[32px] border border-slate-100 bg-white p-6 flex flex-col justify-between shadow-xs">
                   <div>
-                    <span className="text-[10px] uppercase tracking-widest text-slate-400 font-extrabold block">Insights</span>
+                    <span className="text-[11px] uppercase tracking-widest text-slate-400 font-extrabold block">Insights</span>
                     <h3 className="text-lg font-black text-slate-900 uppercase mt-0.5 mb-4">Consolidated Metrics</h3>
                     <div className="space-y-4">
                       <div className="flex justify-between items-center text-xs pb-3 border-b border-slate-100">
@@ -509,7 +534,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
           <div className="absolute right-0 top-0 -mr-24 -mt-24 h-64 w-64 bg-blue-500/5 rounded-full blur-3xl" />
           
           <div className="mb-6">
-            <span className="text-[10px] uppercase tracking-widest text-blue-600 font-extrabold">New Performance Log</span>
+            <span className="text-[11px] uppercase tracking-widest text-blue-600 font-extrabold">New Performance Log</span>
             <h2 className="text-xl font-black text-slate-900 uppercase mt-0.5">Manual Entry Console</h2>
             <p className="text-xs text-slate-500 mt-1">Record dates, movements, sets, and loads to lock in precise strength progress charts.</p>
           </div>
@@ -519,7 +544,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
             {/* Meta Row: Date & Title */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Workout Date</label>
+                <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Workout Date</label>
                 <input
                   type="date"
                   required
@@ -530,7 +555,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Workout Name / Block</label>
+                <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Workout Name / Block</label>
                 <input
                   type="text"
                   required
@@ -576,7 +601,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
 
                     {/* Ex Selection */}
                     <div className="w-full sm:max-w-md space-y-2">
-                      <label className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400">Select Exercise</label>
+                      <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Select Exercise</label>
                       <select
                         value={ex.exerciseName}
                         onChange={(e) => handleFormExNameChange(exIdx, e.target.value)}
@@ -595,7 +620,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
 
                     {/* Sets headers and rows */}
                     <div className="space-y-2 pt-2 border-t border-slate-200">
-                      <div className="grid grid-cols-12 gap-3 text-[9px] font-extrabold uppercase tracking-wider text-slate-400 px-1">
+                      <div className="grid grid-cols-12 gap-3 text-[11px] font-extrabold uppercase tracking-wider text-slate-400 px-1">
                         <div className="col-span-2">Set</div>
                         <div className="col-span-4">Reps Done</div>
                         <div className="col-span-4">Weight (lbs)</div>
@@ -653,7 +678,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
                       <button
                         type="button"
                         onClick={() => handleAddFormSet(exIdx)}
-                        className="text-[10px] font-extrabold text-blue-600 hover:underline flex items-center gap-1 mt-1 pl-1"
+                        className="text-[11px] font-extrabold text-blue-600 hover:underline flex items-center gap-1 mt-1 pl-1"
                       >
                         <Plus className="h-3 w-3" /> Add Set
                       </button>
@@ -667,7 +692,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
             {/* Feelings & Notes */}
             <div className="space-y-4 pt-4 border-t border-slate-100">
               <div className="space-y-2">
-                <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Session Feel</label>
+                <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Session Feel</label>
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                   {(["Energetic", "Tired", "Satisfied", "Sore", "Exhausted"] as const).map((opt) => (
                     <button
@@ -687,7 +712,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Training Notes (Optional)</label>
+                <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Training Notes (Optional)</label>
                 <textarea
                   value={logNotes}
                   onChange={(e) => setLogNotes(e.target.value)}
@@ -744,15 +769,15 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
                           <h3 className="font-bold text-slate-900 text-sm sm:text-base tracking-tight truncate max-w-xs sm:max-w-md">
                             {log.workoutTitle}
                           </h3>
-                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-100 px-2 py-0.5 text-[9px] font-bold text-blue-600 uppercase">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-600 uppercase">
                             {log.feeling}
                           </span>
                         </div>
                         
-                        <div className="flex items-center gap-2.5 text-[11px] text-slate-400 font-semibold">
-                          <span>📅 {new Date(log.date).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}</span>
+                        <div className="flex items-center gap-2.5 text-xs text-slate-400 font-semibold">
+                          <span>{new Date(log.date).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}</span>
                           <span>•</span>
-                          <span>🏋️ {log.exercises.length} Movements Logged</span>
+                          <span>{log.exercises.length} Movements Logged</span>
                         </div>
                       </div>
 
@@ -785,7 +810,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
                         )}
 
                         <div className="space-y-3">
-                          <h4 className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Movement Loadouts</h4>
+                          <h4 className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Movement Loadouts</h4>
                           
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {log.exercises.map((ex, exIdx) => (
@@ -819,6 +844,17 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
           )}
         </div>
       )}
+
+      {/* Custom Confirmation Modal */}
+      <ConfirmDialog
+        open={confirmState.open}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmLabel={confirmState.confirmLabel}
+        danger={true}
+        onConfirm={confirmState.onConfirm}
+        onCancel={() => setConfirmState(c => ({ ...c, open: false }))}
+      />
 
     </div>
   );

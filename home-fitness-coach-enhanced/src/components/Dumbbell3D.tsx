@@ -81,19 +81,35 @@ export default function Dumbbell3D({
 
     let raf = 0;
     let angle = 0;
+    let isVisible = true;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        isVisible = entry.isIntersecting;
+      },
+      { threshold: 0.05 }
+    );
+    observer.observe(mount);
+
     const animate = () => {
-      if (!reduceMotion) {
-        angle += 0.012;
-        group.rotation.y = angle;
-        group.position.y = Math.sin(angle * 1.3) * 0.06;
+      if (isVisible) {
+        if (!reduceMotion) {
+          angle += 0.012;
+          group.rotation.y = angle;
+          group.position.y = Math.sin(angle * 1.3) * 0.06;
+        }
+        renderer.render(scene, camera);
       }
-      renderer.render(scene, camera);
       raf = requestAnimationFrame(animate);
     };
     animate();
 
     return () => {
+      observer.disconnect();
       cancelAnimationFrame(raf);
+      try {
+        renderer.forceContextLoss();
+      } catch {}
       renderer.dispose();
       scene.traverse((obj) => {
         if (obj instanceof THREE.Mesh) {

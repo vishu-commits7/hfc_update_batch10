@@ -152,7 +152,7 @@ export default function ProgressGallery() {
             >
               <img src={entry.dataUrl} alt={entry.note || formatDate(entry.dateISO)} className="h-full w-full object-cover transition group-hover:scale-105" />
               <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2">
-                <p className="text-[10px] font-black text-white">{formatDate(entry.dateISO)}</p>
+                <p className="text-[11px] font-black text-white">{formatDate(entry.dateISO)}</p>
               </div>
             </button>
           ))}

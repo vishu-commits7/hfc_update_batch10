@@ -1,3 +1,4 @@
+import { shareContent } from "./nativeBridge";
 /**
  * Full data backup/restore — everything this app stores lives only in
  * this device's localStorage (by design, for privacy), which means a
@@ -65,16 +66,13 @@ export function downloadBackup() {
 export async function shareBackup(): Promise<boolean> {
   const blob = exportBackupBlob();
   const file = new File([blob], `home-fitness-coach-backup-${new Date().toISOString().split("T")[0]}.json`, { type: "application/json" });
-  try {
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], title: "Home Fitness Coach backup" });
-      return true;
-    }
-  } catch {
-    // user cancelled the share sheet — not an error
-    return true;
-  }
-  return false;
+  const result = await shareContent({
+    title: "Apex Pulse backup",
+    text: "Apex Pulse backup file",
+    blob: file,
+    fileName: file.name,
+  });
+  return result === "shared" || result === "cancelled";
 }
 
 export async function importBackupFile(file: File): Promise<{ ok: boolean; error?: string; restoredKeys?: number }> {
@@ -94,5 +92,42 @@ export async function importBackupFile(file: File): Promise<{ ok: boolean; error
     return { ok: true, restoredKeys: restored };
   } catch {
     return { ok: false, error: "Could not read that file — make sure it's a valid backup .json." };
+  }
+}
+
+/** Keys too large or device-specific to push through a cloud document. */
+const CLOUD_EXCLUDE = new Set(["kinetic_gallery_entries"]);
+
+export function exportBackupJson(forCloud = false): string {
+  const data: Record<string, string> = {};
+  BACKUP_KEYS.forEach(key => {
+    if (forCloud && CLOUD_EXCLUDE.has(key)) return;
+    const value = localStorage.getItem(key);
+    if (value !== null) data[key] = value;
+  });
+  return JSON.stringify({
+    app: "Home Fitness Coach",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    data,
+  });
+}
+
+export function restoreFromJson(text: string): { ok: boolean; restoredKeys?: number; error?: string } {
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed || parsed.app !== "Home Fitness Coach" || !parsed.data) {
+      return { ok: false, error: "Cloud backup is not in a recognised format." };
+    }
+    let restored = 0;
+    Object.entries(parsed.data as Record<string, string>).forEach(([key, value]) => {
+      if (BACKUP_KEYS.includes(key) && typeof value === "string") {
+        localStorage.setItem(key, value);
+        restored++;
+      }
+    });
+    return { ok: true, restoredKeys: restored };
+  } catch {
+    return { ok: false, error: "Could not read the cloud backup." };
   }
 }

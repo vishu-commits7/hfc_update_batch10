@@ -105,18 +105,14 @@ export const TWEEN_SLOW: Transition = { duration: 0.44, ease: EASE_EXPO };
  * shrinks reads as a modal dismissal; 0.98 reads as depth.
  */
 export const screenVariants: Variants = {
-  initial: { opacity: 0, scale: 0.985, y: 8 },
+  initial: { opacity: 0.85 },
   animate: {
     opacity: 1,
-    scale: 1,
-    y: 0,
-    transition: { duration: 0.34, ease: EASE_EXPO },
+    transition: { duration: 0.14, ease: EASE_SMOOTH },
   },
   exit: {
     opacity: 0,
-    scale: 1.008,
-    y: -6,
-    transition: { duration: 0.18, ease: EASE_SMOOTH },
+    transition: { duration: 0.08, ease: EASE_SMOOTH },
   },
 };
 

@@ -1,680 +1,352 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useBackClose } from "../lib/backStack";
+import { useBlocked } from "../lib/blocks";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, X, Send, Loader2, Swords, UserCheck, MessageCircle, Check, CheckCheck } from "lucide-react";
+import OverlayPortal from "./ui/OverlayPortal";
+import Avatar from "./ui/Avatar";
 import {
-  X,
-  ArrowLeft,
-  Send,
-  Swords,
-  UserPlus,
-  Users,
-  CheckCircle2,
-  MessageCircle,
-  Sparkles,
-  Flame,
-  Search,
-  Check,
-} from "lucide-react";
+  subscribeChats, subscribeMessages, sendMessage, chatIdFor, acceptFollow, declineFollow,
+  canChatWith, friendlySocialError, subscribeChatReceipts, markChatRead, type ChatSummary, type ChatMessage, type ChatReceipts,
+} from "../lib/social";
+import { setActiveChat } from "../lib/inbox";
+import { useMyIdentity, useFollowEdges } from "../lib/useSocial";
+import { useProfiles } from "../lib/useProfiles";
 import { tapFeedback } from "../lib/haptics";
-import { audio } from "../lib/audio";
-import { getCreators, Creator } from "../lib/socialFeed";
+import { ROOM_MESSAGE_RE } from "../lib/challenge";
 
-export interface FriendProfile {
-  id: string;
-  name: string;
-  handle: string;
-  avatar: string;
-  verified: boolean;
-  status: "online" | "training" | "away";
-  statusText: string;
-  specialty: string;
-  ratingElo: number;
-  isCoach: boolean;
-}
-
-export interface ChatMessage {
-  id: string;
-  senderId: string;
-  senderName: string;
-  text: string;
-  timestamp: string;
-  isUser: boolean;
-}
-
-interface FriendsAndChatHubProps {
+interface Props {
   isOpen: boolean;
   onClose: () => void;
-  initialChatFriendId?: string | null;
-  onChallengeFriend?: (friend: FriendProfile) => void;
+  /** open straight into a conversation with this user */
+  initialChatUid?: string | null;
+  initialTab?: "chats" | "requests";
+  onOpenProfile?: (uid: string) => void;
+  onChallenge?: (uid: string) => void;
+  /** join an arena room shared in chat */
+  onJoinRoom?: (code: string) => void;
 }
 
-const DEFAULT_FRIENDS: FriendProfile[] = [
-  {
-    id: "f_alex",
-    name: "Alex Rivera",
-    handle: "@alex_calisthenics",
-    avatar: "/assets/coaches/coach-cardio-male.jpg",
-    verified: false,
-    status: "training",
-    statusText: "In workout · Set 3/5",
-    specialty: "Calisthenics & Muscle-ups",
-    ratingElo: 1420,
-    isCoach: false,
-  },
-  {
-    id: "f_jordan",
-    name: "Jordan Blake",
-    handle: "@jordan_powerlift",
-    avatar: "/assets/coaches/coach-lower-male.jpg",
-    verified: false,
-    status: "online",
-    statusText: "Online · Ready for Duel",
-    specialty: "Powerlifting & PR Attempts",
-    ratingElo: 1510,
-    isCoach: false,
-  },
-];
+function clock(ms: number) {
+  const d = new Date(ms);
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
 
-const COACH_RESPONSES: Record<string, (msg: string) => string> = {
-  c_marcus: (msg: string) => {
-    const lower = msg.toLowerCase();
-    if (lower.includes("pushup") || lower.includes("chest") || lower.includes("form")) {
-      return "For maximum sternocostal pectoral recruitment, keep your elbows tucked at a 45-degree angle. Control the eccentric descent for 2 full seconds—that is where 70% of myofibrillar micro-tears happen!";
-    }
-    if (lower.includes("duel") || lower.includes("challenge")) {
-      return "You want to test your mettle on push-ups? Tap the ⚔️ Challenge button up top—let's see if you can hold strict 90-degree depth under the camera!";
-    }
-    return "Discipline beats motivation every day. Keep your core tight, lock out each rep, and don't let fatigue break your kinetic chain!";
-  },
-  c_chloe: (msg: string) => {
-    const lower = msg.toLowerCase();
-    if (lower.includes("jump") || lower.includes("squat") || lower.includes("explosive")) {
-      return "Focus on the stretch-shortening cycle! Minimize your ground contact time at the bottom of the squat—rebound instantly using elastic recoil through your Achilles and patellar tendons!";
-    }
-    if (lower.includes("duel") || lower.includes("challenge")) {
-      return "Game on! Hit the ⚔️ Challenge button and match my 45-second jump squat pace. Let's see your rate of force development!";
-    }
-    return "Great energy! Remember that vertical power comes from triple extension: ankles, knees, and hips exploding in sync.";
-  },
-  c_viktor: (msg: string) => {
-    const lower = msg.toLowerCase();
-    if (lower.includes("diamond") || lower.includes("tricep") || lower.includes("arm")) {
-      return "Diamond push-ups shift 78% of the mechanical torque directly to the lateral and medial heads of the triceps. Lock your thumbs together and don't let your hips sag!";
-    }
-    return "High tension builds armor. Embrace the lactic burn—your metabolic threshold only expands when you train right on the edge.";
-  },
-  c_elena: (msg: string) => {
-    const lower = msg.toLowerCase();
-    if (lower.includes("core") || lower.includes("abs") || lower.includes("plank")) {
-      return "Engage your transverse abdominis by drawing your navel toward your spine before each rep. True core power is anti-rotation stability, not just flexing!";
-    }
-    return "Mobility and recovery are what enable you to push max intensity tomorrow. Keep breathing diaphragmatically!";
-  },
-};
+export default function FriendsAndChatHub({ isOpen, onClose, initialChatUid, initialTab, onOpenProfile, onChallenge, onJoinRoom }: Props) {
+  useBackClose(isOpen, onClose);
+  const me = useMyIdentity();
+  const edges = useFollowEdges();
+  const [tab, setTab] = useState<"chats" | "requests">("chats");
+  const [chats, setChats] = useState<ChatSummary[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [activeUid, setActiveUid] = useState<string | null>(null);
 
-export default function FriendsAndChatHub({
-  isOpen,
-  onClose,
-  initialChatFriendId,
-  onChallengeFriend,
-}: FriendsAndChatHubProps) {
-  const [activeTab, setActiveTab] = useState<"friends" | "coaches">("coaches");
-  const [selectedFriend, setSelectedFriend] = useState<FriendProfile | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [inputText, setInputText] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [addFriendModalOpen, setAddFriendModalOpen] = useState(false);
-  const [newFriendHandle, setNewFriendHandle] = useState("");
-  const [addedSuccess, setAddedSuccess] = useState(false);
+  const blockedSet = useBlocked();
+  useEffect(() => { if (isOpen) { setActiveUid(initialChatUid ?? null); setTab(initialTab ?? "chats"); } }, [isOpen, initialChatUid, initialTab]);
 
-  // Load custom friends
-  const [friendsList, setFriendsList] = useState<FriendProfile[]>(() => {
-    try {
-      const saved = localStorage.getItem("kinetic_custom_friends");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return DEFAULT_FRIENDS;
-  });
-
-  const chatScrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // Map master instructors into FriendProfile format
-  const creators = getCreators();
-  const coachProfiles: FriendProfile[] = creators.map((c) => ({
-    id: c.id,
-    name: c.name,
-    handle: c.handle,
-    avatar: c.avatar,
-    verified: true,
-    status: "online",
-    statusText: "Master Coach · Online",
-    specialty: c.specialtyExercise,
-    ratingElo: c.ratingElo,
-    isCoach: true,
-  }));
-
-  const allProfiles = [...coachProfiles, ...friendsList];
-
-  // Open initial friend chat if requested
   useEffect(() => {
-    if (isOpen && initialChatFriendId) {
-      const match = allProfiles.find((p) => p.id === initialChatFriendId);
-      if (match) {
-        setSelectedFriend(match);
-      }
-    }
-  }, [isOpen, initialChatFriendId]);
+    if (!isOpen || !me.uid) return;
+    setChats(null);
+    return subscribeChats(
+      me.uid,
+      list => setChats(list.filter(c => !c.members.some(m => m !== me.uid && blockedSet.has(m)))),
+      e => { setChats([]); setError(friendlySocialError(e)); },
+    );
+  }, [isOpen, me.uid, blockedSet]);
 
-  // Load messages for selected friend
-  useEffect(() => {
-    if (selectedFriend) {
-      const key = `kinetic_chat_${selectedFriend.id}`;
-      try {
-        const raw = localStorage.getItem(key);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setMessages(parsed);
-            return;
-          }
-        }
-      } catch {}
+  const requests = useMemo(
+    () => [...edges.incoming.entries()].filter(([u, s]) => s === "pending" && !blockedSet.has(u)).map(([u]) => u),
+    [edges, blockedSet],
+  );
+  const friends = useMemo(() => {
+    const set = new Set<string>();
+    edges.outgoing.forEach((s, u) => { if (s === "accepted") set.add(u); });
+    edges.incoming.forEach((s, u) => { if (s === "accepted") set.add(u); });
+    return [...set];
+  }, [edges]);
 
-      // Initial friendly greeting from coach or friend
-      const greeting: ChatMessage = {
-        id: `msg_init_${selectedFriend.id}`,
-        senderId: selectedFriend.id,
-        senderName: selectedFriend.name,
-        text: selectedFriend.isCoach
-          ? `Hey athlete! Coach ${selectedFriend.name.split(" ")[0]} here. Ask me anything about ${selectedFriend.specialty} or biomechanics!`
-          : `Hey! Let's hit a workout together or do a 1v1 duel anytime.`,
-        timestamp: "Just now",
-        isUser: false,
-      };
-      setMessages([greeting]);
-      try {
-        localStorage.setItem(key, JSON.stringify([greeting]));
-      } catch {}
-    }
-  }, [selectedFriend]);
-
-  // Auto scroll chat to bottom
-  useEffect(() => {
-    if (selectedFriend && chatScrollRef.current) {
-      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
-    }
-  }, [messages, selectedFriend]);
+  const chatOthers = (chats || []).map(c => c.members.find(m => m !== me.uid) || "");
+  const profiles = useProfiles([...new Set([...chatOthers, ...requests, ...friends, ...(activeUid ? [activeUid] : [])])].filter(Boolean));
 
   if (!isOpen) return null;
 
-  const handleSendMessage = (textToSend?: string) => {
-    const text = (textToSend || inputText).trim();
-    if (!text || !selectedFriend) return;
-    tapFeedback();
-    audio.playBeastClick();
+  const withoutChat = friends.filter(f => !chatOthers.includes(f));
 
-    const userMsg: ChatMessage = {
-      id: `msg_${Date.now()}`,
-      senderId: "user",
-      senderName: "You",
-      text,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      isUser: true,
-    };
+  return (
+    <OverlayPortal>
+      <div className="fixed inset-0 z-[270] flex flex-col bg-void text-ink animate-fade-in">
+        {activeUid && me.uid ? (
+          <Conversation
+            myUid={me.uid}
+            otherUid={activeUid}
+            other={profiles.get(activeUid) ?? null}
+            allowed={canChatWith(edges, activeUid)}
+            onBack={() => setActiveUid(null)}
+            onOpenProfile={onOpenProfile}
+            onChallenge={onChallenge}
+            onJoinRoom={onJoinRoom}
+          />
+        ) : (
+          <>
+            <div
+              className="flex shrink-0 items-center justify-between border-b border-line bg-carbon px-3 pb-2"
+              style={{ paddingTop: "max(var(--safe-t), env(safe-area-inset-top, 24px))" }}
+            >
+              <button onClick={onClose} aria-label="Close" className="flex h-11 w-11 items-center justify-center rounded-full text-ink-2 active:scale-95"><ArrowLeft className="h-5 w-5" /></button>
+              <h1 className="text-sm font-bold">Messages</h1>
+              <span className="w-11" />
+            </div>
 
-    const nextList = [...messages, userMsg];
-    setMessages(nextList);
-    setInputText("");
+            <div className="flex shrink-0 gap-1.5 px-4 pt-3">
+              {(["chats", "requests"] as const).map(t => (
+                <button
+                  key={t}
+                  onClick={() => { void tapFeedback(); setTab(t); }}
+                  className={`relative flex-1 rounded-xl py-2.5 text-xs font-bold capitalize transition ${tab === t ? "bg-volt text-void" : "border border-line bg-carbon text-ink-2"}`}
+                >
+                  {t}
+                  {t === "requests" && requests.length > 0 && (
+                    <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white">{requests.length}</span>
+                  )}
+                </button>
+              ))}
+            </div>
 
-    const key = `kinetic_chat_${selectedFriend.id}`;
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-10 pt-3">
+              {!me.signedIn ? (
+                <p className="rounded-xl border border-line bg-carbon p-4 text-center text-sm text-ink-2">Sign in to message other athletes.</p>
+              ) : tab === "requests" ? (
+                requests.length === 0 ? (
+                  <p className="py-14 text-center text-sm text-ink-3">No follow requests right now.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {requests.map(uid => {
+                      const p = profiles.get(uid);
+                      return (
+                        <li key={uid} className="flex items-center gap-3 py-2">
+                          <button onClick={() => onOpenProfile?.(uid)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                            <Avatar src={p?.avatarUrl} name={p?.displayName || "Athlete"} size={46} />
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-bold">{p?.displayName || "Athlete"}</span>
+                              <span className="block text-xs text-ink-3">wants to follow you</span>
+                            </span>
+                          </button>
+                          <button onClick={() => me.uid && acceptFollow(me.uid, uid).catch(e => setError(friendlySocialError(e)))} className="rounded-full bg-volt px-3.5 py-2 text-xs font-bold text-void active:scale-95">Accept</button>
+                          <button onClick={() => me.uid && declineFollow(me.uid, uid).catch(e => setError(friendlySocialError(e)))} aria-label="Decline" className="flex h-9 w-9 items-center justify-center rounded-full bg-graphite text-ink-2 active:scale-95"><X className="h-4 w-4" /></button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )
+              ) : chats === null ? (
+                <div className="flex justify-center py-14"><Loader2 className="h-5 w-5 animate-spin text-ink-3" /></div>
+              ) : (
+                <>
+                  {chats.length === 0 && withoutChat.length === 0 && (
+                    <div className="py-14 text-center">
+                      <MessageCircle className="mx-auto h-8 w-8 text-ink-3" />
+                      <p className="mt-3 text-sm font-semibold text-ink-2">No conversations yet</p>
+                      <p className="mx-auto mt-1 max-w-[16rem] text-xs text-ink-3">Follow an athlete. When they accept, you can message each other here.</p>
+                    </div>
+                  )}
+                  <ul className="space-y-1">
+                    {chats.map((c, i) => {
+                      const other = chatOthers[i];
+                      const p = profiles.get(other);
+                      return (
+                        <li key={c.id}>
+                          <button onClick={() => setActiveUid(other)} className="flex w-full items-center gap-3 rounded-2xl py-2 text-left active:opacity-70">
+                            <Avatar src={p?.avatarUrl} name={p?.displayName || "Athlete"} size={50} />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-baseline justify-between gap-2">
+                                <span className="truncate text-sm font-bold">{p?.displayName || "Athlete"}</span>
+                                <span className="shrink-0 text-[11px] text-ink-3">{clock(c.updatedAt)}</span>
+                              </span>
+                              <span className="block truncate text-xs text-ink-3">{c.lastSender === me.uid ? "You: " : ""}{c.lastMessage}</span>
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {withoutChat.length > 0 && (
+                    <>
+                      <p className="mb-1 mt-5 text-[11px] font-semibold uppercase tracking-wider text-ink-3">Friends</p>
+                      <ul className="space-y-1">
+                        {withoutChat.map(uid => {
+                          const p = profiles.get(uid);
+                          return (
+                            <li key={uid}>
+                              <button onClick={() => setActiveUid(uid)} className="flex w-full items-center gap-3 rounded-2xl py-2 text-left active:opacity-70">
+                                <Avatar src={p?.avatarUrl} name={p?.displayName || "Athlete"} size={46} />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm font-bold">{p?.displayName || "Athlete"}</span>
+                                  <span className="flex items-center gap-1 text-xs text-ink-3"><UserCheck className="h-3 w-3" /> Say hi</span>
+                                </span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </>
+                  )}
+                </>
+              )}
+              {error && <p className="mt-4 rounded-xl bg-rose-500/10 px-3 py-2 text-center text-xs text-rose-300">{error}</p>}
+            </div>
+          </>
+        )}
+      </div>
+    </OverlayPortal>
+  );
+}
+
+function Ticks({ status }: { status: "pending" | "sent" | "delivered" | "read" }) {
+  if (status === "delivered" || status === "read") {
+    return <CheckCheck aria-label={status} className={`h-3.5 w-3.5 ${status === "read" ? "text-[color:var(--tick-read)]" : "text-ink-3"}`} />;
+  }
+  return <Check aria-label={status} className="h-3.5 w-3.5 text-ink-3" />;
+}
+
+function Conversation({
+  myUid, otherUid, other, allowed, onBack, onOpenProfile, onChallenge, onJoinRoom,
+}: {
+  myUid: string;
+  otherUid: string;
+  other: { displayName: string; handle: string; avatarUrl: string | null } | null;
+  allowed: boolean;
+  onBack: () => void;
+  onOpenProfile?: (uid: string) => void;
+  onChallenge?: (uid: string) => void;
+  onJoinRoom?: (code: string) => void;
+}) {
+  const [messages, setMessages] = useState<ChatMessage[] | null>(null);
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const endRef = useRef<HTMLDivElement>(null);
+  const chatId = chatIdFor(myUid, otherUid);
+
+  useEffect(() => {
+    setMessages(null);
+    return subscribeMessages(
+      chatId,
+      setMessages,
+      e => { setMessages([]); if ((e as { code?: string })?.code !== "permission-denied") setError(friendlySocialError(e)); },
+    );
+  }, [chatId]);
+
+  const [receipts, setReceipts] = useState<ChatReceipts>({ deliveredAt: {}, readAt: {} });
+  useEffect(() => subscribeChatReceipts(chatId, setReceipts), [chatId]);
+  useEffect(() => { setActiveChat(chatId); return () => setActiveChat(null); }, [chatId]);
+  // Mark incoming messages as read while this conversation is on screen.
+  const lastIncoming = messages ? [...messages].reverse().find(m => m.from !== myUid && !m.pending)?.createdAt ?? 0 : 0;
+  useEffect(() => {
+    if (!lastIncoming) return;
+    if ((receipts.readAt[myUid] ?? 0) >= lastIncoming) return;
+    void markChatRead(chatId, myUid);
+  }, [lastIncoming, receipts.readAt, chatId, myUid]);
+  const statusOf = (m: ChatMessage): "pending" | "sent" | "delivered" | "read" => {
+    if (m.pending) return "pending";
+    if ((receipts.readAt[otherUid] ?? 0) >= m.createdAt) return "read";
+    if ((receipts.deliveredAt[otherUid] ?? 0) >= m.createdAt) return "delivered";
+    return "sent";
+  };
+
+  useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [messages?.length]);
+
+  const send = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const v = text.trim();
+    if (!v || sending) return;
+    if (!allowed) { setError("You can message once your follow request is accepted."); return; }
+    setSending(true);
+    setError(null);
     try {
-      localStorage.setItem(key, JSON.stringify(nextList));
-    } catch {}
-
-    // Smart coach reply
-    if (selectedFriend.isCoach && COACH_RESPONSES[selectedFriend.id]) {
-      setTimeout(() => {
-        const responder = COACH_RESPONSES[selectedFriend.id];
-        const replyText = responder(text);
-        const coachMsg: ChatMessage = {
-          id: `msg_reply_${Date.now()}`,
-          senderId: selectedFriend.id,
-          senderName: selectedFriend.name,
-          text: replyText,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          isUser: false,
-        };
-        const updatedWithReply = [...nextList, coachMsg];
-        setMessages(updatedWithReply);
-        try {
-          localStorage.setItem(key, JSON.stringify(updatedWithReply));
-        } catch {}
-      }, 750);
-    } else if (!selectedFriend.isCoach) {
-      // Peer friend response
-      setTimeout(() => {
-        const peerResponses = [
-          "Let's get it! Ready for the next PR session.",
-          "Awesome work. Check my latest reel when you get a chance!",
-          "Challenge accepted! Catch me in the Arena later today.",
-        ];
-        const randomReply = peerResponses[Math.floor(Math.random() * peerResponses.length)];
-        const peerMsg: ChatMessage = {
-          id: `msg_peer_${Date.now()}`,
-          senderId: selectedFriend.id,
-          senderName: selectedFriend.name,
-          text: randomReply,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          isUser: false,
-        };
-        const updatedWithReply = [...nextList, peerMsg];
-        setMessages(updatedWithReply);
-        try {
-          localStorage.setItem(key, JSON.stringify(updatedWithReply));
-        } catch {}
-      }, 900);
+      void tapFeedback();
+      // Queue instantly (works offline: shows a single grey tick until it syncs).
+      setText("");
+      void sendMessage(myUid, otherUid, v, true);
+    } catch (err) {
+      setError(friendlySocialError(err));
+    } finally {
+      setSending(false);
     }
   };
 
-  const handleAddFriend = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newFriendHandle.trim()) return;
-    tapFeedback();
-
-    const cleanHandle = newFriendHandle.startsWith("@") ? newFriendHandle : `@${newFriendHandle}`;
-    const newFriend: FriendProfile = {
-      id: `f_${Date.now()}`,
-      name: newFriendHandle.replace(/[@_]/g, " ").trim() || "Gym Athlete",
-      handle: cleanHandle.toLowerCase(),
-      avatar: "/assets/coaches/coach-mobility-male.jpg",
-      verified: false,
-      status: "online",
-      statusText: "Added just now",
-      specialty: "High-Intensity Training",
-      ratingElo: 1350,
-      isCoach: false,
-    };
-
-    const updated = [newFriend, ...friendsList];
-    setFriendsList(updated);
-    try {
-      localStorage.setItem("kinetic_custom_friends", JSON.stringify(updated));
-    } catch {}
-
-    setAddedSuccess(true);
-    setTimeout(() => {
-      setAddedSuccess(false);
-      setAddFriendModalOpen(false);
-      setNewFriendHandle("");
-      setSelectedFriend(newFriend);
-    }, 800);
-  };
-
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/85 backdrop-blur-xl p-0 sm:p-4 animate-fade-in select-none">
-      <div className="relative h-full w-full max-w-[480px] bg-zinc-950 flex flex-col justify-between overflow-hidden sm:rounded-[36px] border sm:border-white/15 shadow-2xl">
-        
-        {/* ================= VIEW 1: DIRECT CHAT WINDOW ================= */}
-        {selectedFriend ? (
-          <div className="flex flex-col h-full justify-between">
-            {/* Chat Top Bar */}
-            <div className="flex items-center justify-between px-4 py-3 bg-black/75 backdrop-blur-xl border-b border-white/10 z-20">
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    tapFeedback();
-                    setSelectedFriend(null);
-                  }}
-                  className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition active:scale-95"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </button>
-
-                <div className="relative">
-                  <img
-                    src={selectedFriend.avatar}
-                    alt={selectedFriend.name}
-                    className="h-10 w-10 rounded-full object-cover border border-white/20"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = "/assets/coaches/coach-beast-male.jpg";
-                    }}
-                  />
-                  <span
-                    className={`absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-black ${
-                      selectedFriend.status === "online" ? "bg-emerald-500" : "bg-amber-500"
-                    }`}
-                  />
-                </div>
-
-                <div>
-                  <div className="flex items-center gap-1">
-                    <h3 className="text-xs font-black text-white">{selectedFriend.name}</h3>
-                    {selectedFriend.verified && (
-                      <CheckCircle2 className="h-3.5 w-3.5 fill-cyan-400 text-black" />
-                    )}
-                  </div>
-                  <p className="text-[10px] text-white/50">{selectedFriend.statusText}</p>
-                </div>
-              </div>
-
-              {/* Direct 1v1 Challenge in Header */}
-              {onChallengeFriend && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    tapFeedback();
-                    onChallengeFriend(selectedFriend);
-                    onClose();
-                  }}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-[11px] font-black bg-gradient-to-r from-amber-400 to-rose-500 text-slate-950 active:scale-95 shadow-md transition"
-                >
-                  <Swords className="h-3.5 w-3.5 fill-slate-950" />
-                  <span>Challenge</span>
-                </button>
-              )}
-            </div>
-
-            {/* Chat Messages List */}
-            <div
-              ref={chatScrollRef}
-              className="flex-1 overflow-y-auto p-4 space-y-3 no-scrollbar"
-            >
-              {messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={`flex flex-col ${m.isUser ? "items-end" : "items-start"}`}
-                >
-                  <div
-                    className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed shadow-lg ${
-                      m.isUser
-                        ? "bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-br-none"
-                        : "bg-zinc-900 border border-white/10 text-slate-200 rounded-bl-none"
-                    }`}
-                  >
-                    <p>{m.text}</p>
-                  </div>
-                  <span className="text-[9px] text-white/40 mt-1 px-1">
-                    {m.timestamp}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            {/* Quick Interactive Prompt Chips */}
-            <div className="px-3 py-1.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar bg-black/40 border-t border-white/5">
-              {[
-                "Can you check my pushup tempo?",
-                "What's your advice for vertical jump?",
-                "Challenge: 45s rep battle!",
-                "Technique tips for progressive overload?",
-              ].map((chip) => (
-                <button
-                  key={chip}
-                  type="button"
-                  onClick={() => handleSendMessage(chip)}
-                  className="shrink-0 text-[10px] font-bold rounded-lg bg-white/5 hover:bg-white/15 border border-white/10 text-cyan-300 px-2.5 py-1 active:scale-95 transition"
-                >
-                  {chip}
-                </button>
-              ))}
-            </div>
-
-            {/* Chat Input Bar */}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSendMessage();
-              }}
-              className="p-3 bg-black/90 border-t border-white/10 flex items-center gap-2"
-            >
-              <input
-                ref={inputRef}
-                type="text"
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                placeholder={`Message ${selectedFriend.handle}...`}
-                className="flex-1 rounded-2xl bg-white/10 border border-white/15 px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-              />
-              <button
-                type="submit"
-                disabled={!inputText.trim()}
-                className={`p-2.5 rounded-2xl transition active:scale-90 ${
-                  inputText.trim()
-                    ? "bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/30"
-                    : "bg-white/10 text-white/30 cursor-not-allowed"
-                }`}
-              >
-                <Send className="h-4 w-4" />
-              </button>
-            </form>
-          </div>
-        ) : (
-          /* ================= VIEW 2: FRIENDS & COACHES DIRECTORY ================= */
-          <div className="flex flex-col h-full justify-between">
-            {/* Top Bar */}
-            <div className="p-4 border-b border-white/10 bg-black/60 backdrop-blur sticky top-0 z-20 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="h-8 w-8 rounded-full bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center text-cyan-400">
-                    <MessageCircle className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-black text-white">Direct Messages & Friends</h2>
-                    <p className="text-[10px] text-white/50">Chat with Master Coaches & Gym Partners</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      tapFeedback();
-                      setAddFriendModalOpen(true);
-                    }}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-xs font-bold text-white transition active:scale-95"
-                    title="Add Friend"
-                  >
-                    <UserPlus className="h-3.5 w-3.5 text-cyan-400" />
-                    <span>Add</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      tapFeedback();
-                      onClose();
-                    }}
-                    className="p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white/80 transition"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Sub-tabs: Master Coaches vs Friends */}
-              <div className="grid grid-cols-2 p-1 bg-white/5 rounded-2xl border border-white/10">
-                <button
-                  type="button"
-                  onClick={() => {
-                    tapFeedback();
-                    setActiveTab("coaches");
-                  }}
-                  className={`py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition ${
-                    activeTab === "coaches"
-                      ? "bg-cyan-500 text-slate-950 shadow-md"
-                      : "text-white/60 hover:text-white"
-                  }`}
-                >
-                  Master Coaches ({coachProfiles.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    tapFeedback();
-                    setActiveTab("friends");
-                  }}
-                  className={`py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition ${
-                    activeTab === "friends"
-                      ? "bg-cyan-500 text-slate-950 shadow-md"
-                      : "text-white/60 hover:text-white"
-                  }`}
-                >
-                  Friends ({friendsList.length})
-                </button>
-              </div>
-
-              {/* Search Bar */}
-              <div className="relative">
-                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-white/40" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search coach or friend..."
-                  className="w-full rounded-xl bg-white/5 border border-white/10 pl-8 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-                />
-              </div>
-            </div>
-
-            {/* List Body */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2.5 no-scrollbar">
-              {(activeTab === "coaches" ? coachProfiles : friendsList)
-                .filter(
-                  (f) =>
-                    f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    f.handle.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    f.specialty.toLowerCase().includes(searchQuery.toLowerCase())
-                )
-                .map((friend) => (
-                  <div
-                    key={friend.id}
-                    className="flex items-center justify-between p-3 rounded-2xl bg-zinc-900/80 border border-white/10 hover:border-white/20 transition shadow-lg"
-                  >
-                    <div
-                      onClick={() => {
-                        tapFeedback();
-                        setSelectedFriend(friend);
-                      }}
-                      className="flex items-center gap-3 cursor-pointer flex-1 min-w-0"
-                    >
-                      <div className="relative shrink-0">
-                        <img
-                          src={friend.avatar}
-                          alt={friend.name}
-                          className="h-12 w-12 rounded-2xl object-cover border border-white/20"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).src = "/assets/coaches/coach-beast-male.jpg";
-                          }}
-                        />
-                        <span
-                          className={`absolute -bottom-1 -right-1 h-3 w-3 rounded-full border-2 border-black ${
-                            friend.status === "online" ? "bg-emerald-500" : "bg-amber-500"
-                          }`}
-                        />
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1">
-                          <h4 className="text-xs font-black text-white truncate">{friend.name}</h4>
-                          {friend.verified && (
-                            <CheckCircle2 className="h-3.5 w-3.5 fill-cyan-400 text-black shrink-0" />
-                          )}
-                        </div>
-                        <p className="text-[11px] text-cyan-300 font-bold truncate">
-                          {friend.handle}
-                        </p>
-                        <p className="text-[10px] text-white/50 truncate">
-                          {friend.specialty} · {friend.ratingElo} ELO
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Action Buttons: Message & 1v1 Challenge */}
-                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          tapFeedback();
-                          setSelectedFriend(friend);
-                        }}
-                        className="p-2 rounded-xl bg-white/10 hover:bg-cyan-500 hover:text-slate-950 text-white transition active:scale-95"
-                        title="Chat / Message"
-                      >
-                        <MessageCircle className="h-4 w-4" />
-                      </button>
-
-                      {onChallengeFriend && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            tapFeedback();
-                            onChallengeFriend(friend);
-                            onClose();
-                          }}
-                          className="p-2 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-300 hover:bg-amber-400 hover:text-slate-950 transition active:scale-95"
-                          title="1v1 Live Challenge"
-                        >
-                          <Swords className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-            </div>
-
-            {/* Add Friend Floating Modal */}
-            {addFriendModalOpen && (
-              <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-                <div className="w-full max-w-sm rounded-3xl bg-zinc-900 border border-white/20 p-5 space-y-4 shadow-2xl">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-black text-white">Add Workout Partner</h3>
-                    <button
-                      type="button"
-                      onClick={() => setAddFriendModalOpen(false)}
-                      className="text-white/60 hover:text-white"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-
-                  <form onSubmit={handleAddFriend} className="space-y-3">
-                    <p className="text-xs text-white/70">
-                      Enter athlete's username or gym handle to connect and duel:
-                    </p>
-                    <input
-                      type="text"
-                      value={newFriendHandle}
-                      onChange={(e) => setNewFriendHandle(e.target.value)}
-                      placeholder="@username (e.g. @beast_mode)"
-                      className="w-full rounded-xl bg-white/10 border border-white/15 px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
-                      autoFocus
-                    />
-                    <div className="flex items-center justify-end gap-2 pt-2">
-                      <button
-                        type="button"
-                        onClick={() => setAddFriendModalOpen(false)}
-                        className="px-3 py-1.5 rounded-xl text-xs text-white/60 hover:text-white"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={!newFriendHandle.trim() || addedSuccess}
-                        className="px-4 py-1.5 rounded-xl bg-cyan-500 text-slate-950 font-black text-xs hover:bg-cyan-400 active:scale-95 transition"
-                      >
-                        {addedSuccess ? "✓ Connected!" : "Add Friend"}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            )}
-          </div>
+    <>
+      <div
+        className="flex shrink-0 items-center gap-2 border-b border-line bg-carbon px-2 pb-2"
+        style={{ paddingTop: "max(var(--safe-t), env(safe-area-inset-top, 24px))" }}
+      >
+        <button onClick={onBack} aria-label="Back" className="flex h-11 w-11 items-center justify-center rounded-full text-ink-2 active:scale-95"><ArrowLeft className="h-5 w-5" /></button>
+        <button onClick={() => onOpenProfile?.(otherUid)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
+          <Avatar src={other?.avatarUrl} name={other?.displayName || "Athlete"} size={38} />
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-bold">{other?.displayName || "Athlete"}</span>
+            {other && <span className="block truncate text-[11px] text-ink-3">@{other.handle}</span>}
+          </span>
+        </button>
+        {onChallenge && (
+          <button onClick={() => onChallenge(otherUid)} aria-label="Challenge" className="flex h-11 items-center gap-1.5 rounded-full bg-graphite px-3.5 text-xs font-bold text-ink active:scale-95">
+            <Swords className="h-4 w-4" /> Challenge
+          </button>
         )}
       </div>
-    </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        {messages === null ? (
+          <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-ink-3" /></div>
+        ) : messages.length === 0 ? (
+          <p className="py-16 text-center text-sm text-ink-3">{allowed ? "Say hi 👋" : "Messaging unlocks after your follow request is accepted."}</p>
+        ) : (
+          <ul className="space-y-1.5">
+            {messages.map(m => {
+              const mine = m.from === myUid;
+              return (
+                <li key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[78%] rounded-2xl px-3.5 py-2 text-[14px] leading-snug ${mine ? "rounded-br-md bg-[var(--bubble-mine)] text-ink" : "rounded-bl-md bg-graphite text-ink"}`}>
+                    <p className="break-words">{m.text}</p>
+                    {!mine && onJoinRoom && ROOM_MESSAGE_RE.test(m.text) && (
+                      <button
+                        onClick={() => onJoinRoom(m.text.match(ROOM_MESSAGE_RE)![1])}
+                        className="mt-1.5 flex w-full items-center justify-center gap-1.5 rounded-lg bg-volt py-1.5 text-xs font-bold text-void active:scale-95"
+                      >
+                        <Swords className="h-3.5 w-3.5" /> Join match
+                      </button>
+                    )}
+                    <p className="mt-0.5 flex items-center justify-end gap-1 text-[11px] text-ink-3">
+                      {clock(m.createdAt)}
+                      {mine && <Ticks status={statusOf(m)} />}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <div ref={endRef} />
+      </div>
+
+      {error && <p className="shrink-0 bg-rose-500/10 px-4 py-1.5 text-center text-[11px] text-rose-300">{error}</p>}
+      <form
+        onSubmit={send}
+        className="flex shrink-0 items-center gap-2.5 border-t border-line bg-carbon px-3 pt-2.5"
+        style={{ paddingBottom: "max(10px, env(safe-area-inset-bottom, 10px))" }}
+      >
+        <input
+          value={text}
+          onChange={e => setText(e.target.value)}
+          placeholder="Message…"
+          maxLength={1000}
+          enterKeyHint="send"
+          autoComplete="off"
+          className="min-w-0 flex-1 rounded-full border border-line-strong bg-graphite px-4 py-2.5 text-base text-ink placeholder:text-ink-3 outline-none focus:border-volt"
+        />
+        <button type="submit" disabled={!text.trim() || sending} aria-label="Send" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-volt text-void active:scale-90 disabled:opacity-40">
+          {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+        </button>
+      </form>
+    </>
   );
 }

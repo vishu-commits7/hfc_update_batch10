@@ -1,560 +1,545 @@
-import { useState, useEffect, useRef } from "react";
+import OneTimeHint from "./OneTimeHint";
+import { shareContent } from "../lib/nativeBridge";
+import { useState, useEffect, useRef, useMemo, memo, useCallback } from "react";
 import {
-  Heart,
-  Share2,
-  Camera,
-  MessageCircle,
-  Music,
-  Swords,
-  CheckCircle2,
-  Calendar,
-  Eye,
+  Heart, Share2, Camera, MessageCircle, Music, Swords, CheckCircle2, Calendar, Eye, Search, Loader2, RotateCcw, Flag,
 } from "lucide-react";
 import { MOTIVATION_STORIES } from "./GymBeastMotivationReel";
-import ReelCreatorStudio, { type UserReel } from "./ReelCreatorStudio";
+import ReelCreatorStudio from "./ReelCreatorStudio";
 import ReelCommentsDrawer from "./ReelCommentsDrawer";
 import CreatorProfileModal from "./CreatorProfileModal";
-import LiveStreamDuelModal from "./LiveStreamDuelModal";
 import FriendsAndChatHub from "./FriendsAndChatHub";
+import PeopleSearch from "./PeopleSearch";
+import PublicProfileSheet from "./PublicProfileSheet";
+import Avatar from "./ui/Avatar";
 import {
-  getAllFeedReels,
-  getCreatorById,
-  getFollowingCreatorIds,
-  toggleFollowCreator,
-  getCommentsForReel,
-  getLikedReelIds,
-  toggleLikeReel,
-  Creator,
-  CreatorReel,
+  getAllFeedReels, getCreatorById, getFollowingCreatorIds, toggleFollowCreator, isReelLiked, toggleLikeReel,
+  type Creator,
 } from "../lib/socialFeed";
+import { subscribeMyReelLike, setReelLike, recordReelView, requestFollow, cancelFollow } from "../lib/social";
+import ReportSheet, { type ReportTarget } from "./ReportSheet";
+import { useBlocked } from "../lib/blocks";
+import { subscribeReelFeed, subscribeTrendingReels, loadReelMedia, deleteReel, type SharedReel } from "../lib/reelsStore";
+import { Caption, TagFeed } from "./ReelExtras";
+import { useProfiles } from "../lib/useProfiles";
+import { useMyIdentity, useFollowEdges } from "../lib/useSocial";
+import { challengeUser } from "../lib/challenge";
 import { tapFeedback } from "../lib/haptics";
 
 interface ReelsFeedViewProps {
   onOpenStoryReel: (index: number) => void;
+  onOpenArena?: (roomCode?: string | null) => void;
+  onSignIn?: () => void;
 }
 
-function AutoPlayViewportVideo({ src, className }: { src: string; className?: string }) {
+/* 1x1 transparent image: stops Android WebView from drawing its grey "play" glyph over a loading <video>. */
+const BLANK_POSTER = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+function ReelVideo({ src, loader }: { src?: string; loader?: () => Promise<string> }) {
+  const hostRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const [resolved, setResolved] = useState<string | null>(null);
 
   useEffect(() => {
-    const el = containerRef.current;
+    if (!loader || !active || resolved) return;
+    let alive = true;
+    loader().then(u => { if (alive) setResolved(u); }).catch(() => { if (alive) setFailed(true); });
+    return () => { alive = false; };
+  }, [active, attempt, loader, resolved]);
+
+  useEffect(() => {
+    const el = hostRef.current;
     if (!el) return;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          videoRef.current?.play().catch(() => {});
-        } else {
-          videoRef.current?.pause();
-        }
+    // Only the reel you are looking at holds a decoder; others are unmounted.
+    const io = new IntersectionObserver(
+      ([e]) => {
+        if (e.intersectionRatio >= 0.5) setActive(true);
+        else if (e.intersectionRatio < 0.15) { setActive(false); setReady(false); }
       },
-      { threshold: 0.35 }
+      { threshold: [0, 0.15, 0.5, 0.75] },
     );
-
-    observer.observe(el);
-    return () => observer.disconnect();
+    io.observe(el);
+    return () => io.disconnect();
   }, []);
 
+  const url = useMemo(() => (src ? encodeURI(src) : resolved || ""), [src, resolved]);
+
   return (
-    <div ref={containerRef} className="h-full w-full">
-      <video
-        ref={videoRef}
-        src={src}
-        loop
-        playsInline
-        muted
-        preload="metadata"
-        className={className}
-      />
+    <div ref={hostRef} className="absolute inset-0 overflow-hidden bg-carbon">
+      {active && !failed && url && (
+        <video
+          key={attempt}
+          ref={videoRef}
+          src={url}
+          poster={BLANK_POSTER}
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="auto"
+          disablePictureInPicture
+          disableRemotePlayback
+          onLoadedData={() => { setReady(true); videoRef.current?.play().catch(() => {}); }}
+          onPlaying={() => setReady(true)}
+          onError={() => setFailed(true)}
+          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${ready ? "opacity-100" : "opacity-0"}`}
+        />
+      )}
+      {!ready && !failed && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <Loader2 className="h-7 w-7 animate-spin text-ink-3" />
+        </div>
+      )}
+      {failed && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center">
+          <p className="text-sm font-semibold text-ink-2">Video couldn't load</p>
+          <button
+            onClick={() => { setFailed(false); setReady(false); setAttempt(a => a + 1); }}
+            className="flex items-center gap-1.5 rounded-full bg-graphite px-4 py-2 text-xs font-bold text-ink active:scale-95"
+          >
+            <RotateCcw className="h-3.5 w-3.5" /> Retry
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
-export default function ReelsFeedView({ onOpenStoryReel }: ReelsFeedViewProps) {
-  const [reelStudioOpen, setReelStudioOpen] = useState(false);
-  const [userReels, setUserReels] = useState<UserReel[]>([]);
-  const [likedReelIds, setLikedReelIds] = useState<Set<string>>(() => getLikedReelIds());
-  const [followingIds, setFollowingIds] = useState<Set<string>>(() => getFollowingCreatorIds());
+interface CardReel {
+  id: string;
+  type: "video" | "photo";
+  mediaUrl: string;
+  caption: string;
+  badge: string;
+  musicTrack: string;
+  publishedDate?: string;
+  views?: string;
+  remote?: SharedReel;
+}
 
-  // Interactive drawer/modal states
-  const [activeCommentsReelId, setActiveCommentsReelId] = useState<string | null>(null);
-  const [activeCreatorProfile, setActiveCreatorProfile] = useState<Creator | null>(null);
-  const [chatHubOpen, setChatHubOpen] = useState(false);
-  const [chatTargetFriendId, setChatTargetFriendId] = useState<string | null>(null);
-  const [liveChallengeOpponent, setLiveChallengeOpponent] = useState<{
-    creator: Creator;
-    reel?: CreatorReel;
-  } | null>(null);
+const ReelCard = memo(function ReelCard({
+  reel, creator, mine, onOpenComments, onOpenCreator, onOpenMyProfile, onChallenge, onOpenUser, onChallengeUser, onDeleted, onTag,
+}: {
+  onTag?: (tag: string) => void;
+  reel: CardReel;
+  creator?: Creator;
+  mine?: boolean;
+  commentsVersion: number;
+  onOpenComments: (id: string) => void;
+  onOpenCreator: (c: Creator) => void;
+  onOpenMyProfile: () => void;
+  onChallenge: () => void;
+  onOpenUser?: (uid: string) => void;
+  onChallengeUser?: (uid: string) => void;
+  onDeleted?: () => void;
+}) {
+  const me = useMyIdentity();
+  const edgesCard = useFollowEdges();
+  const ownerUid = reel.remote?.ownerUid;
+  const ownerProfiles = useProfiles(ownerUid ? [ownerUid] : []);
+  const ownerProfile = ownerUid ? ownerProfiles.get(ownerUid) : null;
+  const followState = ownerUid ? edgesCard.outgoing.get(ownerUid) : undefined;
+  const isMineRemote = !!ownerUid && ownerUid === me.uid;
+  const loadMedia = useCallback(() => loadReelMedia(reel.remote!), [reel.remote]);
+  const [liked, setLiked] = useState(() => isReelLiked(reel.id));
+  const [likeCount, setLikeCount] = useState(() => (reel.remote ? reel.remote.likeCount : isReelLiked(reel.id) ? 1 : 0));
+  const commentCount = reel.remote ? reel.remote.commentCount : 0;
+  const [reportOpen, setReportOpen] = useState<ReportTarget | null>(null);
+  const [following, setFollowing] = useState(() => (creator ? getFollowingCreatorIds().has(creator.id) : false));
 
+  // shared like total comes from the reel doc (server-maintained); my own like state is a tiny live listener
+  useEffect(() => { if (reel.remote) setLikeCount(reel.remote.likeCount); }, [reel.remote?.likeCount]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem("apex_user_reels") || "[]");
-      if (Array.isArray(saved) && saved.length > 0) {
-        setUserReels(saved);
-      }
-    } catch {
-      setUserReels([]);
+    if (!me.uid) {
+      const l = isReelLiked(reel.id);
+      setLiked(l); if (!reel.remote) setLikeCount(l ? 1 : 0);
+      return;
     }
-  }, []);
+    if (!reel.remote) { const l = isReelLiked(reel.id); setLiked(l); setLikeCount(l ? 1 : 0); return; }
+    return subscribeMyReelLike(reel.id, me.uid, setLiked, () => setLiked(isReelLiked(reel.id)));
+  }, [reel.id, me.uid, !!reel.remote]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleReelPublished = (reel: UserReel) => {
-    setUserReels((prev) => [reel, ...prev]);
+  // count a view once the card is mostly on screen for 1.5s (server de-duplicates per user)
+  useEffect(() => {
+    if (!reel.remote || !me.uid || isMineRemote) return;
+    const el = document.getElementById(`reel-${reel.id}`);
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const io = new IntersectionObserver(([e]) => {
+      clearTimeout(timer);
+      if (e.isIntersecting) timer = setTimeout(() => { void recordReelView(reel.id).catch(() => {}); io.disconnect(); }, 1500);
+    }, { threshold: 0.6 });
+    io.observe(el);
+    return () => { clearTimeout(timer); io.disconnect(); };
+  }, [reel.id, me.uid, isMineRemote]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggle = async () => {
+    void tapFeedback();
+    const next = !liked;
+    setLiked(next);
+    setLikeCount(c => Math.max(0, c + (next ? 1 : -1)));
+    if (!me.uid) { toggleLikeReel(reel.id); return; }
+    try {
+      await setReelLike(reel.id, me.uid, next);
+    }
+    catch { setLiked(!next); setLikeCount(c => Math.max(0, c + (next ? -1 : 1))); }
   };
-
-  const toggleLike = (id: string) => {
-    tapFeedback();
-    const nextState = toggleLikeReel(id);
-    setLikedReelIds((prev) => {
-      const next = new Set(prev);
-      if (nextState) {
-        next.add(id);
-      } else {
-        next.delete(id);
-      }
-      return next;
-    });
-  };
-
-  const handleToggleFollow = (creatorId: string, e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    tapFeedback();
-    const next = toggleFollowCreator(creatorId);
-    setFollowingIds((prev) => {
-      const copy = new Set(prev);
-      if (next) copy.add(creatorId);
-      else copy.delete(creatorId);
-      return copy;
-    });
-  };
-
-  const feedReels = getAllFeedReels();
 
   return (
-    <div className="w-full space-y-4 pb-28 text-slate-100 animate-fade-in select-none">
-      {/* ----------------- TOP APP BAR ----------------- */}
-      <div className="flex items-center justify-between py-1 px-1">
-        <div className="flex items-center gap-2">
-          <h1 className="text-lg font-black tracking-tight text-white flex items-center gap-1.5">
-            Reels
-          </h1>
-          <span className="flex h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
-        </div>
+    <div id={`reel-${reel.id}`} className="relative aspect-[9/14] w-full overflow-hidden rounded-[28px] border border-line bg-carbon shadow-xl">
+      {reel.remote ? (
+        reel.type === "video" ? <ReelVideo loader={loadMedia} /> : <RemoteImage load={loadMedia} />
+      ) : reel.type === "video" ? (
+        <ReelVideo src={reel.mediaUrl} />
+      ) : (
+        <img src={reel.mediaUrl} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
+      )}
 
-        <div className="flex items-center gap-2">
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/45" />
+
+      <div className="absolute inset-x-3 top-3 z-10 flex items-center justify-between">
+        <span className="flex items-center gap-1.5">
+          <span className="rounded-lg border border-white/20 bg-black/60 px-2 py-0.5 text-[11px] font-bold uppercase text-white">{reel.badge || "ORIGINAL"}</span>
+          {reel.remote && !isMineRemote && me.uid && (
+            <button
+              onClick={() => { void tapFeedback(); setReportOpen({ type: "reel", targetId: reel.id, ownerUid: reel.remote!.ownerUid, ownerName: ownerProfile?.displayName || reel.remote!.ownerName, audience: reel.remote!.audience }); }}
+              aria-label="Report or block"
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white/80 active:scale-90"
+            ><Flag className="h-3.5 w-3.5" /></button>
+          )}
+        </span>
+        {(creator || (reel.remote && !isMineRemote)) && (
           <button
-            onClick={() => {
-              tapFeedback();
-              setChatTargetFriendId(null);
-              setChatHubOpen(true);
-            }}
-            className="flex items-center gap-1.5 rounded-full bg-white/[0.08] hover:bg-white/[0.14] text-white border border-white/10 px-3 py-1.5 text-xs font-bold active:scale-95 transition"
-            title="Friends & Messages"
+            onClick={() => { void tapFeedback(); if (reel.remote) onChallengeUser?.(reel.remote.ownerUid); else onChallenge(); }}
+            className="flex items-center gap-1 rounded-full bg-volt px-2.5 py-1 text-[11px] font-bold text-void active:scale-95"
           >
-            <MessageCircle className="h-3.5 w-3.5 text-cyan-400" />
-            <span>Chat</span>
+            <Swords className="h-3 w-3" />
+            <span>Challenge</span>
           </button>
+        )}
+      </div>
 
+      <div className="absolute bottom-16 right-3 z-20 flex flex-col items-center gap-4">
+        <button onClick={toggle} className="flex flex-col items-center gap-1 text-white active:scale-110" aria-label="Like">
+          <span className={`flex h-11 w-11 items-center justify-center rounded-full ${liked ? "bg-rose-500" : "bg-black/50"}`}>
+            <Heart className={`h-5 w-5 ${liked ? "fill-current" : ""}`} />
+          </span>
+          <span className="text-[11px] font-bold tabular-nums">{likeCount}</span>
+        </button>
+        <button onClick={() => { void tapFeedback(); onOpenComments(reel.id); }} className="flex flex-col items-center gap-1 text-white active:scale-95" aria-label="Comments">
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/50"><MessageCircle className="h-5 w-5" /></span>
+          <span className="text-[11px] font-bold tabular-nums">{commentCount}</span>
+        </button>
+        <button
+          onClick={() => { void tapFeedback(); void shareContent({ title: `${creator?.name || me.name} on Apex Pulse`, text: reel.caption }); }}
+          className="flex flex-col items-center gap-1 text-white active:scale-95"
+          aria-label="Share"
+        >
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-black/50"><Share2 className="h-5 w-5" /></span>
+          <span className="text-[11px] font-bold">Share</span>
+        </button>
+      </div>
+
+      <div className="absolute bottom-3 left-3 right-16 z-20 space-y-1.5 text-white">
+        {creator ? (
+          <div className="flex items-center gap-2">
+            <button onClick={() => { void tapFeedback(); onOpenCreator(creator); }} className="flex items-center gap-2 text-left">
+              <Avatar src={creator.avatar} name={creator.name} size={28} />
+              <span className="text-xs font-bold drop-shadow">{creator.handle}</span>
+              {creator.verified && <CheckCircle2 className="h-3 w-3 shrink-0 fill-sky-400 text-black" />}
+            </button>
+            <button
+              type="button"
+              onClick={() => { void tapFeedback(); setFollowing(toggleFollowCreator(creator.id)); }}
+              className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold active:scale-95 ${following ? "border-white/25 bg-white/10 text-white/70" : "border-volt/60 bg-volt/15 text-volt"}`}
+            >
+              {following ? "Following" : "+ Follow"}
+            </button>
+          </div>
+        ) : reel.remote ? (
+          <div className="flex items-center gap-2">
+            <button onClick={() => { void tapFeedback(); onOpenUser?.(reel.remote!.ownerUid); }} className="flex items-center gap-2 text-left">
+              <Avatar src={ownerProfile?.avatarUrl ?? null} name={reel.remote.ownerName} size={28} />
+              <span className="text-xs font-bold drop-shadow">@{ownerProfile?.handle || reel.remote.ownerHandle}</span>
+            </button>
+            {!isMineRemote && me.uid && (
+              <button
+                type="button"
+                onClick={() => {
+                  void tapFeedback();
+                  if (followState) void cancelFollow(me.uid!, reel.remote!.ownerUid);
+                  else void requestFollow(me.uid!, reel.remote!.ownerUid);
+                }}
+                className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold active:scale-95 ${followState ? "border-white/25 bg-white/10 text-white/70" : "border-volt/60 bg-volt/15 text-volt"}`}
+              >
+                {followState === "accepted" ? "Following" : followState === "pending" ? "Requested" : "+ Follow"}
+              </button>
+            )}
+            {isMineRemote && (
+              <button
+                type="button"
+                onClick={() => { if (window.confirm("Delete this reel?")) void deleteReel(reel.remote!).then(() => onDeleted?.()).catch(() => {}); }}
+                className="rounded-full border border-white/25 bg-white/10 px-2.5 py-0.5 text-[11px] font-bold text-white/80 active:scale-95"
+              >
+                Delete
+              </button>
+            )}
+          </div>
+        ) : mine ? (
+          <button onClick={onOpenMyProfile} className="flex items-center gap-2 text-left">
+            <Avatar src={me.avatar} name={me.name} size={28} />
+            <span className="text-xs font-bold drop-shadow">{me.name}</span>
+          </button>
+        ) : null}
+
+        <Caption text={reel.caption} onTag={onTag} className="line-clamp-3 break-words pr-2 text-xs font-semibold leading-snug drop-shadow" />
+
+        {reel.remote && (
+          <div className="flex items-center gap-1 text-[11px] font-medium text-white/60"><Eye className="h-2.5 w-2.5" />{reel.remote.views} views</div>
+        )}
+        {reel.publishedDate && (
+          <div className="flex items-center gap-2 text-[11px] font-medium text-white/60">
+            <span className="flex items-center gap-1"><Calendar className="h-2.5 w-2.5" />{reel.publishedDate}</span>
+            <span>•</span>
+            <span className="flex items-center gap-1"><Eye className="h-2.5 w-2.5" />{reel.views ?? "0"} views</span>
+          </div>
+        )}
+        <div className="flex items-center gap-1.5 pt-0.5 text-[11px] font-medium text-white/70">
+          <Music className="h-3 w-3" />
+          <span className="truncate">{reel.musicTrack || "Original audio"}</span>
+        </div>
+      </div>
+      {reportOpen && <ReportSheet target={reportOpen} onClose={() => setReportOpen(null)} />}
+    </div>
+  );
+});
+
+function RemoteImage({ load }: { load: () => Promise<string> }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => { let a = true; load().then(u => { if (a) setUrl(u); }).catch(() => {}); return () => { a = false; }; }, [load]);
+  return url
+    ? <img src={url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+    : <div className="absolute inset-0 flex items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-ink-3" /></div>;
+}
+
+function ReelsFeedViewInner({ onOpenStoryReel, onOpenArena, onSignIn }: ReelsFeedViewProps) {
+  const me = useMyIdentity();
+  const edges = useFollowEdges();
+
+  const [reelStudioOpen, setReelStudioOpen] = useState(false);
+  const [remoteReels, setRemoteReels] = useState<SharedReel[]>([]);
+  const [commentsReelId, setCommentsReelId] = useState<string | null>(null);
+  const [commentsVersion, setCommentsVersion] = useState(0);
+  const [creatorProfile, setCreatorProfile] = useState<Creator | null>(null);
+  const [profileUid, setProfileUid] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatUid, setChatUid] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [feedTry, setFeedTry] = useState(0);
+  const [feedMode, setFeedMode] = useState<"latest" | "trending">("latest");
+  const [trending, setTrending] = useState<SharedReel[] | null>(null);
+  const [tag, setTag] = useState<string | null>(null);
+
+  const blocked = useBlocked();
+  const feedReels = useMemo(() => getAllFeedReels(), []);
+  const pendingRequests = useMemo(() => [...edges.incoming.values()].filter(s => s === "pending").length, [edges]);
+
+  const followeeKey = [...edges.outgoing].filter(([, s]) => s === "accepted").map(([u]) => u).sort().join(",");
+  useEffect(() => {
+    if (!me.uid) { setRemoteReels([]); return; }
+    return subscribeReelFeed(
+      me.uid,
+      followeeKey ? followeeKey.split(",") : [],
+      setRemoteReels,
+      () => setNotice("Couldn't load the latest reels. Check your connection."),
+    );
+  }, [me.uid, followeeKey, feedTry]);
+
+  useEffect(() => {
+    if (feedMode !== "trending" || !me.uid) return;
+    setTrending(null);
+    return subscribeTrendingReels(setTrending, () => { setTrending([]); setNotice("Couldn't load trending reels. Check your connection."); });
+  }, [feedMode, me.uid, feedTry]);
+
+  const openComments = useCallback((id: string) => setCommentsReelId(id), []);
+  const openCreator = useCallback((c: Creator) => setCreatorProfile(c), []);
+  const openMine = useCallback(() => { if (me.uid) setProfileUid(me.uid); }, [me.uid]);
+  const goArena = useCallback(() => onOpenArena?.(null), [onOpenArena]);
+
+  const openChatWith = (uid: string | null) => { setChatUid(uid); setChatOpen(true); };
+
+  const challenge = async (uid: string) => {
+    if (!me.uid) { setNotice("Sign in to challenge athletes."); return; }
+    try {
+      const code = await challengeUser({ uid: me.uid, name: me.name, avatar: me.avatar }, uid);
+      setChatOpen(false); setProfileUid(null);
+      onOpenArena?.(code);
+    } catch {
+      setNotice("Couldn't create the challenge. You can only challenge athletes who accepted your follow request.");
+    }
+  };
+
+  const scrollToReel = (id: string) => {
+    window.setTimeout(() => document.getElementById(`reel-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
+  };
+
+  return (
+    <div className="w-full space-y-4 pb-28 text-ink animate-fade-in">
+      <div className="flex items-center justify-between px-1 py-1">
+        <h1 className="text-lg font-bold tracking-tight">Reels</h1>
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => {
-              tapFeedback();
-              setReelStudioOpen(true);
-            }}
-            className="flex items-center gap-1.5 rounded-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 px-3 py-1.5 text-xs font-black active:scale-95 transition shadow-md shadow-cyan-500/20"
+            onClick={() => { void tapFeedback(); openChatWith(null); }}
+            className="relative flex min-h-[40px] items-center gap-1.5 rounded-full border border-line bg-carbon px-3.5 text-xs font-bold active:scale-95"
           >
-            <Camera className="h-3.5 w-3.5" />
+            <MessageCircle className="h-4 w-4" />
+            <span>Chat</span>
+            {pendingRequests > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white">{pendingRequests}</span>
+            )}
+          </button>
+          <button
+            onClick={() => { void tapFeedback(); setReelStudioOpen(true); }}
+            className="flex min-h-[40px] items-center gap-1.5 rounded-full bg-volt px-3.5 text-xs font-bold text-void active:scale-95"
+          >
+            <Camera className="h-4 w-4" />
             <span>Create</span>
           </button>
         </div>
       </div>
 
-      {/* ----------------- SAVAGE STORY BUBBLES TRAY ----------------- */}
-      <div className="px-1">
-        <div className="flex items-center gap-3 overflow-x-auto no-scrollbar py-1">
+      <button
+        onClick={() => { void tapFeedback(); setSearchOpen(true); }}
+        className="flex w-full items-center gap-2.5 rounded-full border border-line bg-carbon px-4 py-3 text-left text-sm text-ink-3 active:scale-[0.99]"
+        aria-label="Search athletes and videos"
+      >
+        <Search className="h-4 w-4" />
+        Search athletes, @handles or videos
+      </button>
+
+      <div className="min-h-[96px] px-1">
+        <div className="no-scrollbar flex items-center gap-3 overflow-x-auto py-2">
           {MOTIVATION_STORIES.map((story, idx) => (
-            <div
+            <button
               key={story.id}
-              onClick={() => {
-                tapFeedback();
-                onOpenStoryReel(idx);
-              }}
-              className="flex flex-col items-center gap-1 shrink-0 cursor-pointer group"
+              onClick={() => { void tapFeedback(); onOpenStoryReel(idx); }}
+              className="group flex shrink-0 flex-col items-center gap-1"
             >
-              <div className="h-16 w-16 rounded-full p-[2px] bg-gradient-to-tr from-amber-400 via-rose-500 to-cyan-500 shadow-md">
-                <div className="h-full w-full rounded-full overflow-hidden bg-black border-2 border-black">
-                  <img
-                    src={story.image}
-                    alt={story.title}
-                    className="h-full w-full object-cover group-hover:scale-110 transition duration-300"
-                  />
-                </div>
-              </div>
-              <span className="text-[10px] font-semibold text-slate-300 max-w-[64px] truncate text-center">
-                {story.title}
+              <span className="block h-16 w-16 rounded-full bg-gradient-to-tr from-volt to-emerald-400 p-[2px]">
+                <span className="block h-full w-full overflow-hidden rounded-full border-2 border-void bg-void">
+                  <img src={story.image} alt={story.title} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                </span>
               </span>
-            </div>
+              <span className="max-w-[64px] truncate text-center text-[11px] font-semibold text-ink-2">{story.title}</span>
+            </button>
           ))}
         </div>
       </div>
 
-      {/* ----------------- VERTICAL REELS FEED ----------------- */}
-      <div className="space-y-6 pt-1">
-        {/* User Created Reels (if any) */}
-        {userReels.map((reel) => {
-          const isLiked = likedReelIds.has(reel.id);
-          const displayLikes = (reel.likes || 12) + (isLiked ? 1 : 0);
-          const comments = getCommentsForReel(reel.id);
-
-          return (
-            <div
-              key={reel.id}
-              className="relative aspect-[9/14] w-full rounded-[28px] overflow-hidden bg-zinc-950 border border-white/10 shadow-2xl"
-            >
-              {reel.type === "video" ? (
-                <AutoPlayViewportVideo
-                  src={reel.mediaUrl}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <img
-                  src={reel.mediaUrl}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
-              )}
-
-              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/40 pointer-events-none" />
-
-              <div className="absolute top-3 left-3 z-10 flex items-center gap-2">
-                <span className="rounded-lg bg-black/60 border border-white/20 px-2 py-0.5 text-[9px] font-black uppercase text-cyan-300 backdrop-blur-md">
-                  {reel.badge || "YOU · ORIGINAL"}
-                </span>
-                <span className="text-[9px] text-white/60 bg-black/50 px-2 py-0.5 rounded-md backdrop-blur">
-                  Just now
-                </span>
-              </div>
-
-              {/* Right Side Interaction Stack */}
-              <div className="absolute right-3 bottom-16 flex flex-col items-center gap-4 z-20">
-                <button
-                  onClick={() => toggleLike(reel.id)}
-                  className="flex flex-col items-center gap-1 text-white active:scale-125 transition"
-                  title="Like"
-                >
-                  <div
-                    className={`h-10 w-10 rounded-full flex items-center justify-center backdrop-blur-md ${
-                      isLiked ? "bg-rose-500 text-white" : "bg-black/40 text-white"
-                    }`}
-                  >
-                    <Heart className={`h-5 w-5 ${isLiked ? "fill-current" : ""}`} />
-                  </div>
-                  <span className="text-[10px] font-black">{displayLikes}</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    tapFeedback();
-                    setActiveCommentsReelId(reel.id);
-                  }}
-                  className="flex flex-col items-center gap-1 text-white active:scale-95 transition"
-                  title="Comments"
-                >
-                  <div className="h-10 w-10 rounded-full bg-black/40 flex items-center justify-center backdrop-blur-md text-white">
-                    <MessageCircle className="h-5 w-5" />
-                  </div>
-                  <span className="text-[10px] font-black">{comments.length}</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    tapFeedback();
-                    if (navigator.share) {
-                      navigator.share({
-                        title: "Apex Workout Reel",
-                        text: reel.caption,
-                        url: window.location.href,
-                      }).catch(() => {});
-                    }
-                  }}
-                  className="flex flex-col items-center gap-1 text-white active:scale-95 transition"
-                  title="Share"
-                >
-                  <div className="h-10 w-10 rounded-full bg-black/40 flex items-center justify-center backdrop-blur-md text-white">
-                    <Share2 className="h-5 w-5" />
-                  </div>
-                  <span className="text-[10px] font-black">Share</span>
-                </button>
-              </div>
-
-              <div className="absolute bottom-3 left-3 right-16 z-20 space-y-1.5 text-white">
-                <div className="flex items-center gap-2">
-                  <div className="h-6 w-6 rounded-full overflow-hidden bg-cyan-900 border border-white/40 flex items-center justify-center text-[10px] font-black text-cyan-200">
-                    A
-                  </div>
-                  <span className="text-xs font-black drop-shadow">You (Apex Athlete)</span>
-                </div>
-                <p className="text-xs font-semibold leading-snug line-clamp-2 drop-shadow">
-                  {reel.caption}
-                </p>
-                <div className="flex items-center gap-1.5 text-[10px] text-slate-300 font-medium pt-0.5">
-                  <Music className="h-3 w-3 animate-spin" />
-                  <span className="truncate">{reel.musicTrack || "Original Audio"}</span>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Curated Pro Creators Feed */}
-        {feedReels.map((reel) => {
-          const creator = getCreatorById(reel.creatorId);
-          const isLiked = likedReelIds.has(reel.id);
-          const displayLikes = reel.likes + (isLiked ? 1 : 0);
-          const isFollowing = creator ? followingIds.has(creator.id) : false;
-          const comments = getCommentsForReel(reel.id);
-
-          return (
-            <div
-              key={reel.id}
-              className="relative aspect-[9/14] w-full rounded-[28px] overflow-hidden bg-zinc-950 border border-white/10 shadow-2xl"
-            >
-              {reel.type === "video" ? (
-                <AutoPlayViewportVideo
-                  src={reel.mediaUrl}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <img
-                  src={reel.mediaUrl}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
-              )}
-
-              {/* Gradient Overlays */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/50 pointer-events-none" />
-
-              {/* Top Header on Reel: Creator Info & Live Challenge Trigger */}
-              <div className="absolute top-3 inset-x-3 z-10 flex items-center justify-between">
-                <span className="rounded-lg bg-black/60 border border-white/20 px-2 py-0.5 text-[9px] font-black uppercase text-cyan-300 backdrop-blur-md">
-                  {reel.badge}
-                </span>
-
-                {/* Direct 1v1 Live Challenge Button on Reel */}
-                {creator && (
-                  <button
-                    onClick={() => {
-                      tapFeedback();
-                      setLiveChallengeOpponent({ creator, reel });
-                    }}
-                    className="flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-400 to-rose-500 text-slate-950 px-2.5 py-1 text-[10px] font-black shadow-lg shadow-rose-500/30 active:scale-95 transition hover:brightness-110"
-                  >
-                    <Swords className="h-3 w-3 fill-slate-950" />
-                    <span>⚡ Live Challenge</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Right Side Interaction Stack (Instagram Style) */}
-              <div className="absolute right-3 bottom-16 flex flex-col items-center gap-4 z-20">
-                {/* Like Button */}
-                <button
-                  onClick={() => toggleLike(reel.id)}
-                  className="flex flex-col items-center gap-1 text-white active:scale-125 transition"
-                  title="Like"
-                >
-                  <div
-                    className={`h-10 w-10 rounded-full flex items-center justify-center backdrop-blur-md ${
-                      isLiked ? "bg-rose-500 text-white" : "bg-black/40 text-white"
-                    }`}
-                  >
-                    <Heart className={`h-5 w-5 ${isLiked ? "fill-current" : ""}`} />
-                  </div>
-                  <span className="text-[10px] font-black">{displayLikes}</span>
-                </button>
-
-                {/* Comments Button (Opens Instagram-style Drawer) */}
-                <button
-                  onClick={() => {
-                    tapFeedback();
-                    setActiveCommentsReelId(reel.id);
-                  }}
-                  className="flex flex-col items-center gap-1 text-white active:scale-95 transition"
-                  title="Comments"
-                >
-                  <div className="h-10 w-10 rounded-full bg-black/40 flex items-center justify-center backdrop-blur-md text-white">
-                    <MessageCircle className="h-5 w-5" />
-                  </div>
-                  <span className="text-[10px] font-black">{comments.length}</span>
-                </button>
-
-                {/* Share Button */}
-                <button
-                  onClick={() => {
-                    tapFeedback();
-                    if (navigator.share) {
-                      navigator.share({
-                        title: `${creator?.name || "Apex"} Workout Reel`,
-                        text: reel.caption,
-                        url: window.location.href,
-                      }).catch(() => {});
-                    }
-                  }}
-                  className="flex flex-col items-center gap-1 text-white active:scale-95 transition"
-                  title="Share"
-                >
-                  <div className="h-10 w-10 rounded-full bg-black/40 flex items-center justify-center backdrop-blur-md text-white">
-                    <Share2 className="h-5 w-5" />
-                  </div>
-                  <span className="text-[10px] font-black">{reel.views}</span>
-                </button>
-              </div>
-
-              {/* Bottom Caption, Creator, Date & Audio Tag */}
-              <div className="absolute bottom-3 left-3 right-16 z-20 space-y-1.5 text-white">
-                {/* Creator Avatar & Handle */}
-                {creator && (
-                  <div className="flex items-center gap-2">
-                    <div
-                      onClick={() => {
-                        tapFeedback();
-                        setActiveCreatorProfile(creator);
-                      }}
-                      className="cursor-pointer flex items-center gap-2 group"
-                    >
-                      <div className="h-7 w-7 rounded-full p-[1.5px] bg-gradient-to-tr from-cyan-400 to-amber-400 shadow-sm shrink-0">
-                        <img
-                          src={creator.avatar}
-                          alt={creator.name}
-                          className="h-full w-full rounded-full object-cover"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).src = "/assets/coaches/coach-beast-male.jpg";
-                          }}
-                        />
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs font-black drop-shadow group-hover:text-cyan-300 transition">
-                          {creator.handle}
-                        </span>
-                        {creator.verified && (
-                          <CheckCircle2 className="h-3 w-3 fill-cyan-400 text-black shrink-0" />
-                        )}
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={(e) => handleToggleFollow(creator.id, e)}
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition active:scale-95 ${
-                        isFollowing
-                          ? "bg-white/10 border-white/20 text-white/70"
-                          : "bg-cyan-500/20 border-cyan-400/40 text-cyan-300"
-                      }`}
-                    >
-                      {isFollowing ? "Following" : "+ Follow"}
-                    </button>
-                  </div>
-                )}
-
-                {/* Caption */}
-                <p className="text-xs font-semibold leading-snug line-clamp-2 drop-shadow">
-                  {reel.caption}
-                </p>
-
-                {/* Publishing Date & View Count */}
-                <div className="flex items-center gap-2 text-[10px] text-white/60 font-medium">
-                  <div className="flex items-center gap-1">
-                    <Calendar className="h-2.5 w-2.5" />
-                    <span>{reel.publishedDate}</span>
-                  </div>
-                  <span>•</span>
-                  <div className="flex items-center gap-1">
-                    <Eye className="h-2.5 w-2.5" />
-                    <span>{reel.views} views</span>
-                  </div>
-                </div>
-
-                {/* Audio Track */}
-                <div className="flex items-center gap-1.5 text-[10px] text-slate-300 font-medium pt-0.5">
-                  <Music className="h-3 w-3 animate-spin" />
-                  <span className="truncate">{reel.musicTrack}</span>
-                </div>
-              </div>
-            </div>
-          );
-        })}
+      <div className="grid grid-cols-2 gap-1.5 px-1">
+        {([["latest", "Latest"], ["trending", "Trending"]] as const).map(([k, l]) => (
+          <button key={k} onClick={() => { void tapFeedback(); setFeedMode(k); }} className={`rounded-full py-2 text-xs font-bold transition ${feedMode === k ? "bg-volt text-void" : "border border-line bg-carbon text-ink-2"}`}>{l}</button>
+        ))}
       </div>
 
-      {/* ----------------- COMMENTS BOTTOM DRAWER ----------------- */}
-      {activeCommentsReelId && (
+      {feedMode === "trending" && <OneTimeHint id="trending" className="mx-1">Trending shows the reels getting the most likes right now.</OneTimeHint>}
+
+      {notice && (
+        <button onClick={() => { setNotice(null); setFeedTry(n => n + 1); }} className="w-full rounded-xl bg-graphite px-3 py-2 text-center text-xs text-ink-2">{notice} <span className="font-bold text-volt">Tap to retry</span></button>
+      )}
+
+      <div className="space-y-6 pt-1">
+        {feedMode === "trending" && trending === null && <p className="py-10 text-center text-xs text-ink-3">Loading trending…</p>}
+        {feedMode === "trending" && trending !== null && trending.length === 0 && <p className="py-10 text-center text-xs text-ink-3">Nothing is trending yet. Like and comment on reels to get it going.</p>}
+        {(feedMode === "trending" ? trending ?? [] : remoteReels).filter(r => !blocked.has(r.ownerUid)).map(r => (
+          <ReelCard
+            key={r.id}
+            reel={{ id: r.id, type: r.type, mediaUrl: "", caption: r.caption, badge: r.badge, musicTrack: r.musicTrack, remote: r }}
+            mine={r.ownerUid === me.uid}
+            commentsVersion={commentsVersion}
+            onOpenComments={openComments}
+            onOpenCreator={openCreator}
+            onOpenMyProfile={openMine}
+            onChallenge={goArena}
+            onOpenUser={uid => setProfileUid(uid)}
+            onChallengeUser={challenge}
+            onTag={setTag}
+          />
+        ))}
+        {feedMode === "latest" && feedReels.map(r => (
+          <ReelCard
+            key={r.id}
+            reel={r}
+            creator={getCreatorById(r.creatorId)}
+            commentsVersion={commentsVersion}
+            onOpenComments={openComments}
+            onOpenCreator={openCreator}
+            onOpenMyProfile={openMine}
+            onChallenge={goArena}
+          />
+        ))}
+      </div>
+
+      {tag && <TagFeed tag={tag} onClose={() => setTag(null)} />}
+
+      {commentsReelId && (
         <ReelCommentsDrawer
-          isOpen={Boolean(activeCommentsReelId)}
-          reelId={activeCommentsReelId}
-          onClose={() => setActiveCommentsReelId(null)}
+          isOpen
+          reelId={commentsReelId}
+          onClose={() => { setCommentsReelId(null); setCommentsVersion(v => v + 1); }}
+          onOpenProfile={uid => { setCommentsReelId(null); setCommentsVersion(v => v + 1); setProfileUid(uid); }}
+          onRequireAuth={onSignIn}
+          ownerUid={remoteReels.find(r => r.id === commentsReelId)?.ownerUid ?? null}
         />
       )}
 
-      {/* ----------------- CREATOR PROFILE MODAL ----------------- */}
-      {activeCreatorProfile && (
+      {creatorProfile && (
         <CreatorProfileModal
-          creator={activeCreatorProfile}
-          onClose={() => setActiveCreatorProfile(null)}
-          onStartLiveChallenge={(creator, reel) => {
-            setActiveCreatorProfile(null);
-            setLiveChallengeOpponent({ creator, reel });
-          }}
-          onOpenChat={(creatorId) => {
-            setActiveCreatorProfile(null);
-            setChatTargetFriendId(creatorId);
-            setChatHubOpen(true);
-          }}
+          creator={creatorProfile}
+          onClose={() => setCreatorProfile(null)}
+          onStartLiveChallenge={() => { setCreatorProfile(null); goArena(); }}
         />
       )}
 
-      {/* ----------------- LIVE STREAM 1V1 BATTLE ARENA ----------------- */}
-      {liveChallengeOpponent && (
-        <LiveStreamDuelModal
-          isOpen={Boolean(liveChallengeOpponent)}
-          onClose={() => setLiveChallengeOpponent(null)}
-          exerciseName={liveChallengeOpponent.reel?.exerciseChallenge.exerciseName || liveChallengeOpponent.creator.specialtyExercise}
-          durationSeconds={liveChallengeOpponent.reel?.exerciseChallenge.timeLimitSeconds || 45}
-          opponent={{
-            id: liveChallengeOpponent.creator.id,
-            name: liveChallengeOpponent.creator.name,
-            handle: liveChallengeOpponent.creator.handle,
-            avatar: liveChallengeOpponent.creator.avatar,
-            ratingElo: liveChallengeOpponent.creator.ratingElo,
-            tier: liveChallengeOpponent.creator.tier,
-            streamVideoUrl: liveChallengeOpponent.reel?.mediaUrl || liveChallengeOpponent.reel?.exerciseChallenge.videoDemoUrl,
-            specialtyExercise: liveChallengeOpponent.creator.specialtyExercise,
-            targetMuscle: liveChallengeOpponent.creator.targetMuscle,
-            scientificMetric: liveChallengeOpponent.reel?.exerciseChallenge.scientificMetric || liveChallengeOpponent.creator.scientificFocus,
-            biologicalMechanism: liveChallengeOpponent.reel?.exerciseChallenge.biologicalMechanism || liveChallengeOpponent.creator.scientificFocus,
-          }}
+      {searchOpen && (
+        <PeopleSearch
+          onClose={() => setSearchOpen(false)}
+          onOpenProfile={uid => setProfileUid(uid)}
+          onPickReel={scrollToReel}
         />
       )}
 
-      {/* Reel Creator Studio Modal */}
+      {profileUid && (
+        <PublicProfileSheet
+          uid={profileUid}
+          onClose={() => setProfileUid(null)}
+          onMessage={uid => { setProfileUid(null); setSearchOpen(false); openChatWith(uid); }}
+          onChallenge={challenge}
+        />
+      )}
+
+      <FriendsAndChatHub
+        isOpen={chatOpen}
+        onClose={() => setChatOpen(false)}
+        initialChatUid={chatUid}
+        onOpenProfile={uid => setProfileUid(uid)}
+        onChallenge={challenge}
+        onJoinRoom={code => { setChatOpen(false); onOpenArena?.(code); }}
+      />
+
       {reelStudioOpen && (
         <ReelCreatorStudio
           onClose={() => setReelStudioOpen(false)}
-          onReelPublished={handleReelPublished}
         />
       )}
-
-      {/* Friends & Direct Chat Hub */}
-      <FriendsAndChatHub
-        isOpen={chatHubOpen}
-        onClose={() => setChatHubOpen(false)}
-        initialChatFriendId={chatTargetFriendId}
-        onChallengeFriend={(friend) => {
-          setChatHubOpen(false);
-          const creator = getCreatorById(friend.id);
-          if (creator) {
-            setLiveChallengeOpponent({ creator });
-          }
-        }}
-      />
     </div>
   );
 }
+
+const ReelsFeedView = memo(ReelsFeedViewInner);
+export default ReelsFeedView;

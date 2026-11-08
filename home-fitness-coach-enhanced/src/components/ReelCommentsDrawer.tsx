@@ -1,171 +1,187 @@
-import { useState, useEffect, useRef } from "react";
-import { X, Heart, Send } from "lucide-react";
+import { useBackClose } from "../lib/backStack";
+import { useEffect, useRef, useState } from "react";
+import { X, Heart, Send, Loader2, Trash2, Flag } from "lucide-react";
+import ReportSheet, { type ReportTarget } from "./ReportSheet";
+import { useBlocked } from "../lib/blocks";
+import OverlayPortal from "./ui/OverlayPortal";
+import Avatar from "./ui/Avatar";
 import {
-  ReelComment,
-  getCommentsForReel,
-  addCommentToReel,
-  toggleLikeComment,
-} from "../lib/socialFeed";
+  subscribeReelComments, postReelComment, toggleReelCommentLike, deleteReelComment,
+  friendlySocialError, type ReelCommentDoc,
+} from "../lib/social";
+import { useMyIdentity } from "../lib/useSocial";
 import { tapFeedback } from "../lib/haptics";
 
 interface ReelCommentsDrawerProps {
   isOpen: boolean;
   reelId: string;
   onClose: () => void;
-  onCommentCountChange?: (count: number) => void;
+  /** open someone's profile (tap on their avatar / name) */
+  onOpenProfile?: (uid: string) => void;
+  onRequireAuth?: () => void;
+  ownerUid?: string | null;
 }
 
-export default function ReelCommentsDrawer({
-  isOpen,
-  reelId,
-  onClose,
-  onCommentCountChange,
-}: ReelCommentsDrawerProps) {
-  const [comments, setComments] = useState<ReelComment[]>([]);
-  const [inputText, setInputText] = useState("");
+function ago(ms: number) {
+  const s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  if (s < 45) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m || 1}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
+}
+
+export default function ReelCommentsDrawer({ isOpen, reelId, onClose, onOpenProfile, onRequireAuth }: ReelCommentsDrawerProps) {
+  useBackClose(isOpen, onClose);
+  const me = useMyIdentity();
+  const blocked = useBlocked();
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
+  const [comments, setComments] = useState<ReelCommentDoc[] | null>(null);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (isOpen && reelId) {
-      const data = getCommentsForReel(reelId);
-      setComments(data);
-      onCommentCountChange?.(data.length);
-      setTimeout(() => inputRef.current?.focus(), 300);
-    }
+    if (!isOpen || !reelId) return;
+    setComments(null);
+    setError(null);
+    const unsub = subscribeReelComments(
+      reelId,
+      list => setComments(list),
+      e => { setComments([]); setError(friendlySocialError(e)); },
+    );
+    const t = window.setTimeout(() => inputRef.current?.focus(), 350);
+    return () => { unsub(); clearTimeout(t); };
   }, [isOpen, reelId]);
 
   if (!isOpen) return null;
 
-  const handlePostComment = (e?: React.FormEvent) => {
+  const post = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!inputText.trim()) return;
-    tapFeedback();
-
-    const created = addCommentToReel(reelId, inputText);
-    const updated = [created, ...comments];
-    setComments(updated);
-    setInputText("");
-    onCommentCountChange?.(updated.length);
-
-    // Scroll top
-    scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    const value = text.trim();
+    if (!value || sending) return;
+    if (!me.uid) { onRequireAuth?.(); setError("Sign in to comment."); return; }
+    void tapFeedback();
+    setSending(true);
+    setError(null);
+    try {
+      await postReelComment(reelId, { uid: me.uid, name: me.name, handle: me.handle, avatarUrl: me.avatar }, value);
+      setText("");
+      window.dispatchEvent(new CustomEvent("apex_reel_comment_posted", { detail: { reelId } }));
+      listRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (err) {
+      setError(friendlySocialError(err));
+    } finally {
+      setSending(false);
+    }
   };
 
-  const handleToggleLike = (commentId: string) => {
-    tapFeedback();
-    const updated = toggleLikeComment(reelId, commentId);
-    setComments(updated);
+  const like = async (c: ReelCommentDoc) => {
+    if (!me.uid) { setError("Sign in to like comments."); return; }
+    void tapFeedback();
+    try { await toggleReelCommentLike(reelId, c.id, me.uid, c.likedBy.includes(me.uid)); } catch (err) { setError(friendlySocialError(err)); }
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[120] flex items-end justify-center bg-black/70 backdrop-blur-sm animate-fade-in"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-[480px] bg-zinc-950 border-t border-white/15 rounded-t-[32px] max-h-[80vh] flex flex-col shadow-2xl overflow-hidden animate-slide-up"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Drag Handle & Header */}
-        <div className="pt-3 pb-2 px-4 border-b border-white/10 flex flex-col items-center relative">
-          <div className="w-10 h-1 rounded-full bg-white/25 mb-2" />
-          <div className="w-full flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-black text-white">Comments</h3>
-              <span className="text-xs text-white/50 font-bold">({comments.length})</span>
-            </div>
-            <button
-              onClick={() => {
-                tapFeedback();
-                onClose();
-              }}
-              className="p-1 rounded-full bg-white/10 text-white/70 hover:text-white"
-              aria-label="Close comments"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Comments Scrollable Body */}
+    <OverlayPortal>
+      <div className="fixed inset-0 z-[250] flex items-end justify-center bg-black/65 animate-fade-in" onClick={onClose}>
         <div
-          ref={scrollRef}
-          className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar divide-y divide-white/5"
+          className="flex h-[78dvh] max-h-[78dvh] w-full max-w-[480px] flex-col overflow-hidden rounded-t-3xl border-t border-line bg-carbon text-ink shadow-2xl"
+          onClick={e => e.stopPropagation()}
         >
-          {comments.length === 0 ? (
-            <div className="text-center py-12 text-white/40">
-              <p className="text-sm font-bold">No comments yet.</p>
-              <p className="text-xs mt-1">Start the conversation below!</p>
+          <div className="flex shrink-0 flex-col items-center border-b border-line px-4 pb-2.5 pt-3">
+            <div className="mb-2 h-1 w-10 rounded-full bg-line-strong" />
+            <div className="flex w-full items-center justify-between">
+              <h3 className="text-sm font-bold">
+                Comments {comments ? <span className="font-medium text-ink-3">({comments.length})</span> : null}
+              </h3>
+              <button onClick={() => { void tapFeedback(); onClose(); }} aria-label="Close comments" className="flex h-9 w-9 items-center justify-center rounded-full bg-graphite text-ink-2 active:scale-95">
+                <X className="h-4 w-4" />
+              </button>
             </div>
-          ) : (
-            comments.map((comm) => (
-              <div key={comm.id} className="pt-3 first:pt-0 flex items-start gap-3">
-                <img
-                  src={comm.authorAvatar}
-                  alt={comm.authorName}
-                  className="h-8 w-8 rounded-full object-cover border border-white/20 shrink-0"
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-xs font-black text-white">{comm.authorHandle}</span>
-                    <span className="text-[10px] text-white/40">{comm.createdAt}</span>
-                  </div>
-                  <p className="text-xs text-slate-200 mt-0.5 leading-relaxed break-words">
-                    {comm.text}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleToggleLike(comm.id)}
-                  className="flex flex-col items-center gap-0.5 text-white/60 hover:text-rose-400 shrink-0 pt-1"
-                >
-                  <Heart
-                    className={`h-3.5 w-3.5 ${
-                      comm.isLiked ? "fill-rose-500 text-rose-500" : ""
-                    }`}
-                  />
-                  {comm.likes > 0 && (
-                    <span className="text-[9px] font-bold text-white/50">{comm.likes}</span>
-                  )}
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* Input Bar */}
-        <form
-          onSubmit={handlePostComment}
-          className="p-3 bg-black/80 border-t border-white/10 flex items-center gap-2 safe-bottom"
-        >
-          <div className="h-8 w-8 rounded-full overflow-hidden bg-cyan-900 border border-white/20 shrink-0">
-            <img
-              src="/assets/coaches/coach-beast-male.jpg"
-              alt="You"
-              className="h-full w-full object-cover"
-            />
           </div>
-          <div className="flex-1 relative flex items-center">
+
+          <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+            {comments === null ? (
+              <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-ink-3" /></div>
+            ) : comments.length === 0 ? (
+              <div className="py-12 text-center">
+                <p className="text-sm font-semibold text-ink-2">No comments yet</p>
+                <p className="mt-1 text-xs text-ink-3">Be the first to say something.</p>
+              </div>
+            ) : (
+              <ul className="space-y-4">
+                {comments.filter(c => !blocked.has(c.uid)).map(c => {
+                  const liked = !!me.uid && c.likedBy.includes(me.uid);
+                  return (
+                    <li key={c.id} className="flex items-start gap-3">
+                      <button onClick={() => onOpenProfile?.(c.uid)} aria-label={`Open ${c.name}'s profile`} className="shrink-0 active:scale-95">
+                        <Avatar src={c.avatarUrl} name={c.name} size={36} />
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline gap-2">
+                          <button onClick={() => onOpenProfile?.(c.uid)} className="truncate text-[13px] font-bold text-ink active:opacity-70">{c.name}</button>
+                          <span className="shrink-0 text-[11px] text-ink-3">{ago(c.createdAt)}</span>
+                        </div>
+                        <p className="mt-0.5 break-words text-[13px] leading-relaxed text-ink-2">{c.text}</p>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-center gap-1">
+                        <button onClick={() => like(c)} aria-label="Like comment" className="flex h-8 w-8 items-center justify-center rounded-full active:scale-90">
+                          <Heart className={`h-4 w-4 ${liked ? "fill-rose-500 text-rose-500" : "text-ink-3"}`} />
+                        </button>
+                        {c.likeCount > 0 && <span className="-mt-1.5 text-[11px] font-semibold text-ink-3">{c.likeCount}</span>}
+                        {c.uid !== me.uid && me.uid && (
+                          <button onClick={() => setReportTarget({ type: "comment", targetId: `${reelId}/${c.id}`, ownerUid: c.uid, ownerName: c.name })} aria-label="Report comment" className="flex h-7 w-7 items-center justify-center rounded-full text-ink-3 active:scale-90">
+                            <Flag className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        {c.uid === me.uid && (
+                          <button onClick={() => void deleteReelComment(reelId, c.id)} aria-label="Delete comment" className="flex h-7 w-7 items-center justify-center rounded-full text-ink-3 active:scale-90">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
+          {error && <p className="shrink-0 bg-rose-500/10 px-4 py-1.5 text-center text-[11px] text-rose-300">{error}</p>}
+
+          <form
+            onSubmit={post}
+            className="flex shrink-0 items-center gap-2.5 border-t border-line bg-carbon px-3 pt-2.5"
+            style={{ paddingBottom: "max(10px, env(safe-area-inset-bottom, 10px))" }}
+          >
+            <Avatar src={me.avatar} name={me.name} size={36} />
             <input
               ref={inputRef}
               type="text"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              placeholder="Add a comment for creator..."
-              className="w-full bg-white/10 text-white placeholder-white/40 text-xs rounded-full py-2.5 pl-4 pr-10 focus:outline-none focus:ring-1 focus:ring-cyan-400"
+              value={text}
+              onChange={e => setText(e.target.value)}
+              placeholder={me.signedIn ? `Comment as ${me.name}…` : "Sign in to comment"}
+              maxLength={500}
+              enterKeyHint="send"
+              autoComplete="off"
+              className="min-w-0 flex-1 rounded-full border border-line-strong bg-graphite px-4 py-2.5 text-base text-ink placeholder:text-ink-3 outline-none focus:border-volt"
             />
-            {inputText.trim() && (
-              <button
-                type="submit"
-                className="absolute right-1.5 p-1.5 rounded-full bg-cyan-500 text-slate-950 font-black hover:bg-cyan-400 active:scale-90 transition"
-              >
-                <Send className="h-3 w-3" />
-              </button>
-            )}
-          </div>
-        </form>
+            <button
+              type="submit"
+              disabled={!text.trim() || sending}
+              aria-label="Post comment"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-volt text-void transition active:scale-90 disabled:opacity-40"
+            >
+              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            </button>
+          </form>
+        </div>
       </div>
-    </div>
+      {reportTarget && <ReportSheet target={reportTarget} onClose={() => setReportTarget(null)} />}
+    </OverlayPortal>
   );
 }

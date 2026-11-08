@@ -1,3 +1,4 @@
+import { shareContent } from "./nativeBridge";
 /**
  * The share card.
  *
@@ -127,7 +128,7 @@ export async function renderFlexCard(
 ): Promise<Blob> {
   const { w, h } = SHAPES[shape];
   const { accent, glow } = PALETTE[data.kind];
-  const brand = data.brand ?? "KINETIC";
+  const brand = data.brand ?? "APEX PULSE";
 
   const canvas = document.createElement("canvas");
   canvas.width = w;
@@ -139,7 +140,14 @@ export async function renderFlexCard(
   // Drawing before they resolve silently falls back to the system font, so
   // the card would look different on a cold start than on a warm one.
   try {
-    await document.fonts.ready;
+    // Never wait on fonts indefinitely: if the web-font request stalls
+    // (offline, slow network) `fonts.ready` can pend forever and the card
+    // would sit on "Building your card…". Give it a short window, then draw
+    // with whatever is available.
+    await Promise.race([
+      document.fonts.ready,
+      new Promise((resolve) => setTimeout(resolve, 900)),
+    ]);
   } catch {
     /* no font loading API — the stack falls back on its own */
   }
@@ -307,22 +315,9 @@ export async function shareFlexCard(
   filename: string,
   text: string,
 ): Promise<ShareOutcome> {
-  const file = new File([blob], filename, { type: "image/png" });
-
-  if (
-    typeof navigator !== "undefined" &&
-    navigator.canShare?.({ files: [file] }) &&
-    navigator.share
-  ) {
-    try {
-      await navigator.share({ files: [file], text });
-      return "shared";
-    } catch (err) {
-      if (err instanceof Error && err.name === "AbortError") return "cancelled";
-      // Anything else — a share target that rejected the file, a WebView
-      // quirk — falls through to the download rather than dead-ending.
-    }
-  }
+  const result = await shareContent({ title: "Apex Pulse", text, blob, fileName: filename });
+  if (result === "shared") return "shared";
+  if (result === "cancelled") return "cancelled";
 
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -421,5 +416,32 @@ export function milestoneCard(opts: {
       { label: "Unlocked", value: `${opts.unlocked}/${opts.total}` },
       { label: opts.detail, value: "\u2713" },
     ],
+  };
+}
+
+export function levelCard(opts: {
+  level: number;
+  rank: string;
+  xpGained: number;
+  streak?: number;
+  trophies: number;
+  headline: string;
+  brand?: string;
+}): FlexCardData {
+  const stats: FlexCardStat[] = [
+    { label: "XP earned", value: `+${opts.xpGained}` },
+    { label: "Rank", value: opts.rank },
+  ];
+  if (opts.streak && opts.streak > 1) stats.push({ label: "Streak", value: `${opts.streak}d` });
+  else if (opts.trophies > 0) stats.push({ label: "Trophies", value: String(opts.trophies) });
+  return {
+    kind: "milestone",
+    eyebrow: opts.headline,
+    value: String(opts.level),
+    unit: "level",
+    title: `${opts.rank} athlete`,
+    progress: 1,
+    brand: opts.brand,
+    stats,
   };
 }

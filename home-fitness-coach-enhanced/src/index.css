@@ -22,7 +22,9 @@
 /* Google Fonts — Inter for UI, loaded async so first paint is never
    blocked. The display=swap ensures text is immediately readable in the
    system fallback while the webfont loads. */
-@import url("https://fonts.googleapis.com/css2?family=Unbounded:wght@700;800;900&display=swap");
+/* (Removed a render-blocking @import of Google Fonts: index.html already loads
+   the same family with preconnect + display=swap. On a slow or offline phone the
+   @import held up first paint, which showed as the app hanging on open.) */
 
 @import "tailwindcss";
 @import "./styles/tokens.css";
@@ -36,14 +38,22 @@
   --color-carbon: var(--carbon);
   --color-graphite: var(--graphite);
   --color-slate-ink: var(--slate-ink);
+  --color-surface-obsidian: var(--obsidian);
+  --color-surface-card: var(--carbon);
+  --color-surface-interactive: var(--graphite);
 
   /* --- Text --- */
   --color-ink: var(--ink);
   --color-ink-2: var(--ink-2);
   --color-ink-3: var(--ink-3);
   --color-ink-4: var(--ink-4);
+  --color-text-primary: var(--ink);
+  --color-text-secondary: var(--ink-2);
+  --color-text-muted: var(--ink-3);
 
   /* --- Accents --- */
+  --color-volt: var(--volt);
+  --color-signal-orange: var(--signal-orange);
   --color-emerald-glow: var(--emerald);
   --color-emerald-deep: var(--emerald-dim);
   --color-cyan-glow: var(--cyan);
@@ -57,6 +67,7 @@
   --color-line-faint: var(--line-faint);
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
+  --color-border-matte: var(--line);
 
   /* --- Radii --- */
   --radius-xs2: var(--r-xs);
@@ -84,4 +95,21 @@
    column on desktop is the deepest step in the ramp, not the canvas. */
 html {
   background-color: var(--void);
+}
+
+
+/* ---------- Accessibility and calm motion (UX rules) ---------- */
+/* Small controls get an invisible hit area so every tap target is about 48dp without changing the layout. */
+@layer base {
+  button, [role="button"], summary { position: relative; }
+  button::after, [role="button"]::after {
+    content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: max(calc(100% + 12px), 48px); height: max(calc(100% + 12px), 48px);
+  }
+}
+/* Motion is for reward moments (level up, trophy), not for every tap: no press-scale on buttons. */
+[class*="active:scale-"]:active { scale: none !important; transform: none !important; }
+/* Respect the system "remove animations" setting. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
 }

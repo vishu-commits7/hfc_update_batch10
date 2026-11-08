@@ -234,7 +234,7 @@ export function WeeklyHeatmap({
         <span className="h-3 w-px bg-[var(--line)]" />
         <Stat label="Longest streak" value={`${longestStreak}d`} color={a.color} />
         <div className="ml-auto flex items-center gap-1" aria-hidden>
-          <span className="text-[9px] text-ink-4">Less</span>
+          <span className="text-[11px] text-ink-4">Less</span>
           {[0, 1, 2, 3].map((level) => (
             <div
               key={level}
@@ -253,7 +253,7 @@ export function WeeklyHeatmap({
               }}
             />
           ))}
-          <span className="text-[9px] text-ink-4">More</span>
+          <span className="text-[11px] text-ink-4">More</span>
         </div>
       </div>
     </div>
@@ -274,7 +274,7 @@ function Stat({
       <span className="font-numeric text-xs font-extrabold" style={{ color }}>
         {value}
       </span>
-      <span className="text-[10px] text-ink-4">{label}</span>
+      <span className="text-[11px] text-ink-4">{label}</span>
     </div>
   );
 }

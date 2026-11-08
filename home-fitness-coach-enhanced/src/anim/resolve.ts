@@ -57,6 +57,7 @@ const SYNONYMS: [RegExp, string][] = [
   [/\b(overhead|military|shoulder|dumbbell|push|strict|z)\s+press\b/g, "shoulderpress"],
   [/\b(chest|floor|bench|incline\s+bench)\s+press\b/g, "pushup"],
   [/\b(sled|prowler)\s+(push|drag|press)\b/g, "pushup"],
+  [/\b(isometric\s+hollow\s+scapular\s+glide|scapular\s+glide|scapular\s+incline\s+matrix|scapular)\b/gi, "shouldertap"],
   // A Jefferson curl is a segmental spinal roll-down, not an arm curl.
   // Without this the lone strong token "curl" sends it to the biceps.
   // Rewritten to a phrase the index actually carries — "forward fold" —

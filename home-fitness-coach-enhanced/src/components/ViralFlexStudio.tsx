@@ -1,3 +1,4 @@
+import { shareContent } from "../lib/nativeBridge";
 import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
@@ -40,11 +41,11 @@ const BG_OPTIONS = [
 ];
 
 const STICKER_PRESETS = [
-  { id: "beast", label: "⚡ BEAST MODE: 100%", tone: "#f59e0b" },
-  { id: "pr", label: "🏆 NEW PR SMASHED", tone: "#06b6d4" },
-  { id: "flame", label: "🔥 NO DAYS OFF", tone: "#ef4444" },
-  { id: "iron", label: "🛡️ UNBREAKABLE WILL", tone: "#10b981" },
-  { id: "sweat", label: "💦 SWEAT EQUITY PAID", tone: "#8b5cf6" },
+  { id: "beast", label: "SMART PROTOCOL: 100%", tone: "#f59e0b" },
+  { id: "pr", label: "NEW PR SMASHED", tone: "#06b6d4" },
+  { id: "flame", label: "DAILY DISCIPLINE", tone: "#ef4444" },
+  { id: "iron", label: "UNBREAKABLE FOCUS", tone: "#10b981" },
+  { id: "sweat", label: "CONSISTENCY PAYS", tone: "#8b5cf6" },
 ];
 
 export default function ViralFlexStudio({
@@ -128,11 +129,11 @@ export default function ViralFlexStudio({
     ctx.save();
     ctx.fillStyle = selectedBg.color;
     ctx.font = "900 28px -apple-system, BlinkMacSystemFont, sans-serif";
-    ctx.fillText("HOME FITNESS COACH", 70, 110);
+    ctx.fillText("APEX PULSE", 70, 110);
 
     ctx.fillStyle = "#ffffff";
     ctx.font = "900 64px -apple-system, BlinkMacSystemFont, sans-serif";
-    ctx.fillText(stats.title?.toUpperCase() || "BEAST WORKOUT", 70, 185);
+    ctx.fillText(stats.title?.toUpperCase() || "SMART PROTOCOL", 70, 185);
 
     ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
     ctx.font = "700 28px -apple-system, BlinkMacSystemFont, sans-serif";
@@ -173,9 +174,9 @@ export default function ViralFlexStudio({
 
     // Stats Columns
     const statItems = [
-      { label: "CALORIES", val: `${stats.calories || 350} kcal`, icon: "🔥" },
-      { label: "TIME", val: `${stats.durationMinutes || 30} min`, icon: "⏱️" },
-      { label: "STREAK", val: `${stats.streakDays || 1} days`, icon: "👑" },
+      { label: "CALORIES", val: `${stats.calories || 350} kcal`, icon: "•" },
+      { label: "TIME", val: `${stats.durationMinutes || 30} min`, icon: "•" },
+      { label: "STREAK", val: `${stats.streakDays || 1} ${(stats.streakDays || 1) === 1 ? "day" : "days"}`, icon: "•" },
     ];
 
     const colWidth = (width - 140) / 3;
@@ -244,14 +245,13 @@ export default function ViralFlexStudio({
         type: "image/png",
       });
 
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          title: "Home Fitness Coach Flex Card",
-          text: `Crushed a savage session today! 🔥\n${quote}\n#HomeFitnessCoach #BeastMode`,
-        });
-        return;
-      }
+      const result = await shareContent({
+        title: "Apex Pulse Workout Card",
+        text: `Completed a training session today.\n${quote}\n#ApexPulse #Training`,
+        blob: file,
+        fileName: file.name,
+      });
+      if (result === "shared" || result === "cancelled") return;
     } catch {
       // Fallback
     }
@@ -259,7 +259,7 @@ export default function ViralFlexStudio({
     // Fallback: download + copy caption
     handleDownload();
     navigator.clipboard?.writeText(
-      `Crushed a savage session today! 🔥\n"${quote}"\n#HomeFitnessCoach #BeastMode`
+      `Completed a training session today.\n"${quote}"\n#ApexPulse #Training`
     );
     setCopiedShare(true);
     setTimeout(() => setCopiedShare(false), 2400);
@@ -281,7 +281,7 @@ export default function ViralFlexStudio({
             <div className="flex items-center gap-2 text-amber-400">
               <Camera className="h-4 w-4" />
               <span className="text-xs font-black uppercase tracking-wider">
-                Viral Flex Studio 2.0
+                Share Studio
               </span>
             </div>
             <button
@@ -296,8 +296,38 @@ export default function ViralFlexStudio({
             </button>
           </div>
 
+          {/* Format segmented control - placed ABOVE the card preview */}
+          <div className="flex justify-center">
+            <div className="inline-flex gap-1 bg-black/70 p-1 rounded-xl border border-white/15">
+              <button
+                type="button"
+                onClick={() => {
+                  tapFeedback();
+                  setFormat("story");
+                }}
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition ${
+                  format === "story" ? "bg-amber-400 text-black shadow-sm" : "text-white/60 hover:text-white"
+                }`}
+              >
+                9:16 Story
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  tapFeedback();
+                  setFormat("square");
+                }}
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-wider transition ${
+                  format === "square" ? "bg-amber-400 text-black shadow-sm" : "text-white/60 hover:text-white"
+                }`}
+              >
+                1:1 Post
+              </button>
+            </div>
+          </div>
+
           {/* Card Preview */}
-          <div className="relative flex justify-center py-2">
+          <div className="relative flex justify-center py-1">
             {previewUrl ? (
               <img
                 src={previewUrl}
@@ -315,39 +345,11 @@ export default function ViralFlexStudio({
                 Rendering...
               </div>
             )}
-
-            {/* Format toggle pill */}
-            <div className="absolute top-4 right-4 flex gap-1 bg-black/70 p-1 rounded-xl border border-white/15">
-              <button
-                type="button"
-                onClick={() => {
-                  tapFeedback();
-                  setFormat("story");
-                }}
-                className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${
-                  format === "story" ? "bg-amber-400 text-black" : "text-white/60"
-                }`}
-              >
-                9:16 Story
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  tapFeedback();
-                  setFormat("square");
-                }}
-                className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${
-                  format === "square" ? "bg-amber-400 text-black" : "text-white/60"
-                }`}
-              >
-                1:1 Post
-              </button>
-            </div>
           </div>
 
           {/* Background Photo Picker */}
           <div>
-            <label className="text-[10px] font-black uppercase tracking-widest text-white/60 block mb-2">
+            <label className="text-[11px] font-black uppercase tracking-widest text-white/60 block mb-2">
               Select Motivation Visual
             </label>
             <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
@@ -381,7 +383,7 @@ export default function ViralFlexStudio({
 
           {/* Stickers Selector */}
           <div>
-            <label className="text-[10px] font-black uppercase tracking-widest text-white/60 block mb-2">
+            <label className="text-[11px] font-black uppercase tracking-widest text-white/60 block mb-2">
               Add Viral Stickers
             </label>
             <div className="flex flex-wrap gap-1.5">
@@ -405,16 +407,16 @@ export default function ViralFlexStudio({
             </div>
           </div>
 
-          {/* Motivational Quote Input */}
+          {/* Motivational Caption Input */}
           <div>
-            <label className="text-[10px] font-black uppercase tracking-widest text-white/60 block mb-1">
-              Custom Beast Caption
+            <label className="text-[11px] font-black uppercase tracking-widest text-white/60 block mb-1">
+              Custom Caption
             </label>
-            <input
-              type="text"
+            <textarea
+              rows={2}
               value={quote}
               onChange={(e) => setQuote(e.target.value)}
-              className="w-full px-3.5 py-2 rounded-xl bg-white/5 border border-white/15 text-white text-xs font-bold focus:outline-none focus:border-amber-400"
+              className="w-full px-3.5 py-2 rounded-xl bg-white/5 border border-white/15 text-white text-xs font-bold focus:outline-none focus:border-amber-400 resize-none leading-relaxed"
               placeholder="Your personal gym mantra"
             />
           </div>

@@ -6,9 +6,9 @@ import React, {
   useState,
 } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { CornerDownLeft, Search } from "lucide-react";
+import { ChevronRight, Search, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { dialogVariants, scrimVariants, SPRING_SNAP } from "../design/motion";
+import { dialogVariants, scrimVariants } from "../design/motion";
 import { accent, type Accent } from "../design/accents";
 
 export interface Command {
@@ -53,6 +53,7 @@ export function CommandPalette({
 }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
+  const [selectedCategory, setSelectedCategory] = useState("All");
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -60,22 +61,46 @@ export function CommandPalette({
     if (!open) return;
     setQuery("");
     setIndex(0);
+    setSelectedCategory("All");
     const id = requestAnimationFrame(() => inputRef.current?.focus());
     return () => cancelAnimationFrame(id);
   }, [open]);
 
   const results = useMemo(() => {
-    if (!query.trim()) return commands;
-    const q = query.toLowerCase().trim();
-    return commands
-      .map((c) => ({
-        c,
-        score: score(`${c.label} ${c.group} ${c.keywords ?? ""}`, q),
-      }))
-      .filter((r) => r.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .map((r) => r.c);
-  }, [commands, query]);
+    let list = commands;
+    if (query.trim()) {
+      const q = query.toLowerCase().trim();
+      list = commands
+        .map((c) => ({
+          c,
+          score: score(`${c.label} ${c.group} ${c.keywords ?? ""}`, q),
+        }))
+        .filter((r) => r.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .map((r) => r.c);
+    }
+
+    if (selectedCategory === "All") return list;
+    const cat = selectedCategory.toLowerCase();
+    return list.filter((c) => {
+      const g = (c.group || "").toLowerCase();
+      const kw = (c.keywords || "").toLowerCase();
+      const lbl = (c.label || "").toLowerCase();
+      if (cat === "workouts") {
+        return g.includes("workout") || g.includes("routine") || kw.includes("workout") || kw.includes("session") || lbl.includes("workout");
+      }
+      if (cat === "exercises") {
+        return g.includes("exercise") || g.includes("academy") || kw.includes("exercise") || kw.includes("movement") || lbl.includes("exercise") || lbl.includes("library");
+      }
+      if (cat === "coaches") {
+        return g.includes("coach") || kw.includes("coach") || lbl.includes("coach") || kw.includes("chat");
+      }
+      if (cat === "reels") {
+        return g.includes("reel") || g.includes("story") || kw.includes("reel") || kw.includes("story") || lbl.includes("reel") || lbl.includes("story");
+      }
+      return true;
+    });
+  }, [commands, query, selectedCategory]);
 
   // Clamp rather than reset: retyping should not throw the selection back
   // to the top if the current row is still in the result set.
@@ -128,7 +153,8 @@ export function CommandPalette({
     <AnimatePresence>
       {open && (
         <div
-          className="fixed inset-0 z-[110] flex items-start justify-center px-4 pt-[12vh]"
+          className="fixed inset-0 z-[110] flex items-start justify-center px-3"
+          style={{ paddingTop: "max(env(safe-area-inset-top, 0px), 12px)" }}
           onKeyDown={onKeyDown}
         >
           <motion.div
@@ -149,27 +175,80 @@ export function CommandPalette({
             initial="initial"
             animate="animate"
             exit="exit"
-            className="surface relative z-10 flex max-h-[62vh] w-full max-w-lg flex-col overflow-hidden rounded-xl2"
-            style={{ background: "var(--carbon)" }}
+            className="relative z-10 flex max-h-[78dvh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border"
+            style={{
+              background: "var(--carbon)",
+              borderColor: "var(--line)",
+              boxShadow: "var(--shadow-xl)",
+              color: "var(--ink)",
+            }}
           >
-            <div className="flex shrink-0 items-center gap-3 border-b border-line px-4 py-3.5">
-              <Search className="h-4 w-4 shrink-0 text-ink-4" />
+            {/* Search Input Bar */}
+            <div
+              className="flex shrink-0 items-center gap-3 border-b px-4 py-3"
+              style={{ borderColor: "var(--line)" }}
+            >
+              <Search className="h-4 w-4 shrink-0" style={{ color: "var(--ink-3)" }} />
               <input
                 ref={inputRef}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Jump to anything…"
-                aria-label="Search commands"
-                className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-4"
+                placeholder="Search workouts, exercises, coaches…"
+                aria-label="Search workouts, exercises, coaches, reels"
+                enterKeyHint="search"
+                className="min-w-0 flex-1 bg-transparent text-[15px] outline-none"
+                style={{ color: "var(--ink)" }}
               />
-              <kbd className="hidden shrink-0 rounded border border-line px-1.5 py-0.5 text-[10px] font-bold text-ink-4 sm:block">
-                ESC
-              </kbd>
+              {query ? (
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  aria-label="Clear search"
+                  className="grid h-7 w-7 place-items-center rounded-full"
+                  style={{ background: "var(--graphite)", color: "var(--ink-2)" }}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close search"
+                className="min-h-[36px] rounded-lg px-2 text-[13px] font-semibold"
+                style={{ color: "var(--ink-2)" }}
+              >
+                Cancel
+              </button>
+            </div>
+
+            {/* Category chips */}
+            <div
+              className="no-scrollbar flex items-center gap-2 overflow-x-auto border-b px-4 py-2.5"
+              style={{ borderColor: "var(--line)" }}
+            >
+              {["All", "Workouts", "Exercises", "Coaches", "Reels"].map((cat) => {
+                const isSelected = selectedCategory === cat;
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setSelectedCategory(cat)}
+                    className="min-h-[32px] whitespace-nowrap rounded-full border px-3.5 text-xs font-semibold transition-colors"
+                    style={
+                      isSelected
+                        ? { background: "var(--ink)", color: "var(--void)", borderColor: "var(--ink)" }
+                        : { background: "transparent", color: "var(--ink-2)", borderColor: "var(--line)" }
+                    }
+                  >
+                    {cat}
+                  </button>
+                );
+              })}
             </div>
 
             <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto py-2">
               {results.length === 0 ? (
-                <p className="px-4 py-10 text-center text-xs text-ink-4">
+                <p className="px-4 py-10 text-center text-sm" style={{ color: "var(--ink-3)" }}>
                   Nothing matches “{query}”.
                 </p>
               ) : (
@@ -182,41 +261,43 @@ export function CommandPalette({
                   return (
                     <React.Fragment key={c.id}>
                       {showGroup && (
-                        <p className="eyebrow px-4 pb-1.5 pt-3">{c.group}</p>
+                        <p
+                          className="px-4 pb-1 pt-3 text-[11px] font-bold uppercase tracking-[0.12em]"
+                          style={{ color: "var(--ink-3)" }}
+                        >
+                          {c.group}
+                        </p>
                       )}
                       <button
                         type="button"
                         data-active={isActive}
-                        onPointerEnter={() => setIndex(i)}
                         onClick={() => run(c)}
-                        className="relative flex w-full items-center gap-3 px-3 py-2.5 text-left"
+                        className="relative flex min-h-[56px] w-full items-center gap-3 px-3 py-2 text-left"
                       >
                         {isActive && (
-                          <motion.span
-                            layoutId="palette-active"
-                            transition={SPRING_SNAP}
-                            className="absolute inset-x-2 inset-y-0 rounded-md2 bg-[var(--line-faint)]"
+                          <span
+                            aria-hidden
+                            className="absolute inset-x-2 inset-y-0 rounded-xl"
+                            style={{ background: "var(--graphite)" }}
                           />
                         )}
                         <span
-                          className="relative z-10 grid h-8 w-8 shrink-0 place-items-center rounded-md2"
+                          className="relative z-10 grid h-10 w-10 shrink-0 place-items-center rounded-xl"
                           style={{ background: t.wash, color: t.color }}
                         >
-                          <c.icon className="h-4 w-4" strokeWidth={2.3} />
+                          <c.icon className="h-[18px] w-[18px]" strokeWidth={2.2} />
                         </span>
                         <span className="relative z-10 min-w-0 flex-1">
-                          <span className="block truncate text-[13px] font-semibold text-ink">
+                          <span className="block truncate text-[14px] font-semibold" style={{ color: "var(--ink)" }}>
                             {c.label}
                           </span>
                           {c.hint && (
-                            <span className="block truncate text-[11px] text-ink-4">
+                            <span className="block truncate text-[12px]" style={{ color: "var(--ink-3)" }}>
                               {c.hint}
                             </span>
                           )}
                         </span>
-                        {isActive && (
-                          <CornerDownLeft className="relative z-10 h-3.5 w-3.5 shrink-0 text-ink-4" />
-                        )}
+                        <ChevronRight className="relative z-10 h-4 w-4 shrink-0" style={{ color: "var(--ink-4)" }} />
                       </button>
                     </React.Fragment>
                   );

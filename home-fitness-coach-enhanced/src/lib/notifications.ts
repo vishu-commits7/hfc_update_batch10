@@ -127,7 +127,7 @@ export async function applyDailyReminder(
       notifications: [{
         id: ID_DAILY_REMINDER,
         ...INEXACT,
-        title: nudge ? nudge.title : "Time to train 💪",
+        title: nudge ? nudge.title : "Time to train",
         body: nudge
           ? nudge.body
           : "Your body is ready — let's get today's workout in.",
@@ -156,7 +156,7 @@ export async function applyStreakWarning(prefs: NotificationPrefs, alreadyWorked
       notifications: [{
         id: ID_STREAK_WARNING,
         ...INEXACT,
-        title: "Don't lose your streak 🔥",
+        title: "Don't lose your streak",
         body: "You haven't logged a workout today — a quick session keeps your streak alive.",
         schedule: { at: fireAt, allowWhileIdle: true },
       }],
@@ -173,7 +173,7 @@ export async function applyWaterReminder(prefs: NotificationPrefs) {
       notifications: [{
         id: ID_WATER_REMINDER,
         ...INEXACT,
-        title: "Hydration check 💧",
+        title: "Hydration check",
         body: "A quick glass of water goes a long way — log it in the Water Tracker.",
         schedule: {
           every: "hour",

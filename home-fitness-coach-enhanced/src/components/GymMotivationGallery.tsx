@@ -5,7 +5,7 @@ import {
   Download,
   Maximize2,
 } from "lucide-react";
-import { MOTIVATION_STORIES, type MotivationStory } from "./GymBeastMotivationReel";
+import { MOTIVATION_STORIES, STORY_BASE_HYPES, type MotivationStory } from "./GymBeastMotivationReel";
 import { audio } from "../lib/audio";
 import { tapFeedback, celebrateFeedback } from "../lib/haptics";
 
@@ -18,7 +18,7 @@ export default function GymMotivationGallery({
 }: GymMotivationGalleryProps) {
   const [hypeCounts, setHypeCounts] = useState<Record<string, number>>(() => {
     try {
-      return JSON.parse(localStorage.getItem("kinetic_beast_hypes") || "{}");
+      return JSON.parse(localStorage.getItem("apex_pulse_story_hypes") || "{}");
     } catch {
       return {};
     }
@@ -29,10 +29,10 @@ export default function GymMotivationGallery({
     celebrateFeedback();
     audio.playBeastDrop();
 
-    const current = (hypeCounts[storyId] || 45) + 1;
+    const current = (hypeCounts[storyId] || STORY_BASE_HYPES[storyId] || 75) + 1;
     const nextHypes = { ...hypeCounts, [storyId]: current };
     setHypeCounts(nextHypes);
-    localStorage.setItem("kinetic_beast_hypes", JSON.stringify(nextHypes));
+    localStorage.setItem("apex_pulse_story_hypes", JSON.stringify(nextHypes));
   };
 
   const handleDownload = async (e: React.MouseEvent, story: MotivationStory) => {
@@ -44,7 +44,7 @@ export default function GymMotivationGallery({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `gym-beast-${story.id}.jpg`;
+      a.download = `apex-pulse-${story.id}.jpg`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -58,18 +58,13 @@ export default function GymMotivationGallery({
     <div className="w-full">
       {/* Section Header */}
       <div className="flex items-center justify-between mb-3 px-1">
-        <div className="flex items-center gap-2">
-          <div className="h-6 w-6 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center">
-            <Flame className="h-3.5 w-3.5 fill-amber-400" />
-          </div>
-          <div>
-            <h2 className="text-sm font-black uppercase tracking-tight text-ink">
-              Daily Savage Fuel
-            </h2>
-            <p className="text-[10px] text-ink-4">
-              Tap any visual for full-screen immersive beast reels
-            </p>
-          </div>
+        <div>
+          <h2 className="text-sm font-black uppercase tracking-tight text-ink">
+            Daily Motivation
+          </h2>
+          <p className="text-[11px] text-ink-4">
+            Curated visual focus for your workout
+          </p>
         </div>
         <button
           type="button"
@@ -77,7 +72,7 @@ export default function GymMotivationGallery({
             tapFeedback();
             onOpenStoryReel(0);
           }}
-          className="text-[11px] font-black uppercase text-amber-400 hover:text-amber-300 flex items-center gap-1 active:scale-95 transition-transform"
+          className="text-[11px] font-bold uppercase text-cyan-400 hover:text-cyan-300 flex items-center gap-1 active:scale-95 transition-transform"
         >
           <span>View All</span>
           <Maximize2 className="h-3 w-3" />
@@ -87,16 +82,15 @@ export default function GymMotivationGallery({
       {/* Horizontal Swipeable Cards for Mobile */}
       <div className="flex gap-3 overflow-x-auto pb-2 pt-1 no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
         {MOTIVATION_STORIES.map((story, idx) => {
-          const hypes = hypeCounts[story.id] || 48 + idx * 7;
+          const hypes = hypeCounts[story.id] || STORY_BASE_HYPES[story.id] || (75 + idx * 8);
           return (
             <motion.div
               key={story.id}
-              whileTap={{ scale: 0.98 }}
               onClick={() => {
                 tapFeedback();
                 onOpenStoryReel(idx);
               }}
-              className="group relative h-64 w-44 shrink-0 rounded-2xl overflow-hidden cursor-pointer border border-white/10 shadow-lg bg-slate-900 select-none"
+              className="group relative h-64 w-44 shrink-0 rounded-2xl overflow-hidden cursor-pointer border border-white/[0.08] shadow-lg bg-[#12141c] select-none"
             >
               {/* Image */}
               <img
@@ -129,7 +123,7 @@ export default function GymMotivationGallery({
                 <h3 className="text-xs font-black uppercase text-white truncate drop-shadow">
                   {story.title}
                 </h3>
-                <p className="text-[10px] text-white/80 line-clamp-2 leading-tight italic">
+                <p className="text-[11px] text-white/80 line-clamp-2 leading-tight italic">
                   "{story.quote}"
                 </p>
 
@@ -138,7 +132,7 @@ export default function GymMotivationGallery({
                   <button
                     type="button"
                     onClick={(e) => handleHype(e, story.id)}
-                    className="flex items-center gap-1 text-[10px] font-bold text-amber-400 active:scale-90 transition-transform"
+                    className="flex items-center gap-1 text-[11px] font-bold text-amber-400 active:scale-90 transition-transform"
                   >
                     <Flame className="h-3 w-3 fill-amber-400" />
                     <span>{hypes}</span>

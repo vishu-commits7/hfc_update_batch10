@@ -144,13 +144,13 @@ export default function WorkoutBuilder({ onBack, onSave }: { onBack: () => void;
           <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
         </button>
         <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-widest text-blue-600">Build your own</p>
+          <p className="text-[11px] font-black uppercase tracking-widest text-blue-600">Build your own</p>
           <h1 className="truncate text-xl font-black tracking-tight text-slate-900">Workout Builder</h1>
         </div>
       </div>
 
       <div className="mb-5 rounded-[24px] border border-slate-100 bg-white p-5 shadow-xs">
-        <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Workout name</label>
+        <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Workout name</label>
         <input
           type="text"
           value={title}
@@ -196,13 +196,13 @@ export default function WorkoutBuilder({ onBack, onSave }: { onBack: () => void;
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <button
                     onClick={() => updateExercise(ex.demoId, { timed: false })}
-                    className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${!ex.timed ? "bg-slate-900 text-white" : "bg-white text-slate-500 border border-slate-200"}`}
+                    className={`rounded-full px-3 py-1.5 text-[11px] font-black uppercase tracking-wide ${!ex.timed ? "bg-slate-900 text-white" : "bg-white text-slate-500 border border-slate-200"}`}
                   >
                     <Repeat className="mr-1 inline h-3 w-3" /> Reps
                   </button>
                   <button
                     onClick={() => updateExercise(ex.demoId, { timed: true })}
-                    className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${ex.timed ? "bg-slate-900 text-white" : "bg-white text-slate-500 border border-slate-200"}`}
+                    className={`rounded-full px-3 py-1.5 text-[11px] font-black uppercase tracking-wide ${ex.timed ? "bg-slate-900 text-white" : "bg-white text-slate-500 border border-slate-200"}`}
                   >
                     <Clock3 className="mr-1 inline h-3 w-3" /> Timed
                   </button>
@@ -210,7 +210,7 @@ export default function WorkoutBuilder({ onBack, onSave }: { onBack: () => void;
 
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   <div>
-                    <span className="block text-[9px] font-extrabold uppercase tracking-wider text-slate-400">Sets</span>
+                    <span className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Sets</span>
                     <div className="mt-1 flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-1.5 py-1">
                       <button onClick={() => updateExercise(ex.demoId, { sets: Math.max(1, ex.sets - 1) })} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"><Minus className="h-3 w-3" /></button>
                       <span className="flex-1 text-center text-xs font-black text-slate-800">{ex.sets}</span>
@@ -220,7 +220,7 @@ export default function WorkoutBuilder({ onBack, onSave }: { onBack: () => void;
 
                   {ex.timed ? (
                     <div>
-                      <span className="block text-[9px] font-extrabold uppercase tracking-wider text-slate-400">Seconds</span>
+                      <span className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Seconds</span>
                       <div className="mt-1 flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-1.5 py-1">
                         <button onClick={() => updateExercise(ex.demoId, { durationSeconds: Math.max(10, ex.durationSeconds - 5) })} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"><Minus className="h-3 w-3" /></button>
                         <span className="flex-1 text-center text-xs font-black text-slate-800">{ex.durationSeconds}</span>
@@ -229,7 +229,7 @@ export default function WorkoutBuilder({ onBack, onSave }: { onBack: () => void;
                     </div>
                   ) : (
                     <div>
-                      <span className="block text-[9px] font-extrabold uppercase tracking-wider text-slate-400">Reps</span>
+                      <span className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Reps</span>
                       <div className="mt-1 flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-1.5 py-1">
                         <button onClick={() => updateExercise(ex.demoId, { reps: Math.max(1, ex.reps - 1) })} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"><Minus className="h-3 w-3" /></button>
                         <span className="flex-1 text-center text-xs font-black text-slate-800">{ex.reps}</span>
@@ -239,7 +239,7 @@ export default function WorkoutBuilder({ onBack, onSave }: { onBack: () => void;
                   )}
 
                   <div>
-                    <span className="block text-[9px] font-extrabold uppercase tracking-wider text-slate-400">Rest (s)</span>
+                    <span className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Rest (s)</span>
                     <div className="mt-1 flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-1.5 py-1">
                       <button onClick={() => updateExercise(ex.demoId, { restSeconds: Math.max(0, ex.restSeconds - 5) })} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"><Minus className="h-3 w-3" /></button>
                       <span className="flex-1 text-center text-xs font-black text-slate-800">{ex.restSeconds}</span>
@@ -259,7 +259,7 @@ export default function WorkoutBuilder({ onBack, onSave }: { onBack: () => void;
         >
           <Save className="h-4 w-4" /> Save workout
         </button>
-        {!canSave && <p className="mt-2 text-center text-[10px] text-slate-400">Give it a name and add at least one exercise to save.</p>}
+        {!canSave && <p className="mt-2 text-center text-[11px] text-slate-400">Give it a name and add at least one exercise to save.</p>}
       </div>
 
       {/* Exercise library picker */}
@@ -282,7 +282,7 @@ export default function WorkoutBuilder({ onBack, onSave }: { onBack: () => void;
             <button
               key={c}
               onClick={() => setCategory(c)}
-              className={`shrink-0 rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide transition-all ${category === c ? "bg-slate-900 text-white" : "bg-slate-50 text-slate-500 border border-slate-100"}`}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-[11px] font-black uppercase tracking-wide transition-all ${category === c ? "bg-slate-900 text-white" : "bg-slate-50 text-slate-500 border border-slate-100"}`}
             >
               {c}
             </button>
@@ -301,7 +301,7 @@ export default function WorkoutBuilder({ onBack, onSave }: { onBack: () => void;
               >
                 <div className="min-w-0">
                   <p className="truncate text-xs font-black text-slate-900">{demo.name}</p>
-                  <p className="truncate text-[10px] text-slate-400">{demo.category} · {demo.focus}</p>
+                  <p className="truncate text-[11px] text-slate-400">{demo.category} · {demo.focus}</p>
                 </div>
                 <span className={`shrink-0 rounded-full p-1.5 ${added ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-500"}`}>
                   {added ? "✓" : <Plus className="h-3.5 w-3.5" />}

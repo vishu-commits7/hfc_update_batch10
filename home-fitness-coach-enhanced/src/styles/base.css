@@ -50,16 +50,12 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    scroll-behavior: smooth;
   }
 
   body {
-    /* Stops the iOS rubber-band exposing white behind the app, and stops
-       Android's overscroll glow dragging the page while a drawer is
-       being flicked. Deliberately NOT `overscroll-behavior: none` on both
-       axes — the horizontal rails (chip rows, coach avatars) set their
-       own containment, and a document-level lock would swallow their
-       gestures. */
     overscroll-behavior-y: none;
+    touch-action: manipulation;
   }
 
   /* Engines without `overflow-x: clip` fall back to clipping at the app
@@ -76,6 +72,7 @@
      the app. Feedback comes from the spring physics instead. */
   * {
     -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
 
   button,
@@ -173,11 +170,12 @@
     letter-spacing: -0.02em;
   }
 
-  .font-numeric {
+  .font-numeric,
+  .tabular-nums {
     font-family: var(--font-numeric);
-    font-variant-numeric: tabular-nums;
-    font-feature-settings: "tnum" 1;
-    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums !important;
+    font-feature-settings: "tnum" 1 !important;
+    letter-spacing: -0.02em;
   }
 
   /* Retained so untouched legacy screens keep their styling. Not used
@@ -188,80 +186,61 @@
     letter-spacing: 0.01em;
   }
 
-  /* Overline label. Sits above almost every stat in the app, so it
-     earns a class instead of six repeated utilities. */
+  /* Overline label. Sits above almost every stat in the app. */
   .eyebrow {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
     line-height: 1;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--ink-3);
   }
 
-  /* --- Material primitives ------------------------------------------ */
+  /* --- Material primitives (Flat-Matte Athletic) --------------------- */
 
-  /* The standard card: gradient-faked glass, hairline, lit top edge. */
+  /* The standard card: crisp flat-matte charcoal, 1px solid #26262E hairline, zero outer glow */
   .surface {
     position: relative;
     background-color: var(--carbon);
-    background-image: var(--glass-solid);
     border: 1px solid var(--line);
-    box-shadow: var(--bevel), var(--shadow-md);
+    box-shadow: none;
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
   }
 
-  /* Aurora card: diagonal colour wash layered over the standard surface.
-     Creates the sense of ambient internal lighting without photography.
-     Applied to hero bento cells and achievement cards. */
+  /* Elevated card: clean flat-matte surface with subtle top bevel highlight */
   .aurora-card {
     position: relative;
     background-color: var(--carbon);
-    background-image:
-      radial-gradient(ellipse 120% 80% at 0% 0%, var(--aurora-a) 0%, transparent 60%),
-      radial-gradient(ellipse 100% 70% at 100% 100%, var(--aurora-b) 0%, transparent 55%),
-      radial-gradient(ellipse 80% 60% at 50% 0%, var(--aurora-c) 0%, transparent 50%),
-      var(--glass-solid);
     border: 1px solid var(--line);
-    box-shadow: var(--bevel), var(--shadow-md);
+    box-shadow: var(--bevel);
   }
 
-  /* Neon border: a glowing hairline in the current accent colour.
-     More intense than .hairline-glow — used for active states and
-     the featured session card. Driven by --glow on the element. */
+  /* Tactile active border: crisp 1px accent hairline without blurry neon glow */
   .neon-border {
-    border: 1px solid color-mix(in srgb, var(--glow) 45%, transparent);
-    box-shadow:
-      var(--bevel),
-      inset 0 0 0 1px color-mix(in srgb, var(--glow) 18%, transparent),
-      var(--glow-sm) color-mix(in srgb, var(--glow) 30%, transparent),
-      var(--glow-md) color-mix(in srgb, var(--glow) 14%, transparent);
+    border: 1px solid var(--line-strong);
+    box-shadow: none;
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
   }
 
-  /* Prism card: rainbow-tinted border via a gradient-border trick.
-     The border is painted as a pseudo-element so the gradient is
-     visible; inner content sits on the solid background. */
+  /* Crisp matte card */
   .prism-card {
     position: relative;
     background-color: var(--carbon);
-    background-image: var(--glass-solid);
-    box-shadow: var(--bevel), var(--shadow-lg);
-    border: 1px solid transparent;
-    background-clip: padding-box;
+    border: 1px solid var(--line);
+    box-shadow: none;
   }
 
-  .prism-card::before {
-    content: "";
-    position: absolute;
-    inset: -1px;
-    border-radius: inherit;
-    padding: 1px;
-    background: var(--prism-border);
-    -webkit-mask:
-      linear-gradient(#fff 0 0) content-box,
-      linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    pointer-events: none;
+  /* Touch Target Compliance — 48x48dp minimum */
+  .tap-target {
+    min-width: 48px;
+    min-height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   /* Session surface: the full-bleed background for ActiveWorkout.
@@ -286,12 +265,11 @@
     animation: obsidian-pulse-glow 2.4s var(--ease-in-out) infinite;
   }
 
-  /* Floating ambient orb: decorative, purely CSS, pointer-events-none.
+  /* Floating ambient orb: purely CSS radial gradients without expensive Gaussian blur passes.
      Used in session mode header and achievement cells. */
   .ambient-orb {
     position: absolute;
     border-radius: 50%;
-    filter: blur(24px);
     opacity: 0.35;
     pointer-events: none;
     transform: translateZ(0);
@@ -299,14 +277,53 @@
     animation: obsidian-float 8s var(--ease-in-out) infinite alternate;
   }
 
-  /* True glass. Reserved for elements over scrolling content — see the
-     note in tokens.css about WebView cost. */
+  /* True glass. For low-end device smoothness, mobile devices use sleek high-alpha dark carbon
+     rather than battery-draining multi-pass GPU Gaussian blur. Desktop/tablets use blur. */
   .glass {
-    background-color: var(--glass-tint);
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.6);
-    backdrop-filter: blur(var(--glass-blur)) saturate(1.6);
+    background-color: var(--carbon);
     border: 1px solid var(--line);
     box-shadow: var(--bevel);
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+  }
+
+  @supports (backdrop-filter: blur(1px)) {
+    @media (min-width: 1024px) {
+      .glass {
+        background-color: var(--glass-tint);
+        -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+        backdrop-filter: blur(var(--glass-blur)) saturate(1.4);
+      }
+    }
+  }
+
+  /* Native Mobile Glass & Squircle Dock Primitives */
+  .native-glass {
+    background-color: rgba(14, 18, 26, 0.84);
+    -webkit-backdrop-filter: blur(24px) saturate(190%);
+    backdrop-filter: blur(24px) saturate(190%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.12), 0 20px 48px -12px rgba(0, 0, 0, 0.75);
+  }
+
+  .hub-dock {
+    background: linear-gradient(180deg, rgba(22, 28, 40, 0.88) 0%, rgba(11, 14, 22, 0.96) 100%);
+    -webkit-backdrop-filter: blur(28px) saturate(200%);
+    backdrop-filter: blur(28px) saturate(200%);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow: 
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.16),
+      0 12px 36px -4px rgba(0, 0, 0, 0.8),
+      0 0 24px -6px rgba(0, 229, 160, 0.08);
+  }
+
+  .tap-squish {
+    transition: transform 140ms cubic-bezier(0.16, 1, 0.3, 1), opacity 140ms ease;
+  }
+  .tap-squish:active {
+    transform: scale(0.93);
+    opacity: 0.86;
   }
 
   /* A hairline that glows in an accent. Driven by `--glow`, set by the
@@ -319,27 +336,28 @@
       0 0 28px -6px color-mix(in srgb, var(--glow) 40%, transparent);
   }
 
-  /* Soft radial bloom behind hero numerals and active cards. Always
-     decorative and `pointer-events: none` at the call site. */
+  /* Soft radial bloom behind hero numerals and active cards. Naturally feathered
+     gradient without expensive filter: blur passes. */
   .bloom {
     background: radial-gradient(
       circle at center,
-      color-mix(in srgb, var(--glow) 46%, transparent) 0%,
-      transparent 68%
+      color-mix(in srgb, var(--glow) 38%, transparent) 0%,
+      transparent 70%
     );
-    filter: blur(36px);
   }
 
-  /* Fine grain over large flat fills. Dark gradients band visibly on
-     8-bit phone panels; a little noise dithers it away. */
-  .grain::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    opacity: 0.4;
-    mix-blend-mode: overlay;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");
+  /* Fine grain over large flat fills on desktop screens only.
+     Disabled on mobile devices to prevent GPU composite lag and shader overhead. */
+  @media (min-width: 1024px) {
+    .grain::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.25;
+      mix-blend-mode: overlay;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='1'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.25'/%3E%3C/svg%3E");
+    }
   }
 
   /* --- Exercise animation -------------------------------------------
@@ -374,6 +392,36 @@
     will-change: transform, opacity;
     transform: translateZ(0);
     backface-visibility: hidden;
+  }
+
+  /* Content visibility optimization for smooth 60/120fps scrolling on low-end devices */
+  .cv-auto {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 300px;
+  }
+
+  /* (Removed: a blanket `transform: translateZ(0)` on every img/video/
+     canvas/svg. It promoted every icon and thumbnail to its own GPU layer;
+     on a screen with hundreds of them that exhausts WebView GPU memory,
+     which presents as heavy lag and, eventually, a black-screen crash.) */
+}
+
+/* Modern Obsidian Glassmorphism with hardware acceleration & squircle borders */
+.native-glass,
+.glassmorphic {
+  background: rgba(9, 10, 15, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.rounded-squircle {
+  border-radius: 18px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
   }
 }
 
@@ -502,5 +550,20 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+
+/* ---------------------------------------------------------------------
+   Phone performance: no backdrop-filter below desktop width.
+   Backdrop blur re-samples everything behind the element on every frame.
+   With ~60 uses across the app that is the difference between 60fps and a
+   visibly hanging scroll on mid-range Android. Surfaces that used it are
+   already translucent-over-dark, so they stay readable without it.
+   --------------------------------------------------------------------- */
+@media (max-width: 1023px) {
+  *, *::before, *::after {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
   }
 }

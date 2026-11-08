@@ -102,10 +102,20 @@ export function generateApexNeuralWorkout(options: ProceduralWorkoutOptions): Ge
   // Shuffle candidates to ensure variety
   const shuffled = candidates.sort(() => 0.5 - Math.random());
   const safeDuration = Number(duration) || 15;
-  const exerciseCount = Math.min(6, Math.max(4, Math.round(safeDuration / 3)));
-  const selected = shuffled.slice(0, exerciseCount);
+  // Starter mode (3 minutes or less): three simple moves, one set each, short rests, about two minutes in total.
+  const quick = safeDuration <= 3;
+  const STARTER = ["Bodyweight Squats", "Classic Push-ups", "Glute Bridges"];
+  const exerciseCount = quick ? 3 : Math.min(6, Math.max(4, Math.round(safeDuration / 3)));
+  const starters = quick ? STARTER.map(n => candidates.find(c => c.name === n)).filter(Boolean) as typeof candidates : [];
+  const selected = quick && starters.length === 3 ? starters : shuffled.slice(0, exerciseCount);
 
-  const exercises: GeneratedExercise[] = selected.map((ex) => ({
+  const exercises: GeneratedExercise[] = selected.map((ex) => quick ? ({
+    ...ex,
+    reps: ex.reps ? Math.min(ex.reps, 8) : 0,
+    durationSeconds: ex.durationSeconds ? Math.min(ex.durationSeconds, 30) : 0,
+    restSeconds: 10,
+    sets: 1,
+  }) : ({
     ...ex,
     sets: fitnessLevel === "Advanced" ? 4 : fitnessLevel === "Intermediate" ? 3 : 2
   }));
@@ -115,9 +125,9 @@ export function generateApexNeuralWorkout(options: ProceduralWorkoutOptions): Ge
   const safeGoal = goal || "General Health";
 
   return {
-    workoutTitle: `${safeDuration}-Min ${safeTarget} Protocol`,
+    workoutTitle: quick ? "2-Minute Starter" : `${safeDuration}-Min ${safeTarget} Protocol`,
     workoutDescription: `Biomechanical protocol customized for ${safeLevel.toLowerCase()} conditioning targeting ${safeTarget.toLowerCase()} for ${safeGoal.toLowerCase()}.`,
-    totalDurationMinutes: safeDuration,
+    totalDurationMinutes: quick ? 2 : safeDuration,
     targetArea: safeTarget,
     equipmentNeeded: equipment && equipment.length > 0 ? equipment : ["Bodyweight"],
     exercises,

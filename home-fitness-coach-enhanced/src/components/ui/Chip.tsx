@@ -39,7 +39,6 @@ export function Chip({
     <motion.button
       type="button"
       onClick={onClick}
-      whileTap={{ scale: 0.94 }}
       transition={SPRING_SNAP}
       aria-pressed={active}
       className={[

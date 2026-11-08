@@ -1,0 +1,26 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /reels/{uid}/{file} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.size < 25 * 1024 * 1024
+        && (request.resource.contentType.matches('video/.*') || request.resource.contentType.matches('image/.*'));
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+    // Private-account reels: no client reads at all. The app gets a short-lived signed URL
+    // from the getReelUrl function after the server checks the follow relationship.
+    match /reels-private/{uid}/{file} {
+      allow read: if false;
+      allow write: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.size < 25 * 1024 * 1024
+        && (request.resource.contentType.matches('video/.*') || request.resource.contentType.matches('image/.*'));
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

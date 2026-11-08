@@ -62,11 +62,11 @@ export const EXERCISE_VIDEOS: Record<string, string> = {
   "glute bridge": "/videos/Glute Bridges .mp4",
 
   // 8. Mountain Climbers
-  "mountain": "/videos/Mountain Climbers .mp4",
-  "mountainclimber": "/videos/Mountain Climbers .mp4",
-  "mountain-climbers": "/videos/Mountain Climbers .mp4",
-  "mountain climbers": "/videos/Mountain Climbers .mp4",
-  "mountain climber": "/videos/Mountain Climbers .mp4",
+  "mountain": "/videos/Mountain Climbers.mp4",
+  "mountainclimber": "/videos/Mountain Climbers.mp4",
+  "mountain-climbers": "/videos/Mountain Climbers.mp4",
+  "mountain climbers": "/videos/Mountain Climbers.mp4",
+  "mountain climber": "/videos/Mountain Climbers.mp4",
 
   // 9. Chair Tricep Dips
   "dips": "/videos/Chair Tricep Dips .mp4",
@@ -77,11 +77,11 @@ export const EXERCISE_VIDEOS: Record<string, string> = {
   "tricep-dips": "/videos/Chair Tricep Dips .mp4",
 
   // 10. Jumping Jacks
-  "jacks": "/videos/Jumping Jacks .mp4",
-  "jumpingjack": "/videos/Jumping Jacks .mp4",
-  "jumping-jacks": "/videos/Jumping Jacks .mp4",
-  "jumping jacks": "/videos/Jumping Jacks .mp4",
-  "jumping jack": "/videos/Jumping Jacks .mp4",
+  "jacks": "/videos/Jumping Jacks.mp4",
+  "jumpingjack": "/videos/Jumping Jacks.mp4",
+  "jumping-jacks": "/videos/Jumping Jacks.mp4",
+  "jumping jacks": "/videos/Jumping Jacks.mp4",
+  "jumping jack": "/videos/Jumping Jacks.mp4",
 
   // 11. Bicycle Crunches
   "bicycle": "/videos/Bicycle Crunches.mp4",
@@ -174,11 +174,18 @@ export const EXERCISE_VIDEOS: Record<string, string> = {
   "pike pushups": "/videos/Pike push-ups.mp4",
   "pike push up": "/videos/Pike push-ups.mp4",
 
-  // 25. Shoulder Taps
+  // 25. Shoulder Taps & Scapular Glides
   "shoulder-taps": "/videos/Shoulder Taps.mp4",
   "shouldertap": "/videos/Shoulder Taps.mp4",
   "shoulder taps": "/videos/Shoulder Taps.mp4",
   "shoulder tap": "/videos/Shoulder Taps.mp4",
+  "isometric-hollow-scapular-glide": "/videos/Shoulder Taps.mp4",
+  "isometric hollow scapular glide": "/videos/Shoulder Taps.mp4",
+  "scapular-incline-matrix": "/videos/Shoulder Taps.mp4",
+  "scapular incline matrix": "/videos/Shoulder Taps.mp4",
+  "scapular-glide": "/videos/Shoulder Taps.mp4",
+  "scapular glide": "/videos/Shoulder Taps.mp4",
+  "scapular": "/videos/Shoulder Taps.mp4",
 
   // 26. Dumbbell Bicep Curl
   "bicep-curl": "/videos/Dumbell Bicep Curls.mp4",
@@ -236,6 +243,9 @@ export const EXERCISE_VIDEOS: Record<string, string> = {
   "single-leg-deadlift": "/videos/Single Leg Deadlift.mp4",
   "single-leg deadlift": "/videos/Single Leg Deadlift.mp4",
   "single leg deadlift": "/videos/Single Leg Deadlift.mp4",
+  "singleleg": "/videos/Single Leg Deadlift.mp4",
+  "single-leg": "/videos/Single Leg Deadlift.mp4",
+  "singlelegdeadlift": "/videos/Single Leg Deadlift.mp4",
   "deadlift": "/videos/Single Leg Deadlift.mp4",
 
   // 34. World's Greatest Stretch
@@ -273,6 +283,90 @@ export const EXERCISE_VIDEOS: Record<string, string> = {
   "childspose": "/videos/Child's Pose.mp4",
   "child's pose": "/videos/Child's Pose.mp4",
   "childs pose": "/videos/Child's Pose.mp4",
+
+  // 40. High Knees
+  "high-knees": "/videos/highknees.mp4",
+  "highknees": "/videos/highknees.mp4",
+  "high knees": "/videos/highknees.mp4",
+
+  // 41. Wide-Grip Push-up
+  "wide-grip-pushup": "/videos/widepushup.mp4",
+  "wide-grip-push-up": "/videos/widepushup.mp4",
+  "wide-pushup": "/videos/widepushup.mp4",
+  "widepushup": "/videos/widepushup.mp4",
+  "wide grip push up": "/videos/widepushup.mp4",
+  "wide-grip push-ups": "/videos/widepushup.mp4",
+  "wide grip push-ups": "/videos/widepushup.mp4",
+
+  // 42. Burpee Push-up
+  "burpee-pushup": "/videos/burpeepushup.mp4",
+  "burpeepushup": "/videos/burpeepushup.mp4",
+  "burpee push up": "/videos/burpeepushup.mp4",
+  "burpee-push-up": "/videos/burpeepushup.mp4",
+  "burpee push-ups": "/videos/burpeepushup.mp4",
+
+  // 43. Standing Knee Raises
+  "standing-knee-raises": "/videos/standingkneeraises.mp4",
+  "standingkneeraises": "/videos/standingkneeraises.mp4",
+  "standing-knee-raise": "/videos/standingkneeraises.mp4",
+  "standing knee raises": "/videos/standingkneeraises.mp4",
+  "stnading knees raises": "/videos/standingkneeraises.mp4",
+
+  // 44. Hamstring Stretch (Left)
+  "hamstring-stretch-left": "/videos/hamstringstretchleft.mp4",
+  "hamstringstretchleft": "/videos/hamstringstretchleft.mp4",
+  "hamstring stretch left": "/videos/hamstringstretchleft.mp4",
+  "hamstring stretch left ": "/videos/hamstringstretchleft.mp4",
+
+  // 45. Hamstring Stretch (Right)
+  "hamstring-stretch-right": "/videos/hamstringstretchright.mp4",
+  "hamstringstretchright": "/videos/hamstringstretchright.mp4",
+  "hamstring stretch right": "/videos/hamstringstretchright.mp4",
+  "ham string stretch right": "/videos/hamstringstretchright.mp4",
+  "hamstring stretch right ": "/videos/hamstringstretchright.mp4",
+
+  // 46. 90/90 Hip Stretch (Left)
+  "90-90-hip-stretch-left": "/videos/hipstretch9090left.mp4",
+  "90-90-hip-left": "/videos/hipstretch9090left.mp4",
+  "90_90-hip-stretch-left": "/videos/hipstretch9090left.mp4",
+  "90_90 hip stretch left": "/videos/hipstretch9090left.mp4",
+  "90_90 hip left": "/videos/hipstretch9090left.mp4",
+  "hipstretch9090left": "/videos/hipstretch9090left.mp4",
+
+  // 47. 90/90 Hip Stretch (Right)
+  "90-90-hip-stretch-right": "/videos/hipstretch9090right.mp4",
+  "90-90-hip-right": "/videos/hipstretch9090right.mp4",
+  "90_90-hip-stretch-right": "/videos/hipstretch9090right.mp4",
+  "90_90 hip stretch right": "/videos/hipstretch9090right.mp4",
+  "90_90 hip right": "/videos/hipstretch9090right.mp4",
+  "hipstretch9090right": "/videos/hipstretch9090right.mp4",
+
+  // 48. Arm Circles
+  "arm-circles": "/videos/armcircles.mp4",
+  "armcircles": "/videos/armcircles.mp4",
+  "arm circles": "/videos/armcircles.mp4",
+
+  // 49. Arnold Press
+  "arnold-press": "/videos/arnoldpress.mp4",
+  "arnoldpress": "/videos/arnoldpress.mp4",
+  "arnold press": "/videos/arnoldpress.mp4",
+  "arnold press ": "/videos/arnoldpress.mp4",
+
+  // 50. Jump Rope
+  "jump-rope": "/videos/jumprope.mp4",
+  "jumprope": "/videos/jumprope.mp4",
+  "jump rope": "/videos/jumprope.mp4",
+
+  // 51. Box Jump
+  "box-jump": "/videos/boxjump.mp4",
+  "boxjump": "/videos/boxjump.mp4",
+  "box jump": "/videos/boxjump.mp4",
+  "box  jump": "/videos/boxjump.mp4",
+
+  // 52. Neck Rolls
+  "neck-rolls": "/videos/neckrolls.mp4",
+  "neckrolls": "/videos/neckrolls.mp4",
+  "neck rolls": "/videos/neckrolls.mp4",
 };
 
 /**
@@ -289,7 +383,7 @@ export function getExerciseVideo(
   nameFallback?: string | null
 ): string | null {
   if (explicitUrl && explicitUrl.trim().length > 0) {
-    return explicitUrl;
+    return encodeURI(explicitUrl.trim());
   }
   if (!exerciseIdOrName && !nameFallback) return null;
 
@@ -301,25 +395,25 @@ export function getExerciseVideo(
 
     // 1. Direct match
     if (EXERCISE_VIDEOS[key]) {
-      return EXERCISE_VIDEOS[key];
+      return encodeURI(EXERCISE_VIDEOS[key]);
     }
 
     // 2. Lowercase trimmed match
     const lower = key.toLowerCase();
     if (EXERCISE_VIDEOS[lower]) {
-      return EXERCISE_VIDEOS[lower];
+      return encodeURI(EXERCISE_VIDEOS[lower]);
     }
 
     // 3. Slugified match (hyphenated)
     const slug = lower.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     if (EXERCISE_VIDEOS[slug]) {
-      return EXERCISE_VIDEOS[slug];
+      return encodeURI(EXERCISE_VIDEOS[slug]);
     }
 
     // 4. Compact match (no hyphens)
     const compact = slug.replace(/-/g, "");
     if (EXERCISE_VIDEOS[compact]) {
-      return EXERCISE_VIDEOS[compact];
+      return encodeURI(EXERCISE_VIDEOS[compact]);
     }
 
     // 5. Check via Obsidian motion resolver
@@ -328,11 +422,15 @@ export function getExerciseVideo(
       if (match?.motion?.id) {
         const motionId = match.motion.id;
         if (EXERCISE_VIDEOS[motionId]) {
-          return EXERCISE_VIDEOS[motionId];
+          return encodeURI(EXERCISE_VIDEOS[motionId]);
         }
         const motionSlug = motionId.toLowerCase().replace(/[^a-z0-9]+/g, "-");
         if (EXERCISE_VIDEOS[motionSlug]) {
-          return EXERCISE_VIDEOS[motionSlug];
+          return encodeURI(EXERCISE_VIDEOS[motionSlug]);
+        }
+        const motionCompact = motionSlug.replace(/-/g, "");
+        if (EXERCISE_VIDEOS[motionCompact]) {
+          return encodeURI(EXERCISE_VIDEOS[motionCompact]);
         }
       }
     } catch {

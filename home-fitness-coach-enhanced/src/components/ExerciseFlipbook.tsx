@@ -1,16 +1,14 @@
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { DemoGender, DemoTone, PhotoSet } from "../lib/exercisePhotos.generated";
 import { usePingPongFrame } from "../lib/usePingPongFrame";
 import { accent, type Accent } from "../design/accents";
-import { getExerciseVideo } from "../lib/exerciseVideos";
 
 export interface ExerciseFlipbookProps {
   set: PhotoSet;
-  gender: DemoGender;
-  /** Which photographic model. Named `model`, not `tone`, because `tone`
-   *  means accent colour everywhere else in this codebase. */
-  model: DemoTone;
+  gender?: DemoGender;
+  /** Which photographic model. */
+  model?: DemoTone;
   /** Caption text — the exercise's own name. */
   label?: string;
   cue?: string;
@@ -19,12 +17,6 @@ export interface ExerciseFlipbookProps {
   bare?: boolean;
   /**
    * Show the signature frame and nothing else.
-   *
-   * The frame that identifies a movement is a specific one — jacks at full
-   * spread with the arms overhead, the squat at its lowest — not whatever
-   * frame a loop happens to be on when you scroll past. Lists and grids
-   * want recognition, so they get that frame; only a demo the user has
-   * actually opened runs.
    */
   still?: boolean;
   /** Freeze on the current frame — wired to the session's pause state. */
@@ -35,34 +27,13 @@ export interface ExerciseFlipbookProps {
 }
 
 /**
- * The photographic exercise demo: a short burst of real frames through one
- * rep, cross-dissolved in a loop.
- *
- * A real photograph of a real person beats anything drawn for showing what
- * a movement looks like, which is the entire job here. `ExerciseAnimation`
- * covers everything that has no photography — 18 of the 55 movements, plus
- * every exercise name the AI generator invents.
- *
- * ── Tempo ────────────────────────────────────────────────────────────
- * Frames hold for 1.1s with a 0.85s dissolve, so one frame is always
- * fading into the next rather than cutting. Fast enough to read as motion,
- * slow enough to actually look at the form. Holds (plank, wall-sit) have
- * no rep cycle to show, so they breathe on a single frame instead of
- * pretending.
- *
- * ── Fit ──────────────────────────────────────────────────────────────
- * The photography is not one shape: a push-up is shot 3:2 landscape
- * because the body is horizontal, a jumping jack 2:3 portrait because it
- * is vertical. Cropping either to fill discards a third to two thirds of
- * the frame, and what it discards is the ends of the body — the hands, the
- * heels, the depth of the squat. So a large demo contains the whole frame
- * and fills the card with a blurred copy of itself; a small thumbnail,
- * where the job is telling one row from the next, crops.
+ * The photographic exercise demo: a smooth looping sequence of frames
+ * from the assets folder through one rep, cross-dissolved in a loop.
  */
 export default function ExerciseFlipbook({
   set,
-  gender,
-  model,
+  gender = "male",
+  model = "white",
   label,
   cue,
   size = 56,
@@ -78,30 +49,10 @@ export default function ExerciseFlipbook({
   const rootRef = useRef<HTMLDivElement>(null);
   const [onScreen, setOnScreen] = useState(false);
 
-  const videoSrc = useMemo(
-    () => (!still && label ? getExerciseVideo(label) : null),
-    [still, label]
-  );
-  const [videoError, setVideoError] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-
   const frames = pickFrames(set, gender, model);
   const frozen = paused || still || !!reduced;
   const showcase = (fill || bare || size >= 120) && !still;
   const a = accent(tone);
-
-  useEffect(() => {
-    setVideoError(false);
-  }, [videoSrc]);
-
-  useEffect(() => {
-    if (!videoRef.current) return;
-    if (frozen) {
-      videoRef.current.pause();
-    } else {
-      videoRef.current.play().catch(() => {});
-    }
-  }, [frozen]);
 
   useEffect(() => {
     const el = rootRef.current;
@@ -113,19 +64,18 @@ export default function ExerciseFlipbook({
     return () => io.disconnect();
   }, []);
 
-  const interval = set.isHold ? 2600 : 1100;
+  const interval = set.isHold ? 2600 : 1000;
   const { index } = usePingPongFrame(frames.length, interval, {
     paused: frozen || !onScreen,
   });
 
-  const idx = frozen ? Math.min(set.signature, frames.length - 1) : index;
+  const idx = frozen ? Math.min(set.signature, Math.max(0, frames.length - 1)) : index;
   const frame = frames[idx] ?? frames[0];
-  const panRight = idx % 2 === 0;
 
   const stage = (
     <div className="absolute inset-0 overflow-hidden">
-      {/* Matte: blurred background copy only for large active showcase cards, never for still thumbnails */}
-      {showcase && (
+      {/* Matte: blurred background copy for large showcase cards */}
+      {showcase && frame && (
         <img
           src={frame}
           alt=""
@@ -134,7 +84,7 @@ export default function ExerciseFlipbook({
           decoding="async"
           draggable={false}
           className="absolute inset-0 h-full w-full scale-110 select-none object-cover"
-          style={{ filter: "blur(12px) saturate(1.2)", opacity: 0.25 }}
+          style={{ filter: "blur(14px) saturate(1.2)", opacity: 0.3 }}
         />
       )}
 
@@ -149,22 +99,8 @@ export default function ExerciseFlipbook({
             showcase ? "object-contain" : "object-cover"
           }`}
         />
-      ) : !still && videoSrc && !videoError ? (
-        <video
-          ref={videoRef}
-          key={videoSrc}
-          src={videoSrc}
-          autoPlay
-          loop
-          muted
-          playsInline
-          onError={() => setVideoError(true)}
-          className={`absolute inset-0 h-full w-full select-none ${
-            showcase ? "object-contain" : "object-cover"
-          }`}
-        />
       ) : (
-        <AnimatePresence>
+        <AnimatePresence mode="popLayout">
           <motion.img
             key={frame}
             src={frame}
@@ -172,34 +108,16 @@ export default function ExerciseFlipbook({
             loading="lazy"
             decoding="async"
             draggable={false}
-            initial={frozen ? false : { opacity: 0, scale: 1.05, x: panRight ? -4 : 4 }}
-            animate={
-              frozen
-                ? { opacity: 1, scale: 1, x: 0 }
-                : {
-                    opacity: 1,
-                    scale: set.isHold ? [1.02, 1.06, 1.02] : [1, 1.05],
-                    x: set.isHold ? 0 : panRight ? [0, 5] : [0, -5],
-                  }
-            }
-            exit={{ opacity: 0, transition: { duration: 0.85, ease: [0.4, 0, 0.2, 1] } }}
-            transition={
-              frozen
-                ? { duration: 0 }
-                : {
-                    opacity: { duration: 0.85, ease: [0.4, 0, 0.2, 1] },
-                    scale: {
-                      duration: set.isHold ? 2.6 : interval / 1000,
-                      repeat: set.isHold ? Infinity : 0,
-                      ease: "easeInOut",
-                    },
-                    x: {
-                      duration: set.isHold ? 2.6 : interval / 1000,
-                      repeat: set.isHold ? Infinity : 0,
-                      ease: "easeInOut",
-                    },
-                  }
-            }
+            initial={frozen ? false : { opacity: 0.3, scale: 1.02 }}
+            animate={{
+              opacity: 1,
+              scale: set.isHold ? [1.01, 1.04, 1.01] : 1,
+            }}
+            exit={{ opacity: 0.2, transition: { duration: 0.3, ease: "easeOut" } }}
+            transition={{
+              opacity: { duration: 0.35, ease: "easeInOut" },
+              scale: { duration: set.isHold ? 2.6 : 0.8, ease: "easeInOut" },
+            }}
             className={`absolute inset-0 h-full w-full select-none object-center will-change-transform ${
               showcase ? "object-contain" : "object-cover"
             }`}
@@ -207,9 +125,7 @@ export default function ExerciseFlipbook({
         </AnimatePresence>
       )}
 
-      {/* Shallow scrim. Heavier reads fine on a 250px hero and swallows the
-          legs on a 44px thumbnail, which is the part of a squat worth
-          seeing. */}
+      {/* Shallow vignette scrim */}
       <div
         className="pointer-events-none absolute inset-0"
         style={{
@@ -218,17 +134,16 @@ export default function ExerciseFlipbook({
         }}
       />
 
-      {/* Frame pips — which step of the movement is showing. Only where
-          the demo is actually running and large enough to read. */}
+      {/* Frame pips — which step of the movement is showing */}
       {showcase && !frozen && frames.length > 1 && (
-        <div className="pointer-events-none absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5">
+        <div className="pointer-events-none absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5 z-20">
           {frames.map((_, i) => (
             <span
               key={i}
               className="h-1.5 rounded-full transition-all duration-300"
               style={{
                 width: i === idx ? 16 : 6,
-                background: i === idx ? a.color : "var(--line-strong)",
+                background: i === idx ? a.color : "rgba(255, 255, 255, 0.3)",
               }}
             />
           ))}
@@ -238,10 +153,6 @@ export default function ExerciseFlipbook({
   );
 
   if (bare) {
-    // Exactly one position utility. Bare callers position this themselves,
-    // and emitting both `relative` and `absolute` lets stylesheet order
-    // decide which wins — when `relative` won, the wrapper held nothing but
-    // absolutely positioned children and collapsed to zero height.
     return (
       <div ref={rootRef} className={`overflow-hidden ${className}`}>
         {stage}
@@ -272,7 +183,7 @@ export default function ExerciseFlipbook({
           <p className="truncate text-[11px] font-bold" style={{ color: a.color }}>
             {label}
           </p>
-          {cue && <p className="truncate text-[10px] text-ink-3">{cue}</p>}
+          {cue && <p className="truncate text-[11px] text-ink-3">{cue}</p>}
         </div>
       )}
     </div>
@@ -280,25 +191,43 @@ export default function ExerciseFlipbook({
 }
 
 /**
- * The frames for this gender and tone, or an empty list.
- *
- * Falls back across TONE but never across GENDER. Every photograph in the
- * app is currently of a male model, so a cross-gender fallback would mean
- * selecting "female" silently showed a man — which is exactly the bug that
- * made the setting meaningless in the first place. Returning nothing lets
- * the caller fall through to the drawn figure, which does honour the
- * setting.
+ * Returns the frame images for this exercise set.
+ * Supports cross-gender and cross-tone fallback so exercises with animations
+ * in the assets folder always display their frames.
  */
 export function pickFrames(
   set: PhotoSet,
-  gender: DemoGender,
-  model: DemoTone,
+  gender: DemoGender = "male",
+  model: DemoTone = "white",
 ): string[] {
-  const other: DemoTone = model === "black" ? "white" : "black";
-  return set.frames[`${gender}:${model}`] ?? set.frames[`${gender}:${other}`] ?? [];
+  if (!set || !set.frames) return [];
+  const otherModel: DemoTone = model === "black" ? "white" : "black";
+  const g: DemoGender = gender === "female" ? "female" : "male";
+
+  // 1. Requested gender + model
+  if (set.frames[`${g}:${model}`]?.length) {
+    return set.frames[`${g}:${model}`]!;
+  }
+  // 2. Requested gender + other model
+  if (set.frames[`${g}:${otherModel}`]?.length) {
+    return set.frames[`${g}:${otherModel}`]!;
+  }
+  // 3. Fall back across gender (e.g. female selection when only male uploaded)
+  if (set.frames[`male:${model}`]?.length) {
+    return set.frames[`male:${model}`]!;
+  }
+  if (set.frames[`male:${otherModel}`]?.length) {
+    return set.frames[`male:${otherModel}`]!;
+  }
+  // 4. Any available frames in the set
+  for (const list of Object.values(set.frames)) {
+    if (list && list.length > 0) return list;
+  }
+  return [];
 }
 
-/** Whether this set has any photography for the given gender. */
-export function hasPhotosFor(set: PhotoSet, gender: DemoGender): boolean {
-  return pickFrames(set, gender, "white").length > 0;
+/** Whether this set has any animation frames available */
+export function hasPhotosFor(set: PhotoSet, _gender?: DemoGender): boolean {
+  if (!set || !set.frames) return false;
+  return Object.values(set.frames).some((list) => Array.isArray(list) && list.length > 0);
 }

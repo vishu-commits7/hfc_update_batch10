@@ -1,3 +1,4 @@
+import { shareContent } from "../lib/nativeBridge";
 import { useState } from "react";
 import {
   X,
@@ -20,6 +21,7 @@ import {
   toggleFollowCreator,
 } from "../lib/socialFeed";
 import { tapFeedback } from "../lib/haptics";
+import OverlayPortal from "./ui/OverlayPortal";
 
 interface CreatorProfileModalProps {
   creator: Creator;
@@ -29,7 +31,7 @@ interface CreatorProfileModalProps {
   onOpenChat?: (creatorId: string) => void;
 }
 
-export default function CreatorProfileModal({
+function CreatorProfileModalInner({
   creator,
   onClose,
   onStartLiveChallenge,
@@ -41,7 +43,7 @@ export default function CreatorProfileModal({
   const [previewReel, setPreviewReel] = useState<CreatorReel | null>(null);
 
   const { newReels, oldReels } = getReelsForCreator(creator.id);
-  const displayFollowers = creator.followers + (isFollowing ? 1 : 0);
+  const displayFollowers = isFollowing ? 1 : 0;
 
   const handleFollowToggle = () => {
     tapFeedback();
@@ -56,7 +58,7 @@ export default function CreatorProfileModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/85 backdrop-blur-md p-0 sm:p-4 animate-fade-in select-none">
+    <div className="fixed inset-0 z-[255] flex items-center justify-center bg-black/85 backdrop-blur-md p-0 sm:p-4 animate-fade-in select-none">
       <div className="relative h-full w-full max-w-[480px] bg-zinc-950 flex flex-col justify-between overflow-hidden sm:rounded-[36px] border sm:border-white/15 shadow-2xl">
         {/* Top Navigation Bar */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-black/60 backdrop-blur sticky top-0 z-20">
@@ -79,12 +81,10 @@ export default function CreatorProfileModal({
           <button
             onClick={() => {
               tapFeedback();
-              if (navigator.share) {
-                navigator.share({
-                  title: `${creator.name} on Kinetic Fitness`,
-                  url: window.location.href,
-                }).catch(() => {});
-              }
+              void shareContent({
+                title: `${creator.name} on Apex Pulse`,
+                text: `Check out ${creator.name} on Apex Pulse.`,
+              });
             }}
             className="p-1.5 rounded-full bg-white/10 text-white/80 hover:text-white"
             aria-label="Share creator profile"
@@ -112,7 +112,7 @@ export default function CreatorProfileModal({
                     />
                   </div>
                 </div>
-                <div className="absolute -bottom-1 -right-1 rounded-full bg-black/80 px-1.5 py-0.5 text-[9px] font-black text-cyan-300 border border-cyan-400/40 backdrop-blur">
+                <div className="absolute -bottom-1 -right-1 rounded-full bg-black/80 px-1.5 py-0.5 text-[11px] font-black text-cyan-300 border border-cyan-400/40 backdrop-blur">
                   {creator.ratingElo} ELO
                 </div>
               </div>
@@ -121,15 +121,15 @@ export default function CreatorProfileModal({
               <div className="flex-1 flex justify-around items-center text-center">
                 <div>
                   <p className="text-base font-black text-white">{newReels.length + oldReels.length}</p>
-                  <p className="text-[10px] uppercase font-bold text-white/50">Reels</p>
+                  <p className="text-[11px] uppercase font-bold text-white/50">Reels</p>
                 </div>
                 <div>
                   <p className="text-base font-black text-white">{formatNumber(displayFollowers)}</p>
-                  <p className="text-[10px] uppercase font-bold text-white/50">Followers</p>
+                  <p className="text-[11px] uppercase font-bold text-white/50">Followers</p>
                 </div>
                 <div>
                   <p className="text-base font-black text-white">{creator.following}</p>
-                  <p className="text-[10px] uppercase font-bold text-white/50">Following</p>
+                  <p className="text-[11px] uppercase font-bold text-white/50">Following</p>
                 </div>
               </div>
             </div>
@@ -138,7 +138,7 @@ export default function CreatorProfileModal({
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-black text-white">{creator.name}</h2>
-                <span className="rounded-full bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 text-[10px] font-black text-cyan-300">
+                <span className="rounded-full bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 text-[11px] font-black text-cyan-300">
                   {creator.tier}
                 </span>
               </div>
@@ -148,14 +148,14 @@ export default function CreatorProfileModal({
 
               {/* Specialty & Biomechanics Card */}
               <div className="rounded-2xl bg-white/[0.04] border border-white/10 p-3 mt-2 space-y-1">
-                <div className="flex items-center gap-1.5 text-cyan-400 text-[10px] font-black uppercase tracking-wider">
+                <div className="flex items-center gap-1.5 text-cyan-400 text-[11px] font-black uppercase tracking-wider">
                   <Zap className="h-3 w-3" /> Signature Specialty: {creator.specialtyExercise}
                 </div>
                 <p className="text-[11px] text-white/80 font-medium">
                   Target: {creator.targetMuscle}
                 </p>
-                <p className="text-[10px] text-white/50 font-normal leading-normal">
-                  🧬 {creator.scientificFocus}
+                <p className="text-xs text-white/50 font-normal leading-relaxed">
+                  {creator.scientificFocus}
                 </p>
               </div>
             </div>
@@ -175,6 +175,7 @@ export default function CreatorProfileModal({
                   {isFollowing ? "Following" : "+ Follow"}
                 </button>
 
+                {onOpenChat && (
                 <button
                   type="button"
                   onClick={() => {
@@ -186,6 +187,7 @@ export default function CreatorProfileModal({
                   <MessageCircle className="h-4 w-4 text-cyan-400" />
                   <span>Message</span>
                 </button>
+                )}
               </div>
 
               {/* LIVE CHALLENGE BUTTON */}
@@ -198,7 +200,7 @@ export default function CreatorProfileModal({
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-xs font-black bg-gradient-to-r from-amber-400 via-rose-500 to-amber-500 text-slate-950 shadow-lg shadow-rose-500/25 active:scale-95 transition hover:brightness-110 uppercase tracking-wider"
               >
                 <Swords className="h-4 w-4 fill-slate-950" />
-                <span>⚡ Live 1v1 Camera Challenge</span>
+                <span>Challenge in Arena</span>
               </button>
             </div>
           </div>
@@ -271,7 +273,7 @@ export default function CreatorProfileModal({
                   </div>
 
                   {/* Bottom Stats & Publish Date Overlay */}
-                  <div className="absolute inset-x-0 bottom-0 p-1.5 bg-gradient-to-t from-black/90 via-black/50 to-transparent flex flex-col justify-end text-[9px] text-white">
+                  <div className="absolute inset-x-0 bottom-0 p-1.5 bg-gradient-to-t from-black/90 via-black/50 to-transparent flex flex-col justify-end text-[11px] text-white">
                     <div className="flex items-center gap-1 font-bold">
                       <Eye className="h-2.5 w-2.5" />
                       <span>{reel.views}</span>
@@ -324,7 +326,7 @@ export default function CreatorProfileModal({
             <div className="p-4 bg-zinc-950 border-t border-white/10 flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-black text-white">{previewReel.caption}</p>
-                <p className="text-[10px] text-cyan-300 mt-0.5">
+                <p className="text-[11px] text-cyan-300 mt-0.5">
                   Published: {previewReel.publishedDate}
                 </p>
               </div>
@@ -343,5 +345,13 @@ export default function CreatorProfileModal({
         )}
       </div>
     </div>
+  );
+}
+
+export default function CreatorProfileModal(props: CreatorProfileModalProps) {
+  return (
+    <OverlayPortal>
+      <CreatorProfileModalInner {...props} />
+    </OverlayPortal>
   );
 }

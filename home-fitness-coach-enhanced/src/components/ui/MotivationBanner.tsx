@@ -185,7 +185,7 @@ export function MotivationBanner({ className = "" }: MotivationBannerProps) {
                 {quote.text}
               </p>
               <p
-                className="mt-1 text-[10px] font-bold"
+                className="mt-1 text-[11px] font-bold"
                 style={{ color: a.color }}
               >
                 — {quote.author}
@@ -199,7 +199,6 @@ export function MotivationBanner({ className = "" }: MotivationBannerProps) {
           <motion.button
             type="button"
             onClick={handleNext}
-            whileTap={{ scale: 0.88 }}
             transition={SPRING_SNAP}
             aria-label="Next quote"
             className="grid h-7 w-7 place-items-center rounded-full"
@@ -212,7 +211,6 @@ export function MotivationBanner({ className = "" }: MotivationBannerProps) {
           <motion.button
             type="button"
             onClick={handleDismiss}
-            whileTap={{ scale: 0.88 }}
             transition={SPRING_SNAP}
             aria-label="Dismiss quote"
             className="grid h-6 w-6 place-items-center rounded-full border border-line text-ink-4 hover:text-ink-2"

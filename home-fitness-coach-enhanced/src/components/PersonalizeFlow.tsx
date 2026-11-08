@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence, type Transition, type Variants } from "motion/react";
 import {
   Mars, NonBinary, ChevronRight, ChevronLeft, X, Sparkles,
   Ruler, Weight, Cake, Check, Minus, Plus, SkipForward
@@ -41,17 +41,17 @@ function OrbField() {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
       <motion.div
-        className="absolute -left-24 -top-24 h-72 w-72 rounded-full bg-lime-400/20 blur-[90px]"
+        className="absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[radial-gradient(closest-side,rgba(163,230,53,0.22),transparent)]"
         animate={{ x: [0, 40, -10, 0], y: [0, 30, -20, 0] }}
         transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
-        className="absolute -right-20 top-10 h-64 w-64 rounded-full bg-blue-500/25 blur-[90px]"
+        className="absolute -right-20 top-10 h-64 w-64 rounded-full bg-[radial-gradient(closest-side,rgba(59,130,246,0.25),transparent)]"
         animate={{ x: [0, -30, 20, 0], y: [0, -25, 15, 0] }}
         transition={{ duration: 17, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
-        className="absolute -bottom-24 left-1/4 h-72 w-72 rounded-full bg-fuchsia-500/10 blur-[100px]"
+        className="absolute -bottom-24 left-1/4 h-72 w-72 rounded-full bg-[radial-gradient(closest-side,rgba(217,70,239,0.12),transparent)]"
         animate={{ x: [0, 25, -25, 0], y: [0, -15, 10, 0] }}
         transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }}
       />
@@ -63,13 +63,13 @@ function OrbField() {
   );
 }
 
-const stepVariants = {
-  enter: (dir: number) => ({ x: dir > 0 ? 48 : -48, opacity: 0, scale: 0.97 }),
-  center: { x: 0, opacity: 1, scale: 1 },
-  exit: (dir: number) => ({ x: dir > 0 ? -48 : 48, opacity: 0, scale: 0.97 }),
+const stepVariants: Variants = {
+  enter: (dir: number) => ({ x: dir > 0 ? 28 : -28, opacity: 0, scale: 0.98 }),
+  center: { x: 0, opacity: 1, scale: 1, transition: { duration: 0.18, ease: "easeOut" as const } },
+  exit: (dir: number) => ({ x: dir > 0 ? -28 : 28, opacity: 0, scale: 0.98, transition: { duration: 0.12, ease: "easeIn" as const } }),
 };
 
-const springTransition = { type: "spring" as const, stiffness: 340, damping: 32, mass: 0.9 };
+const springTransition: Transition = { duration: 0.2, ease: "easeOut" as const };
 
 /** A rotating conic-gradient ring behind an avatar circle — the classic
  *  "live/selected" halo treatment, sped up and brightened once active. */
@@ -105,7 +105,6 @@ function GenderCard({
   return (
     <motion.button
       onClick={onClick}
-      whileTap={{ scale: 0.94 }}
       whileHover={{ y: -3 }}
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
@@ -180,7 +179,6 @@ function NumberStepper({
 
       <div className="flex w-full items-center gap-4">
         <motion.button
-          whileTap={{ scale: 0.9 }}
           onClick={() => onChange(Math.max(min, value - step))}
           aria-label="Decrease"
           className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-white hover:bg-white/15"
@@ -199,7 +197,6 @@ function NumberStepper({
         />
 
         <motion.button
-          whileTap={{ scale: 0.9 }}
           onClick={() => onChange(Math.min(max, value + step))}
           aria-label="Increase"
           className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-white hover:bg-white/15"
@@ -322,7 +319,7 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
             </button>
           )}
           {questionPosition >= 0 && (
-            <button onClick={() => go(1)} className="flex shrink-0 items-center gap-1 rounded-full bg-white/5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-white/40 hover:text-white/70">
+            <button onClick={() => go(1)} className="flex shrink-0 items-center gap-1 rounded-full bg-white/5 px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-white/40 hover:text-white/70">
               Skip <SkipForward className="h-3 w-3" />
             </button>
           )}
@@ -352,7 +349,7 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
                     Four quick questions — gender, age, height and weight — help the AI coach tailor a plan to you. Totally optional.
                   </p>
                   <div className="mt-8 space-y-3">
-                    <motion.button whileTap={{ scale: 0.97 }} onClick={() => go(1)} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-lime-300 py-4 text-sm font-black text-slate-950">
+                    <motion.button onClick={() => go(1)} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-lime-300 py-4 text-sm font-black text-slate-950">
                       <Sparkles className="h-4 w-4" /> Personalize with AI
                     </motion.button>
                     <button onClick={onSkip} className="w-full rounded-2xl border border-white/10 py-4 text-sm font-bold text-white/60 hover:bg-white/5">
@@ -364,7 +361,7 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
 
               {step === "gender" && (
                 <div>
-                  <p className="text-center text-[10px] font-black uppercase tracking-[0.2em] text-lime-300">Question {questionPosition + 1} of {questionSteps.length}</p>
+                  <p className="text-center text-[11px] font-black uppercase tracking-[0.2em] text-lime-300">Question {questionPosition + 1} of {questionSteps.length}</p>
                   <h2 className="font-display mt-3 text-center text-2xl font-black text-white">What's your gender?</h2>
                   <p className="mt-1.5 text-center text-xs text-white/40">Used only to fine-tune calorie & recovery estimates.</p>
                   <div className="mt-8 flex justify-center gap-4">
@@ -372,7 +369,6 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
                     <GenderCard active={gender === "other"} onClick={() => setGender("other")} icon={NonBinary} label="Prefer not to say" glow="bg-violet-500/20" ringColors="#a78bfa, #818cf8, #c084fc, #a78bfa" />
                   </div>
                   <motion.button
-                    whileTap={{ scale: 0.97 }}
                     disabled={!gender}
                     onClick={acceptAndGo}
                     className="mt-8 flex w-full items-center justify-center gap-2 rounded-2xl bg-white py-4 text-sm font-black text-slate-950 disabled:opacity-30"
@@ -384,13 +380,13 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
 
               {step === "age" && (
                 <div>
-                  <p className="text-center text-[10px] font-black uppercase tracking-[0.2em] text-lime-300">Question {questionPosition + 1} of {questionSteps.length}</p>
+                  <p className="text-center text-[11px] font-black uppercase tracking-[0.2em] text-lime-300">Question {questionPosition + 1} of {questionSteps.length}</p>
                   <div className="mx-auto mt-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-lime-300"><Cake className="h-5 w-5" /></div>
                   <h2 className="font-display mt-4 text-center text-2xl font-black text-white">How old are you?</h2>
                   <div className="mt-8">
                     <NumberStepper value={age} onChange={setAge} min={10} max={90} suffix="yrs" />
                   </div>
-                  <motion.button whileTap={{ scale: 0.97 }} onClick={acceptAndGo} className="mt-10 flex w-full items-center justify-center gap-2 rounded-2xl bg-white py-4 text-sm font-black text-slate-950">
+                  <motion.button onClick={acceptAndGo} className="mt-10 flex w-full items-center justify-center gap-2 rounded-2xl bg-white py-4 text-sm font-black text-slate-950">
                     Continue <ChevronRight className="h-4 w-4" />
                   </motion.button>
                 </div>
@@ -398,7 +394,7 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
 
               {step === "height" && (
                 <div>
-                  <p className="text-center text-[10px] font-black uppercase tracking-[0.2em] text-lime-300">Question {questionPosition + 1} of {questionSteps.length}</p>
+                  <p className="text-center text-[11px] font-black uppercase tracking-[0.2em] text-lime-300">Question {questionPosition + 1} of {questionSteps.length}</p>
                   <div className="mx-auto mt-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-lime-300"><Ruler className="h-5 w-5" /></div>
                   <h2 className="font-display mt-4 text-center text-2xl font-black text-white">How tall are you?</h2>
 
@@ -424,7 +420,7 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
                       </div>
                     )}
                   </div>
-                  <motion.button whileTap={{ scale: 0.97 }} onClick={acceptAndGo} className="mt-10 flex w-full items-center justify-center gap-2 rounded-2xl bg-white py-4 text-sm font-black text-slate-950">
+                  <motion.button onClick={acceptAndGo} className="mt-10 flex w-full items-center justify-center gap-2 rounded-2xl bg-white py-4 text-sm font-black text-slate-950">
                     Continue <ChevronRight className="h-4 w-4" />
                   </motion.button>
                 </div>
@@ -432,7 +428,7 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
 
               {step === "weight" && (
                 <div>
-                  <p className="text-center text-[10px] font-black uppercase tracking-[0.2em] text-lime-300">Question {questionPosition + 1} of {questionSteps.length}</p>
+                  <p className="text-center text-[11px] font-black uppercase tracking-[0.2em] text-lime-300">Question {questionPosition + 1} of {questionSteps.length}</p>
                   <div className="mx-auto mt-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-lime-300"><Weight className="h-5 w-5" /></div>
                   <h2 className="font-display mt-4 text-center text-2xl font-black text-white">What's your weight?</h2>
 
@@ -449,7 +445,7 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
                       <NumberStepper value={lb} onChange={v => setWeightKg(lbToKg(v))} min={66} max={400} suffix="lb" />
                     )}
                   </div>
-                  <motion.button whileTap={{ scale: 0.97 }} onClick={acceptAndGo} className="mt-10 flex w-full items-center justify-center gap-2 rounded-2xl bg-white py-4 text-sm font-black text-slate-950">
+                  <motion.button onClick={acceptAndGo} className="mt-10 flex w-full items-center justify-center gap-2 rounded-2xl bg-white py-4 text-sm font-black text-slate-950">
                     Continue <ChevronRight className="h-4 w-4" />
                   </motion.button>
                 </div>
@@ -465,18 +461,18 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
 
                   <div className="mt-7 grid grid-cols-2 gap-3">
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-left">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-white/40">Profile</p>
+                      <p className="text-[11px] font-black uppercase tracking-widest text-white/40">Profile</p>
                       <p className="mt-1 text-sm font-bold text-white capitalize">{touched.gender ? gender : "Skipped"} · {touched.age ? `${age}yrs` : "Skipped"}</p>
                       <p className="text-xs text-white/40">{touched.height ? `${heightCm}cm` : "height skipped"} · {touched.weight ? `${weightKg}kg` : "weight skipped"}</p>
                     </div>
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-left">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-white/40">Est. BMI</p>
+                      <p className="text-[11px] font-black uppercase tracking-widest text-white/40">Est. BMI</p>
                       <p className="mt-1 text-2xl font-black text-white">{bmi > 0 ? bmi : "—"}</p>
                       <p className={`text-xs font-bold ${catColorClass}`}>{cat.label}</p>
                     </div>
                   </div>
 
-                  <motion.button whileTap={{ scale: 0.97 }} onClick={finish} className="mt-8 flex w-full items-center justify-center gap-2 rounded-2xl bg-lime-300 py-4 text-sm font-black text-slate-950">
+                  <motion.button onClick={finish} className="mt-8 flex w-full items-center justify-center gap-2 rounded-2xl bg-lime-300 py-4 text-sm font-black text-slate-950">
                     {mode === "onboarding" ? "Enter the app" : "Save changes"} <ChevronRight className="h-4 w-4" />
                   </motion.button>
                 </div>

@@ -329,7 +329,7 @@ export function PhotoExerciseThumb({
           <p className="truncate text-[11px] font-bold" style={{ color: a.color }}>
             {label ?? set.label}
           </p>
-          {cue && <p className="truncate text-[10px] text-ink-3">{cue}</p>}
+          {cue && <p className="truncate text-[11px] text-ink-3">{cue}</p>}
         </div>
       )}
     </div>

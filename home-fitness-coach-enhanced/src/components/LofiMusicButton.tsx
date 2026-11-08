@@ -50,34 +50,33 @@ export default function LofiMusicButton({
       type="button"
       onClick={handleToggle}
       whileHover={{ scale: 1.05 }}
-      whileTap={{ scale: 0.94 }}
       aria-label={isPlaying ? "Mute Lofi Music" : "Play Lofi Music"}
       title={
         isPlaying
           ? `Mute ${currentMode === "cinematic" ? "Cinematic Workout Lofi" : "Soothing Ambient Lofi"}`
           : `Play ${mode === "cinematic" ? "Cinematic Workout Lofi" : "Soothing Ambient Lofi"}`
       }
-      className={`relative inline-flex items-center gap-2 rounded-full border transition-all ${
+      className={`relative inline-flex items-center gap-1.5 rounded-full border transition-all ${
         isPlaying
-          ? "border-cyan-400/40 bg-slate-900/90 text-cyan-300 shadow-sm shadow-cyan-500/20 backdrop-blur"
-          : "border-slate-200/80 bg-white/90 text-slate-600 hover:bg-slate-100 hover:text-slate-900 shadow-2xs backdrop-blur"
+          ? "border-cyan-400/40 bg-cyan-950/40 text-cyan-300 shadow-sm backdrop-blur"
+          : "border-white/10 bg-white/[0.04] text-slate-400 hover:text-white hover:bg-white/[0.08] backdrop-blur"
       } ${isSmall ? "px-2.5 py-1 text-xs" : "px-3.5 py-1.5 text-sm"} ${className}`}
     >
       {isPlaying ? (
         <div className="flex items-end gap-0.5 h-3.5 w-3.5 px-0.5 justify-center">
           <motion.span
-            className="w-0.5 bg-cyan-400 rounded-full"
-            animate={{ height: ["30%", "100%", "45%"] }}
+            className="w-0.5 h-3 bg-cyan-400 rounded-full origin-bottom will-change-transform"
+            animate={{ scaleY: [0.3, 1, 0.45] }}
             transition={{ duration: 0.6, repeat: Infinity, ease: "easeInOut" }}
           />
           <motion.span
-            className="w-0.5 bg-cyan-400 rounded-full"
-            animate={{ height: ["60%", "30%", "90%"] }}
+            className="w-0.5 h-3 bg-cyan-400 rounded-full origin-bottom will-change-transform"
+            animate={{ scaleY: [0.6, 0.3, 0.9] }}
             transition={{ duration: 0.5, repeat: Infinity, ease: "easeInOut", delay: 0.1 }}
           />
           <motion.span
-            className="w-0.5 bg-cyan-400 rounded-full"
-            animate={{ height: ["40%", "85%", "25%"] }}
+            className="w-0.5 h-3 bg-cyan-400 rounded-full origin-bottom will-change-transform"
+            animate={{ scaleY: [0.4, 0.85, 0.25] }}
             transition={{ duration: 0.7, repeat: Infinity, ease: "easeInOut", delay: 0.2 }}
           />
         </div>
@@ -97,7 +96,7 @@ export default function LofiMusicButton({
           )}
         </span>
       ) : (
-        <span className="text-[10px] font-black uppercase tracking-wider">
+        <span className="text-[11px] font-black uppercase tracking-wider">
           {isPlaying ? "Lofi ON" : "Lofi"}
         </span>
       )}

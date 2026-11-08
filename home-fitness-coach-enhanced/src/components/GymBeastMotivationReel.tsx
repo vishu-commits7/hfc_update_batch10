@@ -1,3 +1,4 @@
+import { shareContent } from "../lib/nativeBridge";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
@@ -31,13 +32,22 @@ export interface MotivationStory {
   musicMood: string;
 }
 
+export const STORY_BASE_HYPES: Record<string, number> = {
+  "chalk-fire": 74,
+  "iron-temple": 112,
+  "beyond-failure": 89,
+  "aesthetic-beast": 95,
+  "boxing-warrior": 63,
+  "squat-iron": 82,
+};
+
 export const MOTIVATION_STORIES: MotivationStory[] = [
   {
     id: "chalk-fire",
     title: "Chalk & Fire",
     tag: "POWERLIFTING",
     quote: "The pain of today is the victory of tomorrow. Step onto the platform and take what is yours.",
-    author: "BEAST CODE #01",
+    author: "DAILY FOCUS #01",
     image: gymBeastChalk,
     accentColor: "#f59e0b",
     musicMood: "Raw Heavy Drive",
@@ -47,7 +57,7 @@ export const MOTIVATION_STORIES: MotivationStory[] = [
     title: "The Iron Temple",
     tag: "STRENGTH & HONESTY",
     quote: "Iron never lies to you. 500 lbs is 500 lbs. Respect the weight, master your fear, and lift.",
-    author: "BEAST CODE #02",
+    author: "DAILY FOCUS #02",
     image: gymBeastIron,
     accentColor: "#06b6d4",
     musicMood: "Deep Sub-Bass Focus",
@@ -57,7 +67,7 @@ export const MOTIVATION_STORIES: MotivationStory[] = [
     title: "Beyond Failure",
     tag: "HYPERTROPHY",
     quote: "The last three or four reps is what makes the muscle grow. This area of pain divides a champion from someone who isn't.",
-    author: "BEAST CODE #03",
+    author: "DAILY FOCUS #03",
     image: gymBeastPump,
     accentColor: "#10b981",
     musicMood: "Maximum Pump",
@@ -67,7 +77,7 @@ export const MOTIVATION_STORIES: MotivationStory[] = [
     title: "Warrior Mindset",
     tag: "CALISTHENICS & DISCIPLINE",
     quote: "Your body can stand almost anything. It's your mind you have to conquer. Rule yourself, rule your world.",
-    author: "BEAST CODE #04",
+    author: "DAILY FOCUS #04",
     image: gymBeastAbs,
     accentColor: "#8b5cf6",
     musicMood: "Ascension Beats",
@@ -77,7 +87,7 @@ export const MOTIVATION_STORIES: MotivationStory[] = [
     title: "The Champion's Ring",
     tag: "FIGHT DISCIPLINE",
     quote: "It's not about how hard you hit, it's about how hard you can get hit and keep moving forward.",
-    author: "BEAST CODE #05",
+    author: "DAILY FOCUS #05",
     image: gymBeastBoxing,
     accentColor: "#ef4444",
     musicMood: "Heavy Bag Rhythms",
@@ -87,7 +97,7 @@ export const MOTIVATION_STORIES: MotivationStory[] = [
     title: "The Heavy Hole",
     tag: "MAX POWER",
     quote: "When 400 lbs is on your back, you either rise or break. Champions always find a way to rise.",
-    author: "BEAST CODE #06",
+    author: "DAILY FOCUS #06",
     image: gymBeastSquat,
     accentColor: "#eab308",
     musicMood: "Maximum Loading",
@@ -108,11 +118,10 @@ export default function GymBeastMotivationReel({
   onClose,
 }: GymBeastMotivationReelProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
-  const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [hypeCounts, setHypeCounts] = useState<Record<string, number>>(() => {
     try {
-      return JSON.parse(localStorage.getItem("kinetic_beast_hypes") || "{}");
+      return JSON.parse(localStorage.getItem("apex_pulse_story_hypes") || "{}");
     } catch {
       return {};
     }
@@ -125,20 +134,21 @@ export default function GymBeastMotivationReel({
 
   const activeStory = MOTIVATION_STORIES[currentIndex] || MOTIVATION_STORIES[0];
   const timerRef = useRef<number | null>(null);
+  const activeBarRef = useRef<HTMLDivElement>(null);
   const startTimeRef = useRef<number>(Date.now());
   const elapsedBeforePauseRef = useRef<number>(0);
 
   useEffect(() => {
     if (isOpen) {
       setCurrentIndex(Math.min(initialIndex, MOTIVATION_STORIES.length - 1));
-      setProgress(0);
       elapsedBeforePauseRef.current = 0;
       startTimeRef.current = Date.now();
+      if (activeBarRef.current) activeBarRef.current.style.width = "0%";
       audio.playBeastDrop();
     }
   }, [isOpen, initialIndex]);
 
-  // Story progression loop
+  // Story progression loop: updates direct DOM width without triggering 60-120fps React re-renders
   useEffect(() => {
     if (!isOpen || isPaused) {
       if (timerRef.current) cancelAnimationFrame(timerRef.current);
@@ -151,14 +161,16 @@ export default function GymBeastMotivationReel({
     const tick = () => {
       const elapsed = Date.now() - start;
       const pct = Math.min((elapsed / STORY_DURATION_MS) * 100, 100);
-      setProgress(pct);
+      if (activeBarRef.current) {
+        activeBarRef.current.style.width = `${pct}%`;
+      }
 
       if (pct >= 100) {
         if (currentIndex < MOTIVATION_STORIES.length - 1) {
           setCurrentIndex((prev) => prev + 1);
-          setProgress(0);
           elapsedBeforePauseRef.current = 0;
           startTimeRef.current = Date.now();
+          if (activeBarRef.current) activeBarRef.current.style.width = "0%";
         } else {
           // Wrapped around or close
           onClose();
@@ -192,9 +204,9 @@ export default function GymBeastMotivationReel({
     audio.playBeastClick();
     if (currentIndex < MOTIVATION_STORIES.length - 1) {
       setCurrentIndex((prev) => prev + 1);
-      setProgress(0);
       elapsedBeforePauseRef.current = 0;
       startTimeRef.current = Date.now();
+      if (activeBarRef.current) activeBarRef.current.style.width = "0%";
     } else {
       onClose();
     }
@@ -205,9 +217,9 @@ export default function GymBeastMotivationReel({
     audio.playBeastClick();
     if (currentIndex > 0) {
       setCurrentIndex((prev) => prev - 1);
-      setProgress(0);
       elapsedBeforePauseRef.current = 0;
       startTimeRef.current = Date.now();
+      if (activeBarRef.current) activeBarRef.current.style.width = "0%";
     }
   }, [currentIndex]);
 
@@ -217,10 +229,10 @@ export default function GymBeastMotivationReel({
     audio.playBeastDrop();
 
     const storyId = activeStory.id;
-    const current = (hypeCounts[storyId] || 42) + 1;
+    const current = (hypeCounts[storyId] || STORY_BASE_HYPES[storyId] || 75) + 1;
     const nextHypes = { ...hypeCounts, [storyId]: current };
     setHypeCounts(nextHypes);
-    localStorage.setItem("kinetic_beast_hypes", JSON.stringify(nextHypes));
+    localStorage.setItem("apex_pulse_story_hypes", JSON.stringify(nextHypes));
 
     // Spawn floating particle
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -276,21 +288,23 @@ export default function GymBeastMotivationReel({
   const handleShareStory = async (e: React.MouseEvent) => {
     e.stopPropagation();
     tapFeedback();
-    const shareText = `🔥 "${activeStory.quote}"\n— Savage Gym Motivation from Home Fitness Coach\n#BeastMode #GymMotivation #NoExcuses`;
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: activeStory.title,
-          text: shareText,
-        });
-        return;
-      } catch {
-        // Fall back to copy
-      }
+    const shareText = `"${activeStory.quote}"\n— Daily Motivation from Apex Pulse\n#ApexPulse #GymMotivation`;
+    let blob: Blob | undefined;
+    try {
+      blob = await (await fetch(activeStory.image)).blob();
+    } catch {
+      /* image unreachable — share the quote alone */
     }
-    navigator.clipboard?.writeText(shareText);
-    setCopiedShare(true);
-    setTimeout(() => setCopiedShare(false), 2400);
+    const result = await shareContent({
+      title: activeStory.title,
+      text: shareText,
+      blob,
+      fileName: "apex-pulse-story.jpg",
+    });
+    if (result === "copied") {
+      setCopiedShare(true);
+      setTimeout(() => setCopiedShare(false), 2400);
+    }
   };
 
   if (!isOpen) return null;
@@ -317,11 +331,16 @@ export default function GymBeastMotivationReel({
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.96 }}
               transition={{ duration: 0.45, ease: "easeOut" }}
-              className="absolute inset-0 z-0"
+              className="absolute inset-0 z-0 bg-slate-950"
             >
               <img
                 src={activeStory.image}
                 alt={activeStory.title}
+                loading="eager"
+                decoding="sync"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = gymBeastIron;
+                }}
                 className="h-full w-full object-cover object-center"
               />
               {/* Gradients for readability */}
@@ -335,8 +354,13 @@ export default function GymBeastMotivationReel({
             </motion.div>
           </AnimatePresence>
 
-          {/* Top Story Progress Bars */}
-          <div className="relative z-20 px-4 pt-4 sm:pt-6">
+          {/* Top Story Progress Bars with Safe Area Inset */}
+          <div
+            className="relative z-20 px-4"
+            style={{
+              paddingTop: "max(env(safe-area-inset-top, 28px), 24px)",
+            }}
+          >
             <div className="flex gap-1.5 items-center">
               {MOTIVATION_STORIES.map((story, idx) => (
                 <div
@@ -344,14 +368,10 @@ export default function GymBeastMotivationReel({
                   className="h-1 flex-1 rounded-full bg-white/25 overflow-hidden"
                 >
                   <div
-                    className="h-full bg-white transition-all duration-75"
+                    ref={idx === currentIndex ? activeBarRef : undefined}
+                    className="h-full bg-white transition-none"
                     style={{
-                      width:
-                        idx < currentIndex
-                          ? "100%"
-                          : idx === currentIndex
-                          ? `${progress}%`
-                          : "0%",
+                      width: idx < currentIndex ? "100%" : "0%",
                     }}
                   />
                 </div>
@@ -360,9 +380,9 @@ export default function GymBeastMotivationReel({
 
             {/* Top Bar Header */}
             <div className="mt-3.5 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2.5 min-w-0 pr-2">
                 <div
-                  className="h-9 w-9 rounded-full p-0.5 flex items-center justify-center shadow-lg"
+                  className="h-9 w-9 shrink-0 rounded-full p-0.5 flex items-center justify-center shadow-lg"
                   style={{
                     background: `linear-gradient(135deg, ${activeStory.accentColor}, #000)`,
                   }}
@@ -373,20 +393,20 @@ export default function GymBeastMotivationReel({
                     className="h-full w-full rounded-full object-cover"
                   />
                 </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-black uppercase tracking-wider text-white">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-nowrap overflow-hidden">
+                    <span className="text-xs font-black uppercase tracking-wider text-white truncate max-w-[130px]">
                       {activeStory.title}
                     </span>
                     <span
-                      className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest text-black"
+                      className="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest text-black whitespace-nowrap shrink-0"
                       style={{ background: activeStory.accentColor }}
                     >
                       {activeStory.tag}
                     </span>
                   </div>
-                  <p className="text-[10px] text-white/60 font-medium">
-                    Daily Savage Fuel · {currentIndex + 1} of{" "}
+                  <p className="text-[11px] text-white/60 font-medium">
+                    Daily Motivation · {currentIndex + 1} of{" "}
                     {MOTIVATION_STORIES.length}
                   </p>
                 </div>
@@ -400,7 +420,7 @@ export default function GymBeastMotivationReel({
                   tapFeedback();
                   onClose();
                 }}
-                className="h-9 w-9 rounded-full bg-black/60 backdrop-blur-md border border-white/15 flex items-center justify-center text-white/90 active:scale-90 transition-transform"
+                className="h-9 w-9 shrink-0 rounded-full bg-black/60 backdrop-blur-md border border-white/15 flex items-center justify-center text-white/90 active:scale-90 transition-transform"
                 aria-label="Close stories"
               >
                 <X className="h-4 w-4" />
@@ -459,12 +479,12 @@ export default function GymBeastMotivationReel({
             >
               <div className="flex items-center justify-between mb-1.5">
                 <span
-                  className="text-[9px] font-extrabold uppercase tracking-widest"
+                  className="text-[11px] font-extrabold uppercase tracking-widest"
                   style={{ color: activeStory.accentColor }}
                 >
                   {activeStory.author}
                 </span>
-                <span className="text-[10px] text-white/50 flex items-center gap-1 font-mono">
+                <span className="text-[11px] text-white/50 flex items-center gap-1 font-mono">
                   <Zap className="h-3 w-3" style={{ color: activeStory.accentColor }} />
                   {activeStory.musicMood}
                 </span>
@@ -479,7 +499,6 @@ export default function GymBeastMotivationReel({
               {/* Hype Reaction Button */}
               <motion.button
                 type="button"
-                whileTap={{ scale: 0.92 }}
                 onClick={handleHype}
                 className="flex-1 flex items-center justify-center gap-2 py-3 px-3 rounded-xl font-black text-xs uppercase tracking-wider text-black shadow-lg"
                 style={{
@@ -488,7 +507,7 @@ export default function GymBeastMotivationReel({
               >
                 <Flame className="h-4 w-4 fill-black" />
                 <span>
-                  Hype ({(hypeCounts[activeStory.id] || 48).toLocaleString()})
+                  Hype ({(hypeCounts[activeStory.id] || STORY_BASE_HYPES[activeStory.id] || 75).toLocaleString()})
                 </span>
               </motion.button>
 

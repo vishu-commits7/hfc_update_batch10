@@ -99,7 +99,6 @@ export const GlassCard = forwardRef<HTMLDivElement, GlassCardProps>(
         {...(interactive
           ? {
               whileHover: { y: -3, transition: SPRING_WEIGHTED },
-              whileTap: { scale: 0.985, transition: SPRING_WEIGHTED },
             }
           : {})}
         {...rest}

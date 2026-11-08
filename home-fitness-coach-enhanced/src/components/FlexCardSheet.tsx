@@ -46,12 +46,20 @@ export default function FlexCardSheet({
   const blobRef = useRef<Blob | null>(null);
   const urlRef = useRef<string | null>(null);
 
+  // Parents build `data` inline, so its identity changes on every render —
+  // and ActiveWorkout re-renders every second. Keying the effect on the
+  // object itself cancelled and restarted the render each tick, so the card
+  // never finished. Key on the content instead.
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  const dataKey = JSON.stringify(data);
+
   useEffect(() => {
     let cancelled = false;
     setPreview(null);
     setError(null);
 
-    renderFlexCard(data, shape)
+    renderFlexCard(dataRef.current, shape)
       .then((blob) => {
         if (cancelled) return;
         blobRef.current = blob;
@@ -68,7 +76,7 @@ export default function FlexCardSheet({
     return () => {
       cancelled = true;
     };
-  }, [data, shape]);
+  }, [dataKey, shape]);
 
   useEffect(
     () => () => {
@@ -249,7 +257,7 @@ export default function FlexCardSheet({
             </MagneticButton>
           </div>
 
-          <p className="mt-3 px-5 text-center text-[10px] leading-relaxed text-ink-4">
+          <p className="mt-3 px-5 text-center text-[11px] leading-relaxed text-ink-4">
             Opens your phone's share sheet — Instagram, WhatsApp, anywhere.
             Nothing is uploaded; the image is made on your device.
           </p>

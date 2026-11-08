@@ -146,7 +146,7 @@ function WeeklyGoal({ a }: { a: Analytics }) {
           <span className="font-numeric text-[22px] font-extrabold leading-none text-ink">
             {done}
           </span>
-          <span className="mt-0.5 text-[9px] font-bold tracking-widest text-ink-4">
+          <span className="mt-0.5 text-[11px] font-bold tracking-widest text-ink-4">
             /{WEEKLY_GOAL}
           </span>
         </ProgressRing>
@@ -248,10 +248,10 @@ function MomentumRow({ a }: { a: Analytics }) {
               <AnimatedNumber
                 value={c.value}
                 unit={c.unit}
-                unitClassName="text-[10px] font-bold text-ink-3"
+                unitClassName="text-[11px] font-bold text-ink-3"
               />
             </p>
-            <p className="relative z-10 mt-1 truncate text-[10px] font-semibold text-ink-4">
+            <p className="relative z-10 mt-1 truncate text-[11px] font-semibold text-ink-4">
               {c.label}
             </p>
           </div>

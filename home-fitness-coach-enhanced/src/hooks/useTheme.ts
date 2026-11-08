@@ -1,51 +1,86 @@
 import { useCallback, useEffect, useState } from "react";
 
 export type Theme = "obsidian" | "daylight";
+export type ThemeMode = "system" | "light" | "dark";
 
-const STORAGE_KEY = "hfc_theme";
+const MODE_KEY = "hfc_theme_mode";
+const LEGACY_KEY = "hfc_theme";
+
+function systemTheme(): Theme {
+  if (typeof window === "undefined" || !window.matchMedia) return "obsidian";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "obsidian" : "daylight";
+}
+
+function readMode(): ThemeMode {
+  try {
+    const saved = localStorage.getItem(MODE_KEY);
+    if (saved === "light" || saved === "dark" || saved === "system") return saved;
+  } catch {
+    /* storage unavailable */
+  }
+  // Follow the phone's appearance by default. (Earlier builds stored an
+  // explicit choice under a different key; that is deliberately not carried
+  // over, since most people never picked it and ended up stuck in light.)
+  return "system";
+}
+
+function resolve(mode: ThemeMode): Theme {
+  if (mode === "light") return "daylight";
+  if (mode === "dark") return "obsidian";
+  return systemTheme();
+}
 
 /**
  * Theme state, mirrored onto `<html>` as a class.
  *
- * The class is applied by an inline script in index.html before first
- * paint; this hook adopts whatever that script decided rather than
- * re-deciding, so there is never a frame where React and the DOM
- * disagree. Obsidian is the default — the app is designed dark first and
- * daylight is the alternate, not the other way round.
+ * The app follows the device's light/dark setting by default and re-skins
+ * live when it changes. An explicit override lives in Settings → Appearance.
+ * index.html applies the same logic before first paint so there is no flash.
  */
-export function useTheme(): [Theme, (next?: Theme) => void] {
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof document === "undefined") return "obsidian";
-    return document.documentElement.classList.contains("theme-daylight")
-      ? "daylight"
-      : "obsidian";
-  });
+export function useTheme(): [Theme, (next?: unknown) => void, ThemeMode, (mode: ThemeMode) => void] {
+  const [mode, setModeState] = useState<ThemeMode>(readMode);
+  const [theme, setTheme] = useState<Theme>(() => resolve(readMode()));
+
+  // Re-resolve when the mode changes, or when the OS flips while on "system".
+  useEffect(() => {
+    setTheme(resolve(mode));
+    if (mode !== "system" || !window.matchMedia) return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => setTheme(mq.matches ? "obsidian" : "daylight");
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, [mode]);
 
   useEffect(() => {
     const root = document.documentElement;
     root.classList.remove("theme-obsidian", "theme-daylight");
     root.classList.add(`theme-${theme}`);
-
-    // Keep the OS chrome (Android status bar, iOS Safari toolbar) in step
-    // with the canvas. Without this the notch area stays the old colour
-    // and the app visibly stops at the status bar.
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) {
-      meta.setAttribute("content", theme === "daylight" ? "#eef1f6" : "#04050a");
-    }
-
+    if (meta) meta.setAttribute("content", theme === "daylight" ? "#f4f5f7" : "#0a0a0c");
     try {
-      localStorage.setItem(STORAGE_KEY, theme);
+      localStorage.setItem(LEGACY_KEY, theme);
     } catch {
       /* storage disabled — the theme still applies for this session */
     }
   }, [theme]);
 
-  const toggle = useCallback((next?: Theme) => {
-    setTheme((current) =>
-      next ?? (current === "obsidian" ? "daylight" : "obsidian"),
-    );
+  const setMode = useCallback((next: ThemeMode) => {
+    setModeState(next);
+    try {
+      localStorage.setItem(MODE_KEY, next);
+    } catch {
+      /* ignore */
+    }
   }, []);
 
-  return [theme, toggle];
+  const toggle = useCallback(
+    (next?: unknown) => {
+      if (next === "obsidian") return setMode("dark");
+      if (next === "daylight") return setMode("light");
+      setMode(resolve(mode) === "obsidian" ? "light" : "dark");
+    },
+    [mode, setMode],
+  );
+
+  return [theme, toggle, mode, setMode];
 }

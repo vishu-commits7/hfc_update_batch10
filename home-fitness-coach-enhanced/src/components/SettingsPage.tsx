@@ -1,17 +1,24 @@
+import { shareContent } from "../lib/nativeBridge";
 import React, { useEffect, useState, useRef } from "react";
 import {
   ArrowLeft, UserCircle2, Lock, Globe, Lock as LockIcon, Share2, Moon,
   SunMedium, Volume2, VolumeX, Music, Music2 as MusicOff, Dumbbell, Trash2,
-  LogOut, ChevronRight, Loader2, CheckCircle2, Bell, BellOff, Flame, Droplets,
-  Download, Upload, Vibrate,
+  LogOut, ChevronRight, Loader2, CheckCircle2, Bell, BellOff, 
+  Download, Upload, Vibrate, FileText, ShieldCheck, X, Ban, ShieldAlert,
 } from "lucide-react";
 import { useAuthUser, logOut, getUserProfile, saveUserProfile, resetPassword, UserProfileDoc } from "../lib/useAuth";
 import { audio } from "../lib/audio";
-import { lofi } from "../lib/lofi";
+import { lofiMusic } from "../lib/lofiMusic";
 import {
   loadNotificationPrefs, saveNotificationPrefs, requestNotificationPermission,
   applyDailyReminder, applyStreakWarning, applyWaterReminder, NotificationPrefs,
 } from "../lib/notifications";
+import NotificationSettings from "./NotificationSettings";
+import { BlockedUsersScreen, ModerationScreen, DeleteAccountDialog } from "./SafetyScreens";
+import { callFn } from "../lib/functions";
+import { setAccountPublic } from "../lib/social";
+import { useMyIdentity } from "../lib/useSocial";
+import { loadSocialPrefs, saveSocialPrefs, requestPerm, type SocialNotifPrefs } from "../lib/notifyPrefs";
 import { downloadBackup, shareBackup, importBackupFile } from "../lib/backup";
 import { isHapticsEnabled, setHapticsEnabled, tapFeedback } from "../lib/haptics";
 import { WorkoutLog } from "../types";
@@ -22,8 +29,8 @@ interface SettingsPageProps {
   onBack: () => void;
   onOpenCommunity: () => void;
   onOpenAuth?: () => void;
-  theme: "light" | "dark";
-  onToggleTheme: () => void;
+  themeMode: "system" | "light" | "dark";
+  onSetThemeMode: (mode: "system" | "light" | "dark") => void;
   onEditProfile: () => void;
   onResetAllData: () => void;
 }
@@ -31,24 +38,24 @@ interface SettingsPageProps {
 function Row({ icon, label, sub, onClick, right }: { icon: React.ReactNode; label: string; sub?: string; onClick?: () => void; right?: React.ReactNode }) {
   return (
     <button
-      onClick={onClick}
+      onClick={() => onClick?.()}
       disabled={!onClick}
-      className="flex w-full items-center gap-3 border-b border-slate-100 px-4 py-3.5 text-left last:border-0 disabled:cursor-default"
+      className="flex w-full items-center gap-3 border-b border-line px-4 py-3.5 text-left last:border-0 disabled:cursor-default hover:bg-graphite transition-colors"
     >
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500">{icon}</div>
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-graphite text-ink-2">{icon}</div>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-bold text-slate-800">{label}</p>
-        {sub && <p className="mt-0.5 truncate text-xs text-slate-400">{sub}</p>}
+        <p className="text-sm font-bold text-ink">{label}</p>
+        {sub && <p className="mt-0.5 text-xs text-ink-3 leading-snug">{sub}</p>}
       </div>
-      {right !== undefined ? right : (onClick && <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />)}
+      {right !== undefined ? right : (onClick && <ChevronRight className="h-4 w-4 shrink-0 text-ink-3" />)}
     </button>
   );
 }
 
 function Toggle({ on }: { on: boolean }) {
   return (
-    <span className={`flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors ${on ? "bg-slate-900" : "bg-slate-200"}`}>
-      <span className={`h-5 w-5 rounded-full bg-white shadow transition-transform ${on ? "translate-x-5" : "translate-x-0"}`} />
+    <span className={`flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors duration-200 ${on ? "bg-volt" : "bg-zinc-600/70"}`}>
+      <span className={`h-5 w-5 rounded-full shadow-xs transition-transform duration-200 ${on ? "translate-x-5 bg-void" : "translate-x-0 bg-white"}`} />
     </span>
   );
 }
@@ -56,14 +63,17 @@ function Toggle({ on }: { on: boolean }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="mb-5">
-      <p className="mb-2 px-1 text-[10px] font-black uppercase tracking-wider text-slate-400">{title}</p>
-      <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white">{children}</div>
+      <p className="mb-2 px-1 text-[11px] font-black uppercase tracking-wider text-ink-3">{title}</p>
+      <div className="overflow-hidden rounded-2xl border border-line bg-carbon shadow-sm">{children}</div>
     </div>
   );
 }
 
-export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, theme, onToggleTheme, onEditProfile, onResetAllData }: SettingsPageProps) {
+export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, themeMode, onSetThemeMode, onEditProfile, onResetAllData }: SettingsPageProps) {
   const { user } = useAuthUser();
+  // The tap that opens a modal can also land on the freshly-mounted backdrop
+  // (ghost click on touch screens) and close it instantly; ignore that.
+  const modalOpenedAt = useRef(0);
   const [profile, setProfile] = useState<UserProfileDoc | null>(null);
   const [muted, setMuted] = useState(() => localStorage.getItem("kinetic_sound_muted") === "true");
   const [lofiOn, setLofiOn] = useState(() => localStorage.getItem("kinetic_lofi_enabled") !== "false");
@@ -71,7 +81,25 @@ export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, them
   const [resetBusy, setResetBusy] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
+  const [showBlocked, setShowBlocked] = useState(false);
+  const [showMod, setShowMod] = useState(false);
+  const [isMod, setIsMod] = useState(false);
+  useEffect(() => {
+    if (!user) { setIsMod(false); return; }
+    callFn<{ admin: boolean }>("modIsAdmin").then(r => setIsMod(!!r.admin)).catch(() => setIsMod(false));
+  }, [user?.uid]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
+  const [showNotifSettings, setShowNotifSettings] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [socialPrefs, setSocialPrefs] = useState<SocialNotifPrefs>(() => loadSocialPrefs());
+  const setSocial = async (patch: Partial<SocialNotifPrefs>) => {
+    const next = { ...socialPrefs, ...patch };
+    setSocialPrefs(next);
+    saveSocialPrefs(next);
+    if (Object.values(patch).some(v => v === "sound" || v === "silent" || v === true)) void requestPerm();
+  };
   const [notifPrefs, setNotifPrefs] = useState<NotificationPrefs>(() => loadNotificationPrefs());
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [restoreConfirm, setRestoreConfirm] = useState<File | null>(null);
@@ -137,8 +165,8 @@ export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, them
     const next = !lofiOn;
     setLofiOn(next);
     localStorage.setItem("kinetic_lofi_enabled", String(next));
-    if (!next) lofi.stop();
-    else lofi.play("chill"); // matches the "home screen = chill lofi" identity used everywhere else
+    if (!next) lofiMusic.pause(true);
+    else lofiMusic.play("soothing");
   };
 
   const toggleHaptics = () => {
@@ -148,11 +176,18 @@ export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, them
     if (next) tapFeedback(); // immediate confirmation buzz when turning it back on
   };
 
-  const togglePrivacy = async () => {
-    if (!user || !profile) return;
-    const next = !profile.public;
-    await saveUserProfile(user.uid, { public: next });
-    setProfile({ ...profile, public: next });
+  const myIdentity = useMyIdentity();
+  const acctPublic = myIdentity.profile?.accountPublic === true;
+  const setPrivacy = async (next: boolean) => {
+    if (!user || next === acctPublic) return;
+    try {
+      await setAccountPublic(user.uid, next);
+      await saveUserProfile(user.uid, { public: next });
+      if (profile) setProfile({ ...profile, public: next });
+      setToast(next ? "Account is now Public" : "Account is now Private");
+    } catch {
+      setToast("Couldn't change privacy. Check your connection.");
+    }
   };
 
   const sendReset = async () => {
@@ -165,15 +200,11 @@ export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, them
   };
 
   const shareApp = async () => {
-    const shareData = { title: "Home Fitness Coach", text: "I'm training with this home fitness app — check it out!", url: "https://home-fitness-coach.app" };
-    try {
-      if (navigator.share) {
-        await navigator.share(shareData);
-      } else if (navigator.clipboard) {
-        await navigator.clipboard.writeText(`${shareData.text} ${shareData.url}`);
-        setToast("Link copied — paste it anywhere to share!");
-      }
-    } catch { /* user cancelled the share sheet — not an error */ }
+    const result = await shareContent({
+      title: "Apex Pulse",
+      text: "I'm training with Apex Pulse — check it out!",
+    });
+    if (result === "copied") setToast("Copied — paste it anywhere to share!");
   };
 
   const handleExportBackup = async () => {
@@ -205,18 +236,18 @@ export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, them
   };
 
   return (
-    <div className="max-w-3xl mx-auto animate-fade-in pb-24 text-slate-800">
+    <div className="max-w-3xl mx-auto animate-fade-in pb-28 text-ink">
       <div className="mb-5 flex items-center gap-4">
         <button
           onClick={onBack}
-          className="group flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-xs transition-all hover:border-slate-300 hover:bg-slate-50"
+          className="group flex h-10 w-10 items-center justify-center rounded-full border border-line bg-graphite text-ink-2 shadow-xs transition-all hover:border-line hover:bg-graphite"
           title="Back"
         >
           <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
         </button>
         <div>
-          <span className="text-[10px] font-extrabold uppercase tracking-widest text-cyan-500">APEX PULSE</span>
-          <h1 className="font-sans text-2xl font-black uppercase tracking-tight text-slate-900">Settings</h1>
+          <span className="text-[11px] font-extrabold uppercase tracking-widest text-cyan-400">APEX PULSE</span>
+          <h1 className="font-sans text-2xl font-black uppercase tracking-tight text-ink">Settings</h1>
         </div>
       </div>
 
@@ -230,15 +261,32 @@ export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, them
                 label={resetBusy ? "Sending reset link..." : resetSent ? "Reset link sent" : "Reset password"}
                 sub="We'll email you a link"
                 onClick={resetBusy || resetSent ? undefined : sendReset}
-                right={resetBusy ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" /> : resetSent ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : undefined}
+                right={resetBusy ? <Loader2 className="h-4 w-4 animate-spin text-ink-3" /> : resetSent ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : undefined}
               />
-              <Row
-                icon={profile?.public ? <Globe className="h-4 w-4" /> : <LockIcon className="h-4 w-4" />}
-                label="Public profile"
-                sub={profile?.public ? "Visible to everyone in Community" : "Hidden from the Community feed"}
-                onClick={togglePrivacy}
-                right={<Toggle on={!!profile?.public} />}
-              />
+              <div className="border-b border-line px-4 py-3.5">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-graphite text-ink-2">
+                    {acctPublic ? <Globe className="h-4 w-4" /> : <LockIcon className="h-4 w-4" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-ink">Account privacy</p>
+                    <p className="mt-0.5 text-xs text-ink-2 leading-snug">
+                      {acctPublic ? "Anyone can follow you instantly and see your reels and posts." : "People must request to follow. Only approved followers see your reels."}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-1.5 rounded-xl bg-graphite p-1">
+                  {([[true, "Public"], [false, "Private"]] as const).map(([val, label]) => (
+                    <button
+                      key={label}
+                      onClick={() => void setPrivacy(val)}
+                      className={`min-h-[42px] rounded-lg text-sm font-bold transition ${acctPublic === val ? "bg-volt text-void" : "text-ink-2"}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <Row icon={<LogOut className="h-4 w-4" />} label="Log out" onClick={() => logOut()} />
             </>
           ) : (
@@ -253,7 +301,29 @@ export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, them
 
         <Section title="App">
           <Row icon={<Dumbbell className="h-4 w-4" />} label="Fitness profile" sub="Goal, level, equipment" onClick={onEditProfile} />
-          <Row icon={theme === "dark" ? <Moon className="h-4 w-4" /> : <SunMedium className="h-4 w-4" />} label="Dark mode" onClick={onToggleTheme} right={<Toggle on={theme === "dark"} />} />
+          <div className="flex items-center gap-3 border-b border-line px-4 py-3.5">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-graphite text-ink-2">
+              {themeMode === "dark" ? <Moon className="h-4 w-4" /> : <SunMedium className="h-4 w-4" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-ink">Appearance</p>
+              <p className="mt-0.5 text-xs text-ink-3">System follows your phone</p>
+            </div>
+            <div role="radiogroup" aria-label="Appearance" className="flex shrink-0 rounded-xl bg-graphite p-0.5">
+              {(["system", "light", "dark"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="radio"
+                  aria-checked={themeMode === m}
+                  onClick={() => { tapFeedback(); onSetThemeMode(m); }}
+                  className={`min-h-[32px] rounded-[10px] px-2.5 text-[11px] font-bold capitalize transition-colors ${themeMode === m ? "bg-carbon text-ink shadow-sm" : "text-ink-3"}`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+          </div>
           <Row icon={<Share2 className="h-4 w-4" />} label="Share this app" sub="Tell a friend" onClick={shareApp} />
           <Row icon={<Vibrate className="h-4 w-4" />} label="Haptic feedback" sub="Vibration on taps, likes and milestones" onClick={toggleHaptics} right={<Toggle on={hapticsOn} />} />
         </Section>
@@ -263,71 +333,88 @@ export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, them
           <Row icon={lofiOn ? <Music className="h-4 w-4" /> : <MusicOff className="h-4 w-4" />} label="Lo-fi ambience" sub="Soothing background music" onClick={toggleLofi} right={<Toggle on={lofiOn} />} />
         </Section>
 
-        <Section title="Reminders">
+        <Section title="Notifications">
           <Row
-            icon={notifPrefs.dailyReminderEnabled ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
-            label="Daily workout reminder"
-            sub={notifPrefs.dailyReminderEnabled ? `Every day at ${String(notifPrefs.dailyReminderHour).padStart(2, "0")}:${String(notifPrefs.dailyReminderMinute).padStart(2, "0")}` : "Off"}
-            onClick={() => updateNotifPrefs({ dailyReminderEnabled: !notifPrefs.dailyReminderEnabled })}
-            right={<Toggle on={notifPrefs.dailyReminderEnabled} />}
-          />
-          {notifPrefs.dailyReminderEnabled && (
-            <div className="border-b border-slate-100 px-4 py-3">
-              <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Reminder time</label>
-              <input
-                type="time"
-                value={`${String(notifPrefs.dailyReminderHour).padStart(2, "0")}:${String(notifPrefs.dailyReminderMinute).padStart(2, "0")}`}
-                onChange={e => {
-                  const [h, m] = e.target.value.split(":").map(Number);
-                  updateNotifPrefs({ dailyReminderHour: h, dailyReminderMinute: m });
-                }}
-                className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-800"
-              />
-            </div>
-          )}
-          <Row
-            icon={<Flame className="h-4 w-4" />}
-            label="Streak-break warning"
-            sub="A nudge at 9 PM if you haven't trained yet today"
-            onClick={() => updateNotifPrefs({ streakWarningEnabled: !notifPrefs.streakWarningEnabled })}
-            right={<Toggle on={notifPrefs.streakWarningEnabled} />}
-          />
-          <Row
-            icon={<Droplets className="h-4 w-4" />}
-            label="Water reminder"
-            sub="Hourly nudges to log a glass of water"
-            onClick={() => updateNotifPrefs({ waterReminderEnabled: !notifPrefs.waterReminderEnabled })}
-            right={<Toggle on={notifPrefs.waterReminderEnabled} />}
+            icon={socialPrefs.all ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
+            label="Notifications"
+            sub="Messages, activity and reminders"
+            onClick={() => setShowNotifSettings(true)}
           />
         </Section>
 
-        <Section title="Data">
+        {user && (
+          <Section title="Safety">
+            <Row icon={<Ban className="h-4 w-4" />} label="Blocked users" sub="People you've blocked" onClick={() => setShowBlocked(true)} />
+            {isMod && <Row icon={<ShieldAlert className="h-4 w-4 text-amber-400" />} label="Moderation queue" sub="Review reported reels, comments and users" onClick={() => setShowMod(true)} />}
+          </Section>
+        )}
+
+        <Section title="Legal & Compliance">
+          <Row
+            icon={<ShieldCheck className="h-4 w-4 text-volt" />}
+            label="Privacy Policy"
+            sub="How your workout and biometric data is stored & protected"
+            onClick={() => { modalOpenedAt.current = Date.now(); setShowPrivacy(true); }}
+          />
+          <Row
+            icon={<FileText className="h-4 w-4 text-ink-3" />}
+            label="Terms of Service"
+            sub="Usage guidelines & athlete standards"
+            onClick={() => { modalOpenedAt.current = Date.now(); setShowTerms(true); }}
+          />
+        </Section>
+
+        <Section title="Data & Account">
           <Row icon={<Download className="h-4 w-4" />} label="Backup my data" sub="Save everything to a file — keep it somewhere safe" onClick={handleExportBackup} />
           <Row icon={<Upload className="h-4 w-4" />} label="Restore from backup" sub="Bring back data from a saved backup file" onClick={() => backupFileRef.current?.click()} />
           <input ref={backupFileRef} type="file" accept="application/json" onChange={handlePickBackupFile} className="hidden" />
           {!confirmClear ? (
-            <Row icon={<Trash2 className="h-4 w-4 text-red-400" />} label="Reset all training data" sub="Workouts, logs and progress" onClick={() => setConfirmClear(true)} />
+            <Row icon={<Trash2 className="h-4 w-4 text-amber-400" />} label="Reset all training data" sub="Erase local workouts, logs and progress" onClick={() => setConfirmClear(true)} />
           ) : (
-            <div className="px-4 py-3.5">
-              <p className="mb-3 text-xs font-bold text-slate-600">This permanently erases your saved workouts, logs and progress on this device. Are you sure?</p>
+            <div className="px-4 py-3.5 border-t border-line">
+              <p className="mb-3 text-xs font-bold text-ink-2">This permanently erases your saved workouts, logs and progress on this device. Are you sure?</p>
               <div className="flex gap-2">
-                <button onClick={() => setConfirmClear(false)} className="flex-1 rounded-xl bg-slate-100 py-2.5 text-xs font-black text-slate-600">Cancel</button>
-                <button onClick={() => { onResetAllData(); setConfirmClear(false); setToast("All training data reset."); }} className="flex-1 rounded-xl bg-red-500 py-2.5 text-xs font-black text-white">Yes, reset</button>
+                <button onClick={() => setConfirmClear(false)} className="flex-1 rounded-xl bg-graphite py-2.5 text-xs font-black text-ink-2 hover:bg-graphite cursor-pointer">Cancel</button>
+                <button onClick={() => { onResetAllData(); setConfirmClear(false); setToast("All training data reset."); }} className="flex-1 rounded-xl bg-rose-600 hover:bg-rose-500 py-2.5 text-xs font-black text-white cursor-pointer">Yes, reset</button>
               </div>
             </div>
+          )}
+
+          {user && (
+            <Row
+              icon={<Trash2 className="h-4 w-4 text-rose-500" />}
+              label="Delete account"
+              sub="Permanently delete your profile, reels, chats, follows and cloud data"
+              onClick={() => setConfirmDeleteAccount(true)}
+            />
           )}
         </Section>
       </div>
 
+      {showBlocked && <BlockedUsersScreen onClose={() => setShowBlocked(false)} />}
+      {showMod && <ModerationScreen onClose={() => setShowMod(false)} />}
+      {confirmDeleteAccount && (
+        <DeleteAccountDialog
+          onClose={() => setConfirmDeleteAccount(false)}
+          onDeleted={() => {
+            void logOut().catch(() => {});
+            onResetAllData();
+            setConfirmDeleteAccount(false);
+            setToast("Your account and cloud data were deleted.");
+            onBack();
+          }}
+        />
+      )}
+
       {restoreConfirm && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-5" onClick={() => !restoreBusy && setRestoreConfirm(null)}>
-          <div className="w-full max-w-xs rounded-3xl bg-white p-6 text-center" onClick={e => e.stopPropagation()}>
-            <Upload className="mx-auto h-8 w-8 text-blue-600" />
-            <h3 className="mt-3 text-sm font-black text-slate-900">Restore this backup?</h3>
-            <p className="mt-2 text-xs text-slate-500">This will overwrite your current workouts, logs and progress on this device with what's inside <span className="font-bold">{restoreConfirm.name}</span>.</p>
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 p-5 backdrop-blur-sm" onClick={() => !restoreBusy && setRestoreConfirm(null)}>
+          <div className="w-full max-w-xs rounded-3xl bg-carbon border border-line p-6 text-center shadow-2xl" onClick={e => e.stopPropagation()}>
+            <Upload className="mx-auto h-8 w-8 text-cyan-400" />
+            <h3 className="mt-3 text-sm font-black text-ink">Restore this backup?</h3>
+            <p className="mt-2 text-xs text-ink-3">This will overwrite your current workouts, logs and progress on this device with what's inside <span className="font-bold text-ink">{restoreConfirm.name}</span>.</p>
             <div className="mt-5 flex gap-2">
-              <button onClick={() => setRestoreConfirm(null)} disabled={restoreBusy} className="flex-1 rounded-xl bg-slate-100 py-2.5 text-xs font-black text-slate-600 disabled:opacity-50">Cancel</button>
-              <button onClick={handleConfirmRestore} disabled={restoreBusy} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-blue-600 py-2.5 text-xs font-black text-white disabled:opacity-50">
+              <button onClick={() => setRestoreConfirm(null)} disabled={restoreBusy} className="flex-1 rounded-xl bg-graphite py-2.5 text-xs font-black text-ink-2 hover:bg-graphite disabled:opacity-50">Cancel</button>
+              <button onClick={handleConfirmRestore} disabled={restoreBusy} className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-cyan-500 py-2.5 text-xs font-black text-slate-950 hover:bg-cyan-400 disabled:opacity-50">
                 {restoreBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} Restore
               </button>
             </div>
@@ -335,8 +422,81 @@ export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, them
         </div>
       )}
 
+      {/* Privacy Policy Modal */}
+      {showNotifSettings && (
+        <NotificationSettings
+          onClose={() => setShowNotifSettings(false)}
+          socialPrefs={socialPrefs}
+          setSocial={setSocial}
+          notifPrefs={notifPrefs}
+          updateNotifPrefs={updateNotifPrefs}
+        />
+      )}
+      {showPrivacy && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" onClick={() => { if (Date.now() - modalOpenedAt.current > 450) setShowPrivacy(false); }}>
+          <div className="w-full max-w-md rounded-2xl bg-carbon border border-line p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-line pb-3">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-volt" />
+                <h3 className="text-base font-bold text-ink">Privacy Policy</h3>
+              </div>
+              <button onClick={() => setShowPrivacy(false)} className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl text-ink-3 hover:text-ink cursor-pointer">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-3 text-xs text-ink-2 leading-relaxed">
+              <p className="font-semibold text-ink">Apex Pulse ("Home Fitness Coach") Commitment:</p>
+              <p>1. <strong className="text-ink">On-Device Processing:</strong> Exercise pose scanning and camera tracking run entirely in on-device memory. Camera feeds are never uploaded, recorded, or transmitted to any remote servers.</p>
+              <p>2. <strong className="text-ink">Data Storage & Sync:</strong> Your workout history, streak milestones, and custom routines are stored locally on your device. When signed in, optional encrypted cloud sync is provided via Firebase to back up your progress across devices.</p>
+              <p>3. <strong className="text-ink">Zero Third-Party Tracking:</strong> We do not sell your biometric or personal data to data brokers, advertisers, or third-party networks.</p>
+              <p>4. <strong className="text-ink">Account & Data Deletion:</strong> You have full control over your data. You may delete your account and all associated cloud records at any time directly from Settings ("Delete Account & Cloud Data") or clear local logs with "Reset all training data".</p>
+            </div>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setShowPrivacy(false)}
+                className="w-full min-h-[48px] rounded-xl bg-volt text-void font-bold text-xs uppercase tracking-wider cursor-pointer active:scale-98"
+              >
+                Understood & Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Terms of Service Modal */}
+      {showTerms && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" onClick={() => { if (Date.now() - modalOpenedAt.current > 450) setShowTerms(false); }}>
+          <div className="w-full max-w-md rounded-2xl bg-carbon border border-line p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-line pb-3">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-ink-3" />
+                <h3 className="text-base font-bold text-ink">Terms of Service</h3>
+              </div>
+              <button onClick={() => setShowTerms(false)} className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl text-ink-3 hover:text-ink cursor-pointer">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-3 text-xs text-ink-2 leading-relaxed">
+              <p>1. <strong className="text-ink">Medical & Fitness Advisory:</strong> Apex Pulse provides exercise demonstrations and biometric pacing cues for general fitness guidance. Always consult a healthcare professional before initiating high-intensity physical training.</p>
+              <p>2. <strong className="text-ink">Athlete Conduct:</strong> In Community Duels and public challenges, users must maintain sportsmanship and integrity.</p>
+              <p>3. <strong className="text-ink">Subscriptions & Purchases:</strong> Pro features are billed through standard Google Play billing protocols and may be managed or cancelled at any time through Google Play Subscriptions.</p>
+            </div>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setShowTerms(false)}
+                className="w-full min-h-[48px] rounded-xl bg-graphite border border-line text-ink font-bold text-xs uppercase tracking-wider cursor-pointer active:scale-98"
+              >
+                Close Terms
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && (
-        <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-full bg-slate-900 px-5 py-2.5 text-xs font-bold text-white shadow-lg">
+        <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-full bg-carbon border border-line px-5 py-2.5 text-xs font-bold text-ink shadow-xl">
           {toast}
         </div>
       )}

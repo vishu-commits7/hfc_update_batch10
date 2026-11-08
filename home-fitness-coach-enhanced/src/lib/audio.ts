@@ -25,9 +25,33 @@ interface VoiceLike {
   lang: string;
 }
 
+let sharedAudioCtx: AudioContext | null = null;
+
+/**
+ * Returns a shared single AudioContext instance for the entire app.
+ * Avoids creating multiple competing audio contexts which exhaust device audio channels.
+ */
+export function getSharedAudioContext(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  if (!sharedAudioCtx) {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (AudioCtx) {
+      sharedAudioCtx = new AudioCtx();
+    }
+  }
+  if (sharedAudioCtx && sharedAudioCtx.state === "suspended") {
+    sharedAudioCtx.resume().catch(() => {});
+  }
+  return sharedAudioCtx;
+}
+
 class SoundSynthesizer {
   private ctx: AudioContext | null = null;
-  private isMuted: boolean = false;
+  private masterGain: GainNode | null = null;
+  private isMuted: boolean =
+    typeof localStorage !== "undefined"
+      ? localStorage.getItem("kinetic_sound_muted") === "true"
+      : false;
   private speaking = false;
 
   // Supported voices rarely change mid-session, so fetch once and reuse —
@@ -37,20 +61,47 @@ class SoundSynthesizer {
 
   private initContext() {
     if (!this.ctx) {
-      this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      this.ctx = getSharedAudioContext();
+      if (this.ctx) {
+        this.masterGain = this.ctx.createGain();
+        this.masterGain.gain.setValueAtTime(this.isMuted ? 0 : 1, this.ctx.currentTime);
+        this.masterGain.connect(this.ctx.destination);
+      }
     }
-    if (this.ctx.state === "suspended") {
-      this.ctx.resume();
+    if (this.ctx && this.ctx.state === "suspended") {
+      this.ctx.resume().catch(() => {});
     }
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.setValueAtTime(this.isMuted ? 0 : 1, this.ctx.currentTime);
+    }
+  }
+
+  private getMasterTarget(): AudioNode | null {
+    this.initContext();
+    return this.masterGain || this.ctx?.destination || null;
   }
 
   public setMute(muted: boolean) {
     this.isMuted = muted;
+    if (this.masterGain && this.ctx) {
+      try {
+        this.masterGain.gain.setValueAtTime(muted ? 0 : 1, this.ctx.currentTime);
+      } catch {}
+    }
+    if (muted) {
+      this.stopSpeaking();
+      lofiMusic.pause(true);
+    }
+  }
+
+  public getMute(): boolean {
+    return this.isMuted;
   }
 
   public toggleMute(): boolean {
-    this.isMuted = !this.isMuted;
-    return this.isMuted;
+    const next = !this.isMuted;
+    this.setMute(next);
+    return next;
   }
 
   /**
@@ -83,7 +134,7 @@ class SoundSynthesizer {
 
       osc.connect(filter);
       filter.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.getMasterTarget()!);
 
       osc.start(now);
       osc.stop(now + 0.06);
@@ -122,7 +173,7 @@ class SoundSynthesizer {
         gain.gain.exponentialRampToValueAtTime(0.0001, now + p.decay);
 
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(this.getMasterTarget()!);
 
         osc.start(now);
         osc.stop(now + p.decay + 0.05);
@@ -160,7 +211,7 @@ class SoundSynthesizer {
         gain.gain.exponentialRampToValueAtTime(0.0001, s.time + 1.4);
 
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(this.getMasterTarget()!);
 
         osc.start(s.time);
         osc.stop(s.time + 1.5);
@@ -196,7 +247,7 @@ class SoundSynthesizer {
         gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.1 + 0.4);
 
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(this.getMasterTarget()!);
 
         osc.start(now + idx * 0.1);
         osc.stop(now + idx * 0.1 + 0.5);
@@ -222,7 +273,7 @@ class SoundSynthesizer {
       gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.3);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.getMasterTarget()!);
 
       osc.start();
       osc.stop(this.ctx.currentTime + 0.4);
@@ -254,7 +305,7 @@ class SoundSynthesizer {
         gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.6);
 
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(this.getMasterTarget()!);
 
         osc.start(now + idx * 0.08);
         osc.stop(now + idx * 0.08 + 0.7);
@@ -270,7 +321,7 @@ class SoundSynthesizer {
         gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.8);
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(this.getMasterTarget()!);
         osc.start();
         osc.stop(this.ctx.currentTime + 0.9);
       }, 250);
@@ -301,7 +352,7 @@ class SoundSynthesizer {
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.getMasterTarget()!);
 
       osc.start(now);
       osc.stop(now + 0.75);
@@ -342,7 +393,7 @@ class SoundSynthesizer {
 
         osc.connect(filter);
         filter.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(this.getMasterTarget()!);
 
         osc.start(now + idx * 0.09);
         osc.stop(now + idx * 0.09 + 0.6);
@@ -373,7 +424,7 @@ class SoundSynthesizer {
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.getMasterTarget()!);
 
       osc.start(now);
       osc.stop(now + 0.05);
@@ -414,12 +465,24 @@ class SoundSynthesizer {
     const english = voices.filter(v => v.lang?.toLowerCase().startsWith("en"));
     const pool = english.length ? english : voices;
 
-    const MALE_HINTS = [/\bdavid\b/i, /\bmark\b/i, /\bguy\b/i, /\bdaniel\b/i, /\balex\b/i, /\bfred\b/i, /\baaron\b/i, /\bryan\b/i, /\boliver\b/i, /\bgeorge\b/i, /\bthomas\b/i, /\bmale\b/i, /\barthur\b/i, /\beddy\b/i];
-    const hints = MALE_HINTS;
-    for (const h of hints) {
-      const match = pool.find(v => h.test(v.name));
+    // Android's on-device Google TTS exposes voices as ids like
+    // "en-us-x-iom-local" rather than names, so match the known MALE codes
+    // first (iom/iol/tpd = en-US male, rjs/gbb/gbd = en-GB male, ahp/ene = en-IN male),
+    // then common desktop/browser male names. Female codes (sfg/tpc/tpf/iob) are skipped.
+    const FEMALE_RX = /(\bfemale\b|-(sfg|tpc|tpf|iob|gba|gbc|fis|aua|ahp_f)-|zira|samantha|susan|hazel|karen|victoria|catherine|linda|heather|emma|amy|joanna)/i;
+    const MALE_HINTS = [
+      /-iom-/i, /-iol-/i, /-tpd-/i, /-rjs-/i, /-gbb-/i, /-gbd-/i, /-ene-/i,
+      /\bdavid\b/i, /\bmark\b/i, /\bguy\b/i, /\bdaniel\b/i, /\balex\b/i, /\bfred\b/i,
+      /\baaron\b/i, /\bryan\b/i, /\boliver\b/i, /\bgeorge\b/i, /\bthomas\b/i, /\bmale\b/i,
+      /\barthur\b/i, /\beddy\b/i,
+    ];
+    for (const h of MALE_HINTS) {
+      const match = pool.find(v => h.test(`${v.name} ${(v as any).voiceURI ?? ""}`) && !FEMALE_RX.test(v.name));
       if (match) return voices.indexOf(match);
     }
+    // Nothing recognisably male: take any non-female voice before giving up.
+    const nonFemale = pool.find(v => !FEMALE_RX.test(v.name));
+    if (nonFemale) return voices.indexOf(nonFemale);
     // No gendered name matched (common on some Android/Linux setups) — fall
     // back to the same "premium sounding" pick as before, or just voice 0.
     const premium = pool.find(v => /Google|Natural|Trainer/.test(v.name)) || pool[0];
@@ -429,26 +492,38 @@ class SoundSynthesizer {
   public async speak(text: string, opts?: { gender?: SpeakGender; onStart?: () => void; onEnd?: () => void }) {
     if (this.isMuted) return;
     try {
-      await TextToSpeech.stop();
+      this.stopSpeaking();
+      if (this.isMuted) return;
+
       const voices = await this.getVoices();
-      const gender = opts?.gender;
+      if (this.isMuted) return;
+
+      // The coach is always the deep male voice, whatever a caller asks for.
+      const gender: SpeakGender = "male";
       const voiceIndex = this.pickVoiceIndex(voices, gender);
       // Friendly pitch nudge in the gendered direction — audible even when
       // no gendered voice name is found and the device only ships one voice.
-      const pitch = gender === "male" ? 0.92 : gender === "female" ? 1.12 : 1.02;
+      const pitch = 0.65; // deep
 
       this.speaking = true;
       lofiMusic.duck(true);
       opts?.onStart?.();
+
+      if (this.isMuted) {
+        this.stopSpeaking();
+        return;
+      }
+
       await TextToSpeech.speak({
         text,
         lang: "en-US",
-        rate: 1.0,
+        rate: 0.93,
         pitch,
         volume: 1.0,
         voice: voiceIndex,
         queueStrategy: QueueStrategy.Flush,
       });
+
       this.speaking = false;
       lofiMusic.duck(false);
       opts?.onEnd?.();
@@ -463,7 +538,30 @@ class SoundSynthesizer {
   public stopSpeaking() {
     this.speaking = false;
     lofiMusic.duck(false);
-    TextToSpeech.stop().catch(() => {});
+    try {
+      TextToSpeech.stop().catch(() => {});
+    } catch {
+      // ignore
+    }
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      try {
+        // Pausing immediately silences the active hardware audio buffer
+        window.speechSynthesis.pause();
+        // Cancel removes all items from the utterance queue
+        window.speechSynthesis.cancel();
+        // Clear any residual pause state so future speech synthesis calls are not blocked
+        setTimeout(() => {
+          try {
+            window.speechSynthesis.resume();
+            if (this.isMuted) {
+              window.speechSynthesis.cancel();
+            }
+          } catch {}
+        }, 15);
+      } catch {
+        // ignore
+      }
+    }
   }
 
   public isSpeaking(): boolean {

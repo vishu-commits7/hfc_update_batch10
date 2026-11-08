@@ -1,11 +1,35 @@
 import React, { useState } from "react";
 import { UserProfile, Workout } from "../types";
-import { AVAILABLE_EQUIPMENT, FITNESS_LEVELS, WORKOUT_GOALS, TARGET_AREAS } from "../constants";
-import { Sparkles, ArrowLeft, Brain, ShieldAlert, Key, Check, ExternalLink, RefreshCw } from "lucide-react";
+import {
+  AVAILABLE_EQUIPMENT,
+  FITNESS_LEVELS,
+  WORKOUT_GOALS,
+  TARGET_AREAS,
+} from "../constants";
+import {
+  Sparkles,
+  ArrowLeft,
+  Brain,
+  ShieldAlert,
+  Check,
+  ExternalLink,
+  RefreshCw,
+  Shuffle,
+  Play,
+  Dumbbell,
+  Clock3,
+  CheckCircle2,
+} from "lucide-react";
 import gymAiGenerator from "../assets/ui/gym-ai-generator.jpg";
-import { registerWorkoutExercises, registerCustomExercise, findCollidingAcademyVideo } from "../lib/customExercises";
+import {
+  registerWorkoutExercises,
+  registerCustomExercise,
+  findCollidingAcademyVideo,
+} from "../lib/customExercises";
+import { getAiGymSignaturePhoto } from "../lib/signaturePoseGenerator";
 import { apiUrl, apiHeaders, parseJsonResponse } from "../lib/apiBase";
 import { generateApexNeuralWorkout } from "../lib/proceduralWorkout";
+import { tapFeedback, celebrateFeedback } from "../lib/haptics";
 
 interface AiGeneratorProps {
   onBack: () => void;
@@ -14,7 +38,47 @@ interface AiGeneratorProps {
   setProfile: React.Dispatch<React.SetStateAction<UserProfile>>;
 }
 
-export default function AiGenerator({ onBack, onWorkoutGenerated, profile, setProfile }: AiGeneratorProps) {
+const DURATION_OPTIONS = [10, 15, 20, 30, 45];
+
+const SWAP_POOLS: Record<string, Array<{ name: string; targetMuscle: string; description: string }>> = {
+  "Upper Body": [
+    { name: "Diamond Push-ups", targetMuscle: "Triceps & Inner Chest", description: "Focus on elbows tucked and triceps lockout at top." },
+    { name: "Pike Push-ups", targetMuscle: "Shoulders & Upper Chest", description: "Hips high in inverted V, press downward towards floor." },
+    { name: "Wide Grip Push-ups", targetMuscle: "Pectoralis Major", description: "Hands wider than shoulder-width, peak chest stretch." },
+    { name: "Archer Push-ups", targetMuscle: "Unilateral Chest", description: "Glide across to overload one side during descent." },
+    { name: "Decline Push-ups", targetMuscle: "Clavicular Pectorals", description: "Feet elevated on bench or chair for upper chest load." },
+    { name: "Plank Shoulder Taps", targetMuscle: "Deltoids & Core", description: "Resist hip rotation while tapping opposite shoulder." },
+  ],
+  "Lower Body": [
+    { name: "Bulgarian Split Squats", targetMuscle: "Quadriceps & Glutes", description: "Rear foot elevated, lower until back knee hovers above ground." },
+    { name: "Jump Squats", targetMuscle: "Fast-Twitch Glutes", description: "Explosive vertical jump with soft, controlled landing." },
+    { name: "Single-Leg Glute Bridges", targetMuscle: "Gluteus Maximus", description: "Drive through heel, lock out hip extension for 1 second." },
+    { name: "Reverse Lunges", targetMuscle: "Hamstrings & Glutes", description: "Step backward with vertical torso, keeping front knee at 90°." },
+    { name: "Calf Raises to Hold", targetMuscle: "Gastrocnemius", description: "Elevate to balls of feet, hold 2 seconds at peak contraction." },
+    { name: "Sumo Squat Pulse", targetMuscle: "Adductors & Glutes", description: "Wide stance, toes flared 45°, pulse in bottom 3 inches." },
+  ],
+  "Core / Abs": [
+    { name: "Hollow Body Rock", targetMuscle: "Transverse Abdominis", description: "Lower back pressed into floor, limbs elevated in shallow bowl." },
+    { name: "Russian Twists", targetMuscle: "Internal & External Obliques", description: "Torso reclined 45°, rotate ribcage from side to side." },
+    { name: "Bicycle Crunches", targetMuscle: "Rectus Abdominis & Obliques", description: "Slow 2-second rotation touching opposite elbow to knee." },
+    { name: "Mountain Climbers", targetMuscle: "Core & Hip Flexors", description: "Rapid rhythmic piston knees driving towards chest in high plank." },
+    { name: "Deadbugs", targetMuscle: "Deep Anti-Extension Core", description: "Opposite arm and leg lower with strict lumbar contact." },
+    { name: "Side Plank Pulses", targetMuscle: "Lateral Obliques", description: "Elevated hip drops 2 inches then drives up past neutral." },
+  ],
+  "Full Body": [
+    { name: "Burpees to Tuck Jump", targetMuscle: "Full Body & Cardiorespiratory", description: "Chest to floor, snap feet under hips, explode into tuck." },
+    { name: "Bear Crawl Matrix", targetMuscle: "Quadrupedal Core & Shoulders", description: "Knees 1 inch off ground, opposite limb crawl." },
+    { name: "Squat Thrust to High Knee", targetMuscle: "Full Body Dynamic", description: "Kick back to push-up, stand and drive knee high." },
+    { name: "Skater Hops with Balance", targetMuscle: "Lateral Chain & Glutes", description: "Explosive lateral bound, stick the single-leg landing." },
+  ],
+};
+
+export default function AiGenerator({
+  onBack,
+  onWorkoutGenerated,
+  profile,
+  setProfile,
+}: AiGeneratorProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,7 +90,9 @@ export default function AiGenerator({ onBack, onWorkoutGenerated, profile, setPr
   const [selectedEquipment, setSelectedEquipment] = useState<string[]>(
     profile.preferredEquipment.length > 0 ? profile.preferredEquipment : ["bodyweight"]
   );
-  const [healthNotes, setHealthNotes] = useState("");
+
+  // Generated Routine Preview State
+  const [previewWorkout, setPreviewWorkout] = useState<Workout | null>(null);
 
   // Gemini AI Key & Engine settings
   const [geminiApiKey, setGeminiApiKey] = useState(() => {
@@ -54,27 +120,28 @@ export default function AiGenerator({ onBack, onWorkoutGenerated, profile, setPr
       const data = await parseJsonResponse(res);
       if (res.ok && data.valid) {
         localStorage.setItem("kinetic_gemini_api_key", trimmed);
-        setKeyStatusMsg("✅ Gemini 2.5 Flash connected and verified!");
+        setKeyStatusMsg("Gemini 2.5 Flash connected and verified!");
         setTimeout(() => setShowKeyInput(false), 1200);
       } else {
-        setKeyStatusMsg(`❌ Validation failed: ${data.message || "Invalid API key"}`);
+        setKeyStatusMsg(`Validation failed: ${data.message || "Invalid API key"}`);
       }
     } catch (err: any) {
-      setKeyStatusMsg(`❌ Validation error: ${err.message}`);
+      setKeyStatusMsg(`Validation error: ${err.message}`);
     } finally {
       setKeyValidating(false);
     }
   };
 
   const toggleEquipment = (id: string) => {
+    tapFeedback();
     if (id === "bodyweight") {
       setSelectedEquipment(["bodyweight"]);
       return;
     }
-    
-    let updated = selectedEquipment.filter(item => item !== "bodyweight");
+
+    let updated = selectedEquipment.filter((item) => item !== "bodyweight");
     if (updated.includes(id)) {
-      updated = updated.filter(item => item !== id);
+      updated = updated.filter((item) => item !== id);
       if (updated.length === 0) {
         updated = ["bodyweight"];
       }
@@ -84,22 +151,22 @@ export default function AiGenerator({ onBack, onWorkoutGenerated, profile, setPr
     setSelectedEquipment(updated);
   };
 
-  const handleGenerate = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleGenerate = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    tapFeedback();
     setLoading(true);
     setError(null);
 
     // Save choices back to user profile for persistence
-    setProfile(prev => ({
+    setProfile((prev) => ({
       ...prev,
       fitnessLevel,
       goal,
-      preferredEquipment: selectedEquipment
+      preferredEquipment: selectedEquipment,
     }));
 
-    // Map equipment IDs to human names
-    const equipmentNames = selectedEquipment.map(id => {
-      const found = AVAILABLE_EQUIPMENT.find(e => e.id === id);
+    const equipmentNames = selectedEquipment.map((id) => {
+      const found = AVAILABLE_EQUIPMENT.find((item) => item.id === id);
       return found ? found.name : id;
     });
 
@@ -108,24 +175,34 @@ export default function AiGenerator({ onBack, onWorkoutGenerated, profile, setPr
       let generatedWorkout: any = null;
 
       try {
-        const response = await fetch(apiUrl("/api/workouts/generate"), {
-          method: "POST",
-          headers: apiHeaders(activeKey ? { "x-gemini-key": activeKey } : {}),
-          body: JSON.stringify({
-            fitnessLevel,
-            goal,
-            duration,
-            targetArea,
-            equipment: equipmentNames,
-            healthNotes: healthNotes || undefined,
-            mode: "gemini"
-          })
-        });
+        const timeoutController = new AbortController();
+        const timeoutId = setTimeout(() => timeoutController.abort(), 3500);
+
+        let response: Response;
+        try {
+          response = await fetch(apiUrl("/api/workouts/generate"), {
+            method: "POST",
+            headers: apiHeaders(activeKey ? { "x-gemini-key": activeKey } : {}),
+            signal: timeoutController.signal,
+            body: JSON.stringify({
+              fitnessLevel,
+              goal,
+              duration,
+              targetArea,
+              equipment: equipmentNames,
+              mode: "gemini",
+            }),
+          });
+        } finally {
+          clearTimeout(timeoutId);
+        }
 
         generatedWorkout = await parseJsonResponse(response);
 
         if (!response.ok) {
-          throw new Error(generatedWorkout?.message || generatedWorkout?.error || "Server generation failed.");
+          throw new Error(
+            generatedWorkout?.message || generatedWorkout?.error || "Server generation failed."
+          );
         }
       } catch (networkErr: any) {
         console.warn("Backend unavailable or timed out, generating via local procedural engine:", networkErr);
@@ -136,13 +213,8 @@ export default function AiGenerator({ onBack, onWorkoutGenerated, profile, setPr
           duration,
           targetArea,
           equipment: equipmentNames,
-          healthNotes: healthNotes || undefined,
         });
       }
-
-      // Process exercises: collision detection with Academy videos + novel registration
-      let collidedCount = 0;
-      let novelCount = 0;
 
       const processedExercises = (generatedWorkout.exercises || []).map((ex: any) => {
         const collision = findCollidingAcademyVideo(ex.name);
@@ -150,39 +222,36 @@ export default function AiGenerator({ onBack, onWorkoutGenerated, profile, setPr
         let signaturePose: string | undefined = undefined;
 
         if (collision.videoUrl) {
-          collidedCount++;
+          signaturePose = getAiGymSignaturePhoto(ex.name, targetArea, ex.targetMuscle);
         } else {
-          novelCount++;
-          // Completely novel exercise: register into Academy with compartment and instant signature pose
           const registered = registerCustomExercise({
             name: ex.name,
             targetMuscle: ex.targetMuscle || targetArea,
             description: ex.description,
-            category: targetArea
+            category: targetArea,
           });
-          if (registered?.signaturePose) {
-            signaturePose = registered.signaturePose;
-          }
+          signaturePose =
+            registered?.signaturePose || getAiGymSignaturePhoto(ex.name, targetArea, ex.targetMuscle);
         }
 
         return {
           name: ex.name || "Custom Movement",
           description: ex.description || ex.vocalGuidanceCue || "Maintain posture control.",
           durationSeconds: Number(ex.durationSeconds) || 0,
-          reps: Number(ex.reps) || 10,
+          reps: Number(ex.reps) || 12,
           sets: Number(ex.sets) || 3,
-          restSeconds: Number(ex.restSeconds) || 15,
+          restSeconds: Number(ex.restSeconds) || 20,
           targetMuscle: ex.targetMuscle || targetArea,
           videoUrl,
-          signaturePose
+          signaturePose,
         };
       });
 
-      // Inject local ID and attributes
       const finalWorkout: Workout = {
         id: `ai_${Date.now()}`,
         workoutTitle: generatedWorkout.workoutTitle || `${targetArea} Protocol`,
-        workoutDescription: generatedWorkout.workoutDescription || `Custom workout targeting ${targetArea}.`,
+        workoutDescription:
+          generatedWorkout.workoutDescription || `Custom high-performance workout targeting ${targetArea}.`,
         totalDurationMinutes: generatedWorkout.totalDurationMinutes || duration,
         targetArea: generatedWorkout.targetArea || targetArea,
         equipmentNeeded: generatedWorkout.equipmentNeeded || equipmentNames,
@@ -190,336 +259,492 @@ export default function AiGenerator({ onBack, onWorkoutGenerated, profile, setPr
         coachingTips: generatedWorkout.coachingTips || [
           "Maintain controlled breathing throughout the sets.",
           "Rest adequately between exercises to secure posture.",
-          "Hydrate immediately if you experience dizziness."
+          "Hydrate immediately if you experience fatigue.",
         ],
         isAiGenerated: true,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
       };
 
       registerWorkoutExercises(finalWorkout.exercises);
-      onWorkoutGenerated(finalWorkout);
+      setPreviewWorkout(finalWorkout);
+      celebrateFeedback();
     } catch (err: any) {
       console.error("Error occurred during workout generation process:", err);
-      setError(err.message || "An unexpected error occurred. Please verify your connection or Gemini API key.");
+      setError(
+        err.message || "An unexpected error occurred. Please verify your connection or settings."
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  const handleSwapExercise = (index: number) => {
+    if (!previewWorkout) return;
+    tapFeedback();
+
+    const pool = SWAP_POOLS[targetArea] || SWAP_POOLS["Full Body"];
+    const currentEx = previewWorkout.exercises[index];
+    const available = pool.filter(
+      (m) =>
+        m.name.toLowerCase() !== currentEx.name.toLowerCase() &&
+        !previewWorkout.exercises.some((e) => e.name.toLowerCase() === m.name.toLowerCase())
+    );
+
+    const replacement =
+      available.length > 0
+        ? available[Math.floor(Math.random() * available.length)]
+        : pool[Math.floor(Math.random() * pool.length)];
+
+    const updatedExercises = [...previewWorkout.exercises];
+    const registered = registerCustomExercise({
+      name: replacement.name,
+      targetMuscle: replacement.targetMuscle,
+      description: replacement.description,
+      category: targetArea,
+    });
+
+    updatedExercises[index] = {
+      ...currentEx,
+      name: replacement.name,
+      targetMuscle: replacement.targetMuscle,
+      description: replacement.description,
+      signaturePose: registered?.signaturePose || getAiGymSignaturePhoto(replacement.name, targetArea, replacement.targetMuscle),
+    };
+
+    setPreviewWorkout({
+      ...previewWorkout,
+      exercises: updatedExercises,
+    });
+  };
+
+  const handleConfirmStart = () => {
+    if (!previewWorkout) return;
+    tapFeedback();
+    onWorkoutGenerated(previewWorkout);
+  };
+
   return (
-    <div className="max-w-3xl mx-auto animate-fade-in text-slate-800 pb-12" id="ai-generator-view">
+    <div className="max-w-2xl mx-auto animate-fade-in text-[#F4F4F6] pb-12" id="ai-generator-view">
       {/* Top Header Navigation */}
-      <div className="flex items-center gap-4 mb-5">
+      <div className="flex items-center gap-3 mb-5">
         <button
-          onClick={onBack}
-          className="group flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-xs"
-          title="Back to Dashboard"
+          type="button"
+          onClick={() => {
+            tapFeedback();
+            if (previewWorkout) {
+              setPreviewWorkout(null);
+            } else {
+              onBack();
+            }
+          }}
+          className="flex min-h-[48px] min-w-[48px] items-center justify-center rounded-xl border border-line bg-carbon text-ink-2 hover:text-ink transition-colors cursor-pointer"
+          title="Back"
           id="btn-back-to-dashboard"
         >
-          <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
+          <ArrowLeft className="h-5 w-5" />
         </button>
         <div>
-          <span className="text-[10px] uppercase tracking-widest text-blue-600 font-extrabold">KINETIC AI ENGINE</span>
-          <h1 className="font-sans text-2xl font-black tracking-tight text-slate-900 uppercase">AI Workout Generator</h1>
+          <span className="text-[11px] uppercase tracking-wider text-volt font-bold">
+            {previewWorkout ? "ROUTINE PREVIEW" : "INTELLIGENT GENERATOR"}
+          </span>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-ink leading-none mt-0.5">
+            {previewWorkout ? previewWorkout.workoutTitle : "AI Workout Protocol"}
+          </h1>
         </div>
       </div>
 
-      {/* Real-photo hero banner — AI gym athlete with futuristic cyan cable machine */}
-      <div className="relative mb-6 overflow-hidden rounded-[24px] bg-slate-950 border border-cyan-500/20 shadow-lg">
-        <div className="absolute inset-y-0 right-0 w-[45%] overflow-hidden sm:w-[50%]">
-          <img src={gymAiGenerator} alt="AI Gym Athlete" className="h-full w-full object-cover object-[60%_25%]" draggable={false} />
-          <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/40 to-transparent" />
+      {/* Hero Banner — Only shown in form mode */}
+      {!previewWorkout && !loading && (
+        <div className="relative mb-5 overflow-hidden rounded-2xl bg-carbon border border-line">
+          <div className="absolute inset-y-0 right-0 w-[45%] overflow-hidden sm:w-[50%]">
+            <img
+              src={gymAiGenerator}
+              alt=""
+              className="h-full w-full object-cover object-[60%_25%] opacity-40"
+              draggable={false}
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#141418] via-[#141418]/80 to-transparent" />
+          </div>
+          <div className="relative z-10 max-w-[62%] p-5 sm:p-6">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-volt">
+              Custom Biomechanics
+            </span>
+            <h2 className="mt-1 font-display text-lg font-bold leading-tight text-ink sm:text-xl">
+              Targeted Neural Programming
+            </h2>
+            <p className="mt-1 text-xs text-ink-3">
+              Formulated for maximum hypertrophy and fatigue management.
+            </p>
+          </div>
         </div>
-        <div className="absolute right-0 top-0 -mr-16 -mt-16 h-48 w-48 rounded-full bg-cyan-500/20 blur-3xl pointer-events-none" />
-        <div className="relative z-10 max-w-[60%] px-5 py-6 sm:max-w-[55%] sm:px-7 sm:py-8">
-          <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400">Powered by Gemini AI</span>
-          <h2 className="mt-1 font-display text-lg font-black leading-tight tracking-tight text-white sm:text-2xl">
-            Engineered For Peak Performance.
-          </h2>
-          <p className="mt-1.5 text-xs text-slate-300 hidden sm:block">
-            Scientific biomechanics, custom pacing, and personalized intensity.
-          </p>
-        </div>
-      </div>
+      )}
 
-      {/* AI Engine & Gemini Key Status Card */}
-      <div className="mb-6 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <div>
-              <p className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                {geminiApiKey ? (
-                  <>
-                    <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
-                    <span>Gemini 2.5 Flash (Custom Key Active)</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-3.5 w-3.5 text-blue-600" />
-                    <span>Apex AI Cloud Engine Active</span>
-                  </>
-                )}
-              </p>
-              <p className="text-[11px] text-slate-500">
-                {geminiApiKey
-                  ? "Generating custom routines via your connected Google AI Studio key."
-                  : "Powered by Gemini AI backend on Render. Zero setup required for users."}
-              </p>
-            </div>
+      {/* Engine Status Header */}
+      {!previewWorkout && !loading && (
+        <div className="mb-4 flex items-center justify-between rounded-xl border border-line bg-carbon px-4 py-2.5">
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-[#10B981]" />
+            <span className="text-xs font-semibold text-ink-2">
+              {geminiApiKey ? "Gemini 2.5 Flash Active" : "Apex Biomechanical Engine Active"}
+            </span>
           </div>
           <button
             type="button"
             onClick={() => setShowKeyInput(!showKeyInput)}
-            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors shrink-0"
+            className="text-[11px] font-bold text-ink-3 hover:text-ink transition-colors cursor-pointer"
           >
-            <Key className="h-3.5 w-3.5 text-slate-500" />
-            <span>{showKeyInput ? "Close Settings" : geminiApiKey ? "Manage Key" : "Custom Key (Optional)"}</span>
+            {showKeyInput ? "Close" : geminiApiKey ? "Manage Key" : "Custom Key"}
           </button>
         </div>
+      )}
 
-        {/* Collapsible Key Configuration */}
-        {showKeyInput && (
-          <div className="mt-4 pt-3.5 border-t border-slate-100 space-y-3">
-            <div className="flex flex-col sm:flex-row gap-2">
-              <div className="relative flex-1">
-                <input
-                  type="password"
-                  value={geminiApiKey}
-                  onChange={(e) => setGeminiApiKey(e.target.value)}
-                  placeholder="Paste Google AI Studio API Key (AIzaSy...)"
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-2 text-xs text-slate-800 placeholder-slate-400 focus:border-cyan-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-cyan-500 font-mono"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={handleSaveAndTestKey}
-                disabled={keyValidating}
-                className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-50 transition-colors"
-              >
-                {keyValidating ? (
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Check className="h-3.5 w-3.5 text-emerald-400" />
-                )}
-                <span>{keyValidating ? "Verifying..." : "Save & Verify"}</span>
-              </button>
-            </div>
-
-            {keyStatusMsg && (
-              <p className="text-xs font-medium text-slate-700">{keyStatusMsg}</p>
-            )}
-
-            <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
-              <span>Key is stored securely on your device.</span>
-              <a
-                href="https://aistudio.google.com/apikey"
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-cyan-600 hover:underline font-medium"
-              >
-                Get a free key from Google AI Studio <ExternalLink className="h-3 w-3" />
-              </a>
-            </div>
+      {/* Collapsible Key Configuration */}
+      {showKeyInput && !previewWorkout && !loading && (
+        <div className="mb-4 rounded-xl border border-line bg-carbon p-4 space-y-3">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="password"
+              value={geminiApiKey}
+              onChange={(e) => setGeminiApiKey(e.target.value)}
+              placeholder="Paste Google AI Studio API Key (AIzaSy...)"
+              className="flex-1 rounded-xl border border-line bg-void px-3.5 py-2 text-xs text-ink placeholder-zinc-500 focus:border-[#E1FF00] focus:outline-none font-mono"
+            />
+            <button
+              type="button"
+              onClick={handleSaveAndTestKey}
+              disabled={keyValidating}
+              className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl bg-volt px-4 py-2 text-xs font-bold text-void disabled:opacity-50 transition-colors cursor-pointer"
+            >
+              {keyValidating ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Check className="h-3.5 w-3.5" />
+              )}
+              <span>{keyValidating ? "Verifying..." : "Save Key"}</span>
+            </button>
           </div>
-        )}
-      </div>
+          {keyStatusMsg && (
+            <p className="text-xs font-medium text-ink-2">{keyStatusMsg}</p>
+          )}
+          <div className="flex items-center justify-between text-[11px] text-ink-3 pt-0.5">
+            <span>Stored securely on device.</span>
+            <a
+              href="https://aistudio.google.com/apikey"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-volt hover:underline font-medium"
+            >
+              Get free key <ExternalLink className="h-3 w-3" />
+            </a>
+          </div>
+        </div>
+      )}
 
-      <div className="rounded-[32px] border border-slate-100 bg-white p-6 sm:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.02)] relative overflow-hidden">
-        {/* Glow Effects */}
-        <div className="absolute top-0 right-0 -mr-24 -mt-24 h-48 w-48 bg-blue-500/5 rounded-full blur-2xl pointer-events-none" />
+      {/* -------------------- LOADING STATE -------------------- */}
+      {loading && (
+        <div className="rounded-2xl border border-line bg-carbon p-6 text-center space-y-4">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-graphite text-volt">
+            <Brain className="h-7 w-7 animate-pulse" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-ink">Synthesizing Neural Routine</h3>
+            <p className="mt-1 text-xs text-ink-3">
+              Balancing joint biomechanics, fatigue curves, and equipment vectors...
+            </p>
+          </div>
+          {/* Skeleton Loaders */}
+          <div className="space-y-2.5 pt-2">
+            <div className="h-16 w-full rounded-xl bg-graphite/60 animate-pulse" />
+            <div className="h-16 w-full rounded-xl bg-graphite/60 animate-pulse" />
+            <div className="h-16 w-full rounded-xl bg-graphite/60 animate-pulse" />
+          </div>
+        </div>
+      )}
 
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center space-y-6" id="ai-loading-state">
-            <div className="relative flex items-center justify-center">
-              <div className="h-16 w-16 rounded-full border-4 border-blue-100 border-t-blue-600 animate-spin" />
-              <Brain className="absolute h-6 w-6 text-blue-600 animate-pulse" />
-            </div>
-            
-            <div className="space-y-2 max-w-md">
-              <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Synthesizing Workout Plan...</h3>
-              <p className="text-sm text-slate-500 leading-relaxed">
-                Gemini is acting as your digital personal trainer—sequencing safe exercises, writing posture forms, and planning rest breaks.
+      {/* -------------------- ROUTINE PREVIEW STAGE -------------------- */}
+      {!loading && previewWorkout && (
+        <div className="space-y-4">
+          {/* Workout Overview Header */}
+          <div className="rounded-2xl border border-line bg-carbon p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-volt bg-volt/10 px-2 py-0.5 rounded-full border border-[#E1FF00]/20">
+                  {previewWorkout.targetArea}
+                </span>
+                <span className="text-xs text-ink-3">
+                  {previewWorkout.exercises.length} Exercises
+                </span>
+              </div>
+              <h2 className="text-lg font-bold text-ink mt-1">
+                {previewWorkout.workoutTitle}
+              </h2>
+              <p className="text-xs text-ink-3 mt-0.5 max-w-md">
+                {previewWorkout.workoutDescription}
               </p>
             </div>
 
-            {/* Simulated progression bullets */}
-            <div className="text-[10px] text-blue-600 uppercase tracking-widest font-extrabold flex flex-wrap justify-center gap-3">
-              <span>● Formulating Sets</span>
-              <span className="opacity-40">•</span>
-              <span>● Calculating Rest Intervals</span>
-              <span className="opacity-40">•</span>
-              <span>● Finalizing Posture Cues</span>
+            <div className="flex items-center gap-4 text-xs font-semibold tabular-nums text-ink-2">
+              <span className="flex items-center gap-1.5">
+                <Clock3 className="h-4 w-4 text-volt" />
+                {previewWorkout.totalDurationMinutes} min
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Dumbbell className="h-4 w-4 text-volt" />
+                {fitnessLevel}
+              </span>
             </div>
           </div>
-        ) : (
-          <form onSubmit={handleGenerate} className="space-y-6">
-            {error && (
-              <div className="rounded-2xl border border-rose-100 bg-rose-50 p-4 text-rose-800 flex gap-3 items-start text-sm">
-                <ShieldAlert className="h-5 w-5 shrink-0 text-rose-600 mt-0.5" />
-                <div className="space-y-1">
-                  <p className="font-bold text-rose-900">AI Generation Encountered an Error</p>
-                  <p className="text-xs text-rose-700 leading-relaxed">{error}</p>
-                </div>
-              </div>
-            )}
 
-            {/* Grid 1: Fitness Level & Workout Goal */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Fitness Level Selection */}
-              <div className="space-y-2.5">
-                <label className="text-xs uppercase tracking-widest text-slate-400 font-extrabold block">1. Target Fitness level</label>
-                <div className="grid grid-cols-1 gap-2">
-                  {FITNESS_LEVELS.map((level) => (
-                    <button
-                      key={level.value}
-                      type="button"
-                      onClick={() => setFitnessLevel(level.value as any)}
-                      className={`flex flex-col text-left p-4 rounded-2xl border transition-all ${
-                        fitnessLevel === level.value
-                          ? "border-blue-600 bg-blue-50/50 text-slate-900 shadow-xs"
-                          : "border-slate-100 bg-slate-50 text-slate-700 hover:bg-slate-100/70"
-                      }`}
-                    >
-                      <span className="text-sm font-bold tracking-tight text-slate-900">{level.label}</span>
-                      <span className="text-[11px] text-slate-400 mt-0.5">{level.desc}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Workout Goal Selection */}
-              <div className="space-y-2.5">
-                <label className="text-xs uppercase tracking-widest text-slate-400 font-extrabold block">2. Primary Session Goal</label>
-                <div className="grid grid-cols-1 gap-2">
-                  {WORKOUT_GOALS.map((g) => (
-                    <button
-                      key={g.value}
-                      type="button"
-                      onClick={() => setGoal(g.value as any)}
-                      className={`flex items-start gap-3 text-left p-4 rounded-2xl border transition-all ${
-                        goal === g.value
-                          ? "border-blue-600 bg-blue-50/50 text-slate-900 shadow-xs"
-                          : "border-slate-100 bg-slate-50 text-slate-700 hover:bg-slate-100/70"
-                      }`}
-                    >
-                      <span className="text-xl leading-none mt-0.5">{g.icon}</span>
-                      <div>
-                        <span className="text-sm font-bold tracking-tight block text-slate-900">{g.label}</span>
-                        <span className="text-[11px] text-slate-400 mt-0.5 block">{g.desc}</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
+          {/* Clean Vertical Sequence of Exercise Cards */}
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between px-1">
+              <span className="text-[12px] uppercase tracking-wider font-bold text-ink-3">
+                Exercise Sequence ({previewWorkout.exercises.length})
+              </span>
+              <span className="text-[11px] text-ink-3 font-medium">
+                Tap Swap to cycle alternative movement
+              </span>
             </div>
 
-            {/* Grid 2: Target Area & Session Duration */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-              {/* Target Body Area */}
-              <div className="space-y-2.5">
-                <label className="text-xs uppercase tracking-widest text-slate-400 font-extrabold block">3. Target Muscle/Focus Area</label>
-                <select
-                  value={targetArea}
-                  onChange={(e) => setTargetArea(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white p-3.5 text-sm text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-hidden"
-                >
-                  {TARGET_AREAS.map((area) => (
-                    <option key={area.value} value={area.value} className="bg-white text-slate-800">
-                      {area.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Workout Duration */}
-              <div className="space-y-2.5">
-                <div className="flex justify-between items-center">
-                  <label className="text-xs uppercase tracking-widest text-slate-400 font-extrabold block">4. Target Duration</label>
-                  <span className="text-xs font-extrabold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">{duration} minutes</span>
-                </div>
-                <div className="pt-2">
-                  <input
-                    type="range"
-                    min="5"
-                    max="45"
-                    step="5"
-                    value={duration}
-                    onChange={(e) => setDuration(parseInt(e.target.value))}
-                    className="w-full h-1.5 bg-slate-100 rounded-full appearance-none cursor-pointer accent-blue-600"
-                  />
-                  <div className="flex justify-between text-[10px] text-slate-400 mt-2 font-semibold">
-                    <span>5 MIN</span>
-                    <span>15 MIN</span>
-                    <span>30 MIN</span>
-                    <span>45 MIN</span>
+            {previewWorkout.exercises.map((ex, idx) => (
+              <div
+                key={`${ex.name}-${idx}`}
+                className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-carbon p-3.5 transition-colors hover:border-line-strong"
+              >
+                {/* Number & Info */}
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-graphite text-xs font-bold tabular-nums text-ink-3 border border-line">
+                    {idx + 1}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-volt bg-volt/10 px-2 py-0.5 rounded-full border border-[#E1FF00]/20">
+                        {ex.targetMuscle}
+                      </span>
+                    </div>
+                    <h4 className="text-sm font-bold text-ink mt-1 truncate">
+                      {ex.name}
+                    </h4>
+                    <p className="text-xs text-ink-3 line-clamp-1 mt-0.5">
+                      {ex.description}
+                    </p>
+                    <div className="mt-1 flex items-center gap-2 text-xs font-semibold tabular-nums text-ink-2">
+                      <span className="text-ink font-bold">{ex.sets} sets</span>
+                      <span>×</span>
+                      <span>{ex.reps > 0 ? `${ex.reps} reps` : `${ex.durationSeconds}s`}</span>
+                      <span className="text-ink-3">•</span>
+                      <span className="text-ink-3">{ex.restSeconds}s rest</span>
+                    </div>
                   </div>
                 </div>
+
+                {/* Swap / Replace Action Button */}
+                <button
+                  type="button"
+                  onClick={() => handleSwapExercise(idx)}
+                  className="flex min-h-[44px] min-w-[44px] items-center gap-1.5 rounded-xl border border-line bg-graphite px-3 py-2 text-xs font-bold text-ink-2 hover:text-ink transition-colors cursor-pointer active:scale-95 shrink-0"
+                  title="Swap with alternative movement"
+                >
+                  <Shuffle className="h-3.5 w-3.5 text-volt" />
+                  <span>Swap</span>
+                </button>
+              </div>
+            ))}
+          </div>
+
+          {/* Action Footer */}
+          <div className="sticky bottom-18 z-20 flex gap-2.5 pt-2">
+            <button
+              type="button"
+              onClick={() => setPreviewWorkout(null)}
+              className="flex min-h-[48px] items-center justify-center rounded-xl border border-line bg-graphite px-4 text-xs font-bold text-ink-2 hover:text-ink transition-colors cursor-pointer"
+            >
+              Edit Options
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmStart}
+              className="flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-xl bg-volt px-5 text-sm font-bold text-void shadow-md transition-transform active:scale-98 cursor-pointer"
+            >
+              <Play className="h-4 w-4 fill-current" />
+              <span>Start Workout Now</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------- STRUCTURED FORM CONTROLS -------------------- */}
+      {!loading && !previewWorkout && (
+        <form onSubmit={handleGenerate} className="space-y-5">
+          {error && (
+            <div className="rounded-xl border border-rose-500/30 bg-rose-950/20 p-4 text-rose-300 flex gap-3 items-start text-xs">
+              <ShieldAlert className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+              <div>
+                <p className="font-bold text-ink">Generation Error</p>
+                <p className="mt-0.5">{error}</p>
               </div>
             </div>
+          )}
 
-            {/* Segment 3: Equipment Available */}
-            <div className="space-y-2.5 pt-2">
-              <label className="text-xs uppercase tracking-widest text-slate-400 font-extrabold block">
-                5. Select Available Equipment at Home
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {AVAILABLE_EQUIPMENT.map((eq) => {
-                  const isSelected = selectedEquipment.includes(eq.id);
-                  return (
-                    <button
-                      key={eq.id}
-                      type="button"
-                      onClick={() => toggleEquipment(eq.id)}
-                      className={`flex items-center gap-3 p-3.5 rounded-2xl border text-sm font-semibold transition-all ${
-                        isSelected
-                          ? "border-blue-600 bg-blue-50/50 text-slate-900"
-                          : "border-slate-100 bg-slate-50 text-slate-600 hover:bg-slate-100/70"
-                      }`}
-                    >
-                      <span className="text-lg">{eq.icon}</span>
-                      <span className="truncate">{eq.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
+          {/* 1. Target Focus Area — Tactile Segmented Pills */}
+          <div className="rounded-2xl border border-line bg-carbon p-4 space-y-2.5">
+            <label className="text-[12px] font-bold uppercase tracking-wider text-ink-3 block">
+              Target Muscle Focus
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {TARGET_AREAS.map((area) => {
+                const isSelected = targetArea === area.value;
+                return (
+                  <button
+                    key={area.value}
+                    type="button"
+                    onClick={() => {
+                      tapFeedback();
+                      setTargetArea(area.value);
+                    }}
+                    className={`min-h-[44px] rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer select-none ${
+                      isSelected
+                        ? "bg-volt text-void shadow-sm"
+                        : "bg-graphite text-ink-3 border border-line hover:text-white"
+                    }`}
+                  >
+                    {area.label}
+                  </button>
+                );
+              })}
             </div>
+          </div>
 
-            {/* Segment 4: Physical notes & constraints */}
-            <div className="space-y-2.5 pt-2">
-              <label className="text-xs uppercase tracking-widest text-slate-400 font-extrabold block">
-                6. Safety & Physical Notes (Optional)
-              </label>
-              <textarea
-                value={healthNotes}
-                onChange={(e) => setHealthNotes(e.target.value)}
-                placeholder="Examples: 'Sensitive lower back', 'Slightly sore left knee'..."
-                rows={3}
-                className="w-full rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-hidden"
-              />
-              <p className="text-[11px] text-slate-400 italic">
-                Our AI coach scans your safety notes to swap risky movements with highly accessible alternatives.
-              </p>
+          {/* 2. Workout Goal — Tactile Segmented Pills */}
+          <div className="rounded-2xl border border-line bg-carbon p-4 space-y-2.5">
+            <label className="text-[12px] font-bold uppercase tracking-wider text-ink-3 block">
+              Primary Objective
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {WORKOUT_GOALS.map((g) => {
+                const isSelected = goal === g.value;
+                return (
+                  <button
+                    key={g.value}
+                    type="button"
+                    onClick={() => {
+                      tapFeedback();
+                      setGoal(g.value as any);
+                    }}
+                    className={`min-h-[48px] flex items-center justify-between rounded-xl px-3.5 py-2 text-xs font-bold transition-all cursor-pointer select-none ${
+                      isSelected
+                        ? "bg-volt text-void shadow-sm"
+                        : "bg-graphite text-ink-2 border border-line hover:text-white"
+                    }`}
+                  >
+                    <span className="truncate">{g.label}</span>
+                    {isSelected && <CheckCircle2 className="h-4 w-4 shrink-0 text-black" />}
+                  </button>
+                );
+              })}
             </div>
+          </div>
 
-            {/* Actions Footer */}
-            <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <span className="text-xs text-slate-400 max-w-md text-center sm:text-left leading-relaxed">
-                ⚡ Make sure you are in an open workspace with adequate hydration before starting.
+          {/* 3. Session Duration — Tactile Segmented Pills */}
+          <div className="rounded-2xl border border-line bg-carbon p-4 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[12px] font-bold uppercase tracking-wider text-ink-3">
+                Duration
+              </label>
+              <span className="text-xs font-bold tabular-nums text-volt">
+                {duration} minutes
               </span>
-
-              <button
-                type="submit"
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 rounded-2xl bg-slate-900 text-white hover:bg-slate-800 px-8 py-4 text-sm font-black shadow-lg transition-all transform hover:scale-[1.02] active:scale-[0.98]"
-                id="btn-generate-workout"
-              >
-                <Sparkles className="h-4 w-4 fill-white/10 text-white" />
-                CREATE CUSTOM AI ROUTINE
-              </button>
             </div>
-          </form>
-        )}
-      </div>
+            <div className="grid grid-cols-5 gap-2">
+              {DURATION_OPTIONS.map((min) => {
+                const isSelected = duration === min;
+                return (
+                  <button
+                    key={min}
+                    type="button"
+                    onClick={() => {
+                      tapFeedback();
+                      setDuration(min);
+                    }}
+                    className={`min-h-[44px] flex items-center justify-center rounded-xl text-xs font-bold tabular-nums transition-all cursor-pointer select-none ${
+                      isSelected
+                        ? "bg-volt text-void shadow-sm"
+                        : "bg-graphite text-ink-2 border border-line hover:text-white"
+                    }`}
+                  >
+                    {min}m
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 4. Equipment Available — Tactile Segmented Pills */}
+          <div className="rounded-2xl border border-line bg-carbon p-4 space-y-2.5">
+            <label className="text-[12px] font-bold uppercase tracking-wider text-ink-3 block">
+              Equipment Access
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {AVAILABLE_EQUIPMENT.map((eq) => {
+                const isSelected = selectedEquipment.includes(eq.id);
+                return (
+                  <button
+                    key={eq.id}
+                    type="button"
+                    onClick={() => toggleEquipment(eq.id)}
+                    className={`min-h-[44px] flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition-all cursor-pointer select-none ${
+                      isSelected
+                        ? "bg-volt text-void shadow-sm"
+                        : "bg-graphite text-ink-3 border border-line hover:text-white"
+                    }`}
+                  >
+                    <span>{eq.name}</span>
+                    {isSelected && <Check className="h-3.5 w-3.5 text-black" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 5. Fitness Level — Tactile Segmented Pills */}
+          <div className="rounded-2xl border border-line bg-carbon p-4 space-y-2.5">
+            <label className="text-[12px] font-bold uppercase tracking-wider text-ink-3 block">
+              Experience Level
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {FITNESS_LEVELS.map((lvl) => {
+                const isSelected = fitnessLevel === lvl.value;
+                return (
+                  <button
+                    key={lvl.value}
+                    type="button"
+                    onClick={() => {
+                      tapFeedback();
+                      setFitnessLevel(lvl.value as any);
+                    }}
+                    className={`min-h-[44px] flex items-center justify-center rounded-xl text-xs font-bold transition-all cursor-pointer select-none ${
+                      isSelected
+                        ? "bg-volt text-void shadow-sm"
+                        : "bg-graphite text-ink-2 border border-line hover:text-white"
+                    }`}
+                  >
+                    {lvl.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Generate CTA Button */}
+          <button
+            type="submit"
+            className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-xl bg-volt px-5 text-sm font-bold text-void shadow-md transition-transform active:scale-98 cursor-pointer"
+          >
+            <Sparkles className="h-4 w-4" />
+            <span>Generate Biomechanical Protocol</span>
+          </button>
+        </form>
+      )}
     </div>
   );
 }

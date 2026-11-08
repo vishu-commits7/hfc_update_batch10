@@ -397,7 +397,7 @@ export default function ExerciseAnimation({
             )}
           </p>
           {motion.cue && (
-            <p className="truncate text-[10px] text-ink-3">{motion.cue}</p>
+            <p className="truncate text-[11px] text-ink-3">{motion.cue}</p>
           )}
         </div>
       )}

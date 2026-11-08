@@ -3,9 +3,7 @@ import {
   Sparkles,
   Music,
   Play,
-  Pause,
   CheckCircle2,
-  Camera,
   RotateCcw,
   Tag,
   Type as TypeIcon,
@@ -14,12 +12,13 @@ import {
   SwitchCamera,
   Mic,
   MicOff,
-  Flame,
-  Zap,
   Gauge,
   X,
+  Camera,
 } from "lucide-react";
 import { tapFeedback, successFeedback } from "../lib/haptics";
+import { publishReel } from "../lib/reelsStore";
+import { useMyIdentity } from "../lib/useSocial";
 
 export interface UserReel {
   id: string;
@@ -40,13 +39,13 @@ interface ReelCreatorStudioProps {
 }
 
 const BADGES = [
-  "⚡ BEAST MODE: 100%",
-  "🏆 NEW PR SMASHED",
-  "🔥 NO DAYS OFF",
-  "🦾 APEX FORM CHECK",
-  "💀 100% PAIN CAVE",
-  "⚔️ 1v1 DUEL VICTOR",
-  "🧬 TECHNIQUE MASTERY",
+  "HIGH INTENSITY",
+  "NEW PERSONAL RECORD",
+  "CONSISTENCY STREAK",
+  "TECHNIQUE CHECK",
+  "PEAK LOAD",
+  "SESSION COMPLETE",
+  "MOVEMENT MASTERY",
 ];
 
 const FILTERS = [
@@ -77,7 +76,6 @@ type ActiveDrawer = "none" | "filters" | "badges" | "audio" | "caption" | "speed
 
 export default function ReelCreatorStudio({
   onClose,
-  onReelPublished,
 }: ReelCreatorStudioProps) {
   // Capture Mode: "camera" (live recording) or "gallery" (file upload)
   const [captureSource, setCaptureSource] = useState<"camera" | "gallery">("camera");
@@ -92,6 +90,9 @@ export default function ReelCreatorStudio({
   const [selectedSpeed, setSelectedSpeed] = useState(1.0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [publishing, setPublishing] = useState(false);
+  const [publishPct, setPublishPct] = useState(0);
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const meId = useMyIdentity();
   const [publishedSuccess, setPublishedSuccess] = useState(false);
   const [activeDrawer, setActiveDrawer] = useState<ActiveDrawer>("none");
 
@@ -104,6 +105,7 @@ export default function ReelCreatorStudio({
   const [cameraError, setCameraError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraFileInputRef = useRef<HTMLInputElement | null>(null);
   const liveVideoPreviewRef = useRef<HTMLVideoElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
@@ -162,8 +164,9 @@ export default function ReelCreatorStudio({
           liveVideoPreviewRef.current.srcObject = stream;
         }
       } catch (videoErr: any) {
-        setCameraError("Camera access denied or unavailable. You can upload from your gallery.");
-        setCaptureSource("gallery");
+        // Stay on the camera tab: switching away silently made the camera
+        // option disappear. Offer the retry and the phone-camera fallback.
+        setCameraError("Couldn't open the camera. Allow camera access, or record with your phone's camera app.");
       }
     }
   };
@@ -210,8 +213,8 @@ export default function ReelCreatorStudio({
       }
 
       const recorder = selectedMime
-        ? new MediaRecorder(cameraStream, { mimeType: selectedMime })
-        : new MediaRecorder(cameraStream);
+        ? new MediaRecorder(cameraStream, { mimeType: selectedMime, videoBitsPerSecond: 900_000 })
+        : new MediaRecorder(cameraStream, { videoBitsPerSecond: 900_000 });
 
       recorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
@@ -312,42 +315,33 @@ export default function ReelCreatorStudio({
     }
   };
 
-  const handlePublish = () => {
-    if (!mediaUrl) return;
+  const handlePublish = async () => {
+    if (!mediaUrl || publishing) return;
+    if (!meId.uid) { setPublishError("Sign in to share reels."); return; }
     setPublishing(true);
+    setPublishPct(0);
+    setPublishError(null);
     tapFeedback();
-
-    setTimeout(() => {
-      // Authentic likes count starts at 0
-      const newReel: UserReel = {
-        id: `reel_${Date.now()}`,
+    try {
+      await publishReel({
+        uid: meId.uid,
+        blobUrl: mediaUrl,
         type: mediaType,
-        mediaUrl,
         caption: caption.trim() || "Workout done.",
         badge: selectedBadge,
         musicTrack: selectedTrack,
         filter: selectedFilter.id,
         speed: selectedSpeed,
-        createdAt: new Date().toISOString(),
-        likes: 0,
-      };
-
-      try {
-        const existing = JSON.parse(localStorage.getItem("apex_user_reels") || "[]");
-        const updated = [newReel, ...existing];
-        localStorage.setItem("apex_user_reels", JSON.stringify(updated));
-        window.dispatchEvent(new CustomEvent("kinetic_user_reel_created", { detail: newReel }));
-      } catch {}
-
+        onProgress: setPublishPct,
+      });
       successFeedback();
       setPublishing(false);
       setPublishedSuccess(true);
-
-      if (onReelPublished) onReelPublished(newReel);
-      setTimeout(() => {
-        onClose();
-      }, 1200);
-    }, 600);
+      setTimeout(() => onClose(), 1200);
+    } catch (e: any) {
+      setPublishing(false);
+      setPublishError(e?.message || "Couldn't share. Check your connection and try again.");
+    }
   };
 
   const formatTimer = (sec: number) => {
@@ -362,7 +356,7 @@ export default function ReelCreatorStudio({
       <div className="relative w-full max-w-[420px] h-[92vh] max-h-[780px] rounded-[32px] overflow-hidden bg-black border border-white/15 shadow-2xl flex flex-col justify-between">
         
         {/* ----------------- TOP APP BAR ----------------- */}
-        <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black/95 via-black/80 to-transparent z-20">
+        <div className="flex items-center justify-between px-4 py-3 pt-[max(env(safe-area-inset-top,28px),12px)] bg-gradient-to-b from-black/95 via-black/80 to-transparent z-20">
           <button
             onClick={() => {
               tapFeedback();
@@ -391,7 +385,7 @@ export default function ReelCreatorStudio({
                 }`}
               >
                 <Video className="h-3 w-3" />
-                <span>Live Record</span>
+                <span>Camera</span>
               </button>
               <button
                 type="button"
@@ -428,10 +422,13 @@ export default function ReelCreatorStudio({
                 : "bg-white/10 text-slate-500 cursor-not-allowed"
             }`}
           >
-            {publishing ? "Sharing..." : "Share"}
+            {publishing ? `Sharing ${publishPct}%` : "Share"}
           </button>
         </div>
 
+        {publishError && (
+          <p className="bg-rose-500/15 px-3 py-1.5 text-center text-[11px] font-semibold text-rose-300">{publishError}</p>
+        )}
         {/* ----------------- CENTER CANVAS ----------------- */}
         <div className="relative flex-1 w-full overflow-hidden bg-zinc-950 flex items-center justify-center">
           {publishedSuccess ? (
@@ -444,16 +441,60 @@ export default function ReelCreatorStudio({
             /* ================= STATE 1: LIVE RECORDING OR GALLERY PICKER ================= */
             captureSource === "camera" ? (
               <div className="relative h-full w-full bg-black flex items-center justify-center">
-                {/* Live Camera Viewfinder */}
-                <video
-                  ref={liveVideoPreviewRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className={`h-full w-full object-cover ${
-                    facingMode === "user" ? "scale-x-[-1]" : ""
-                  }`}
-                />
+                {!cameraStream ? (
+                  <div className="flex flex-col items-center justify-center p-6 text-center space-y-4 max-w-xs mx-auto z-10">
+                    <div className="h-16 w-16 rounded-full bg-white/[0.08] border border-white/10 flex items-center justify-center text-slate-300">
+                      <Camera className="h-8 w-8 stroke-[1.75] text-cyan-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-black text-white">Record a post</h3>
+                      <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                        {cameraError || "Grant camera and microphone permissions to record live workout reels."}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={startCamera}
+                      className="px-5 py-2.5 rounded-xl bg-cyan-500 text-slate-950 text-xs font-black shadow-lg shadow-cyan-500/20 active:scale-95 transition"
+                    >
+                      Open camera
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => cameraFileInputRef.current?.click()}
+                      className="px-5 py-2.5 rounded-xl border border-white/20 text-white text-xs font-bold active:scale-95 transition"
+                    >
+                      Use phone camera app
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {/* Live Camera Viewfinder */}
+                    <video
+                      ref={liveVideoPreviewRef}
+                      autoPlay
+                      playsInline
+                      muted
+                      className={`h-full w-full object-cover ${
+                        facingMode === "user" ? "scale-x-[-1]" : ""
+                      }`}
+                    />
+                  </>
+                )}
+
+                {/* Camera Error Message */}
+                {cameraError && (
+                  <div className="absolute top-16 inset-x-4 bg-rose-950/90 border border-rose-500/50 text-rose-200 text-xs px-3 py-2 rounded-xl backdrop-blur-md z-30 flex items-center justify-between shadow-lg">
+                    <span>{cameraError}</span>
+                    <button
+                      type="button"
+                      onClick={() => setCameraError(null)}
+                      className="ml-2 text-rose-400 hover:text-white font-bold text-sm px-1"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
 
                 {/* Camera Overlay Controls (Flip, Mic, Timer) */}
                 <div className="absolute top-4 inset-x-4 flex items-center justify-between z-10">
@@ -545,6 +586,17 @@ export default function ReelCreatorStudio({
                   className="mt-5 rounded-full bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black px-4 py-2 text-xs shadow-lg active:scale-95 transition"
                 >
                   Browse Device Gallery
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    tapFeedback();
+                    setCaptureSource("camera");
+                  }}
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-white/20 px-4 py-2 text-xs font-bold text-white active:scale-95 transition"
+                >
+                  <Video className="h-3.5 w-3.5" /> Record with camera instead
                 </button>
               </div>
             )
@@ -672,7 +724,7 @@ export default function ReelCreatorStudio({
                 <p className="text-xs font-bold line-clamp-2 leading-tight">
                   {caption || "Write a caption..."}
                 </p>
-                <div className="mt-1 flex items-center justify-between text-[10px]">
+                <div className="mt-1 flex items-center justify-between text-[11px]">
                   <div className="flex items-center gap-1.5 text-cyan-300 font-semibold truncate max-w-[200px]">
                     <Music className="h-2.5 w-2.5 shrink-0" />
                     <span className="truncate">{selectedTrack}</span>
@@ -687,6 +739,16 @@ export default function ReelCreatorStudio({
             </div>
           )}
         </div>
+
+        {/* Phone camera app fallback (works even when in-app capture is blocked) */}
+        <input
+          ref={cameraFileInputRef}
+          type="file"
+          accept="video/*"
+          capture="environment"
+          onChange={handleFileChange}
+          className="hidden"
+        />
 
         {/* Hidden File Input for Gallery Selection */}
         <input
@@ -723,7 +785,7 @@ export default function ReelCreatorStudio({
                       tapFeedback();
                       setCaption(chip);
                     }}
-                    className="shrink-0 rounded-lg bg-white/5 border border-white/10 px-2 py-0.5 text-[10px] text-slate-300 hover:text-white"
+                    className="shrink-0 rounded-lg bg-white/5 border border-white/10 px-2 py-0.5 text-[11px] text-slate-300 hover:text-white"
                   >
                     {chip}
                   </button>
@@ -751,7 +813,7 @@ export default function ReelCreatorStudio({
                     }`}
                   >
                     <div className={`h-9 w-9 rounded-full border-2 ${f.previewBg}`} />
-                    <span className="text-[10px] font-bold text-white">{f.name}</span>
+                    <span className="text-[11px] font-bold text-white">{f.name}</span>
                   </button>
                 ))}
               </div>
@@ -796,7 +858,7 @@ export default function ReelCreatorStudio({
                       tapFeedback();
                       setSelectedBadge(b);
                     }}
-                    className={`shrink-0 rounded-xl px-2.5 py-1 text-[10px] font-black uppercase transition ${
+                    className={`shrink-0 rounded-xl px-2.5 py-1 text-[11px] font-black uppercase transition ${
                       selectedBadge === b
                         ? "bg-cyan-500 text-black"
                         : "bg-white/10 text-slate-300 hover:bg-white/15"
@@ -823,13 +885,14 @@ export default function ReelCreatorStudio({
                       tapFeedback();
                       setSelectedTrack(t);
                     }}
-                    className={`shrink-0 rounded-xl px-2.5 py-1 text-[10px] font-bold transition ${
+                    className={`shrink-0 flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition ${
                       selectedTrack === t
                         ? "bg-amber-400 text-black font-black"
                         : "bg-white/10 text-slate-300 hover:bg-white/15"
                     }`}
                   >
-                    🎵 {t}
+                    <Music className="h-3 w-3 shrink-0" />
+                    <span>{t}</span>
                   </button>
                 ))}
               </div>
@@ -843,7 +906,7 @@ export default function ReelCreatorStudio({
                   tapFeedback();
                   setActiveDrawer("caption");
                 }}
-                className="flex flex-col items-center gap-1 text-[10px] font-bold text-slate-300 hover:text-white"
+                className="flex flex-col items-center gap-1 text-[11px] font-bold text-slate-300 hover:text-white"
               >
                 <TypeIcon className="h-4 w-4" />
                 <span>Text</span>
@@ -854,7 +917,7 @@ export default function ReelCreatorStudio({
                   tapFeedback();
                   setActiveDrawer("filters");
                 }}
-                className="flex flex-col items-center gap-1 text-[10px] font-bold text-slate-300 hover:text-white"
+                className="flex flex-col items-center gap-1 text-[11px] font-bold text-slate-300 hover:text-white"
               >
                 <Sparkles className="h-4 w-4" />
                 <span>Filters</span>
@@ -865,7 +928,7 @@ export default function ReelCreatorStudio({
                   tapFeedback();
                   setActiveDrawer("speed");
                 }}
-                className="flex flex-col items-center gap-1 text-[10px] font-bold text-slate-300 hover:text-white"
+                className="flex flex-col items-center gap-1 text-[11px] font-bold text-slate-300 hover:text-white"
               >
                 <Gauge className="h-4 w-4" />
                 <span>Speed</span>
@@ -876,7 +939,7 @@ export default function ReelCreatorStudio({
                   tapFeedback();
                   setActiveDrawer("badges");
                 }}
-                className="flex flex-col items-center gap-1 text-[10px] font-bold text-slate-300 hover:text-white"
+                className="flex flex-col items-center gap-1 text-[11px] font-bold text-slate-300 hover:text-white"
               >
                 <Tag className="h-4 w-4" />
                 <span>Stickers</span>
@@ -887,7 +950,7 @@ export default function ReelCreatorStudio({
                   tapFeedback();
                   setActiveDrawer("audio");
                 }}
-                className="flex flex-col items-center gap-1 text-[10px] font-bold text-slate-300 hover:text-white"
+                className="flex flex-col items-center gap-1 text-[11px] font-bold text-slate-300 hover:text-white"
               >
                 <Music className="h-4 w-4" />
                 <span>Audio</span>

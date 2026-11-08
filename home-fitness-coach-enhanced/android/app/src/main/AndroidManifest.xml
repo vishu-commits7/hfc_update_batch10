@@ -23,7 +23,36 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- OAuth and App Deep Linking (com.apex.fitness://oauth and com.homefitnesscoach.app://oauth) -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.apex.fitness" android:host="oauth" />
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.homefitnesscoach.app" android:host="oauth" />
+            </intent-filter>
+            <!-- Health Connect: lets the user see why the app reads steps/calories (required for the permission screen) -->
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
         </activity>
+
+        <!-- Android 14+: Health Connect "Privacy policy" link in the permission screen opens the same rationale -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".MainActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -38,7 +67,25 @@
 
     <!-- Permissions -->
 
+    <!-- Health Connect read access (steps + active calories only). Needs the Health Connect app on Android 13 and below. -->
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+    </queries>
+
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- In-app camera + microphone for recording posts/reels and the form
+         scanner. Without these, getUserMedia() always fails inside the
+         WebView, which is why "record from camera" fell through to the
+         gallery picker. Capacitor's WebView asks for the runtime permission
+         when the page requests the camera. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <!-- Tactile feedback. src/lib/haptics.ts falls back to
          navigator.vibrate() when the Capacitor haptics plugin is not

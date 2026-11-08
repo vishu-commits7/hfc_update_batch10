@@ -1,5 +1,6 @@
+import TodayCard from "./TodayCard";
 import React, { useEffect, useMemo, useState, useDeferredValue } from "react";
-import { motion, AnimatePresence, useReducedMotion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import {
   ArrowUpRight,
   Check,
@@ -16,14 +17,11 @@ import {
   Plus,
   RotateCcw,
   Search,
-  Settings,
   Sparkles,
   Target,
   Trophy,
   UserRound,
   Zap,
-  Swords,
-  Camera,
 } from "lucide-react";
 
 import type { ProgressLog, UserProfile, Workout, WorkoutLog } from "../types";
@@ -47,22 +45,19 @@ import {
   GlassCard,
   MagneticButton,
   ProgressRing,
-  PulseOrb,
   SectionHeader,
   StatTile,
   StreakGraph,
 } from "./ui";
 import { accent } from "../design/accents";
 import { staggerChild, staggerParent, SPRING_SNAP } from "../design/motion";
-import { duration } from "../design/format";
+import { duration, pluralize } from "../design/format";
 import gymHeroImg from "../assets/ui/gym-hero-dashboard.jpg";
 import gymPremiumBeastImg from "../assets/ui/gym-premium-beast.jpg";
 import gymDailyMotivationImg from "../assets/ui/gym-daily-motivation.jpg";
-import gymBeastIron from "../assets/ui/gym-beast-iron.jpg";
-import gymBeastChalk from "../assets/ui/gym-beast-chalk.jpg";
 import GymMotivationGallery from "./GymMotivationGallery";
 import { MOTIVATION_STORIES } from "./GymBeastMotivationReel";
-import BiometricRecoveryHub from "./BiometricRecoveryHub";
+import BiometricRecoveryHub, { BiometricSummaryCard } from "./BiometricRecoveryHub";
 
 /**
  * Coach roster, derived from the same photo/name pairing the routine
@@ -157,15 +152,15 @@ function DashboardInner({
   onOpenAnalytics,
   onOpenSettings,
   onOpenStoryReel,
-  onOpenDuels,
-  onOpenFlexStudio,
+  onOpenDuels: _onOpenDuels,
+  onOpenFlexStudio: _onOpenFlexStudio,
 }: DashboardProps) {
-  const reduced = useReducedMotion();
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const [activeCoach, setActiveCoach] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showBiometricsDrawer, setShowBiometricsDrawer] = useState(false);
   const [confirmingReset, setConfirmingReset] = useState(false);
 
   const analytics = useMemo(
@@ -252,9 +247,27 @@ function DashboardInner({
     });
   }, [deferredSearchQuery, activeCategory, activeCoach]);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, []);
+
   const filteredSaved = useMemo(() => {
     const q = deferredSearchQuery.toLowerCase();
-    return savedWorkouts.filter((w) => {
+    const seen = new Set<string>();
+    const seenContent = new Set<string>();
+    const deduplicated = savedWorkouts.filter((w) => {
+      if (seen.has(w.id)) return false;
+      seen.add(w.id);
+
+      // Deduplicate identical procedural routines with identical title, duration, and exercise length
+      const contentKey = `${w.workoutTitle}_${w.totalDurationMinutes}_${w.exercises?.length || 0}`.toLowerCase();
+      if (seenContent.has(contentKey)) return false;
+      seenContent.add(contentKey);
+
+      return true;
+    });
+
+    return deduplicated.filter((w) => {
       const matchesSearch =
         !q ||
         w.workoutTitle.toLowerCase().includes(q) ||
@@ -329,55 +342,28 @@ function DashboardInner({
             )}
           </p>
         </div>
-
-        <div className="flex shrink-0 items-center gap-2">
-          {onOpenAnalytics && (
-            <MagneticButton
-              size="md"
-              icon
-              variant="ghost"
-              tone="cyan"
-              aria-label="Open performance review"
-              onClick={() => {
-                tapFeedback();
-                onOpenAnalytics();
-              }}
-              className="border border-line"
-            >
-              <Trophy className="h-4 w-4" />
-            </MagneticButton>
-          )}
-          <MagneticButton
-            size="md"
-            icon
-            variant="ghost"
-            tone="neutral"
-            aria-label="Settings"
-            id="btn-open-settings"
-            onClick={() => {
-              tapFeedback();
-              if (onOpenSettings) {
-                onOpenSettings();
-              } else {
-                setShowSettings(true);
-              }
-            }}
-            className="border border-line"
-          >
-            <Settings className="h-4 w-4" />
-          </MagneticButton>
-        </div>
       </motion.header>
 
-      {/* ====================== DAILY SAVAGE REELS BUBBLES ====================== */}
+      <motion.div variants={staggerChild}>
+        <TodayCard
+          logs={logs}
+          profile={profile}
+          onStartPlan={onSelectWorkout}
+          onStartWorkout={() => { if (featured) onSelectWorkout(featured); else onNavigate("ai-generator"); }}
+          onOpenArena={() => onNavigate("beast-duels")}
+          onSignIn={onOpenSettings}
+        />
+      </motion.div>
+
+      {/* ====================== DAILY MOTIVATION HIGHLIGHTS ====================== */}
       <motion.div variants={staggerChild} className="w-full">
-        <div className="flex items-center justify-between mb-2 px-1">
-          <span className="text-[10px] font-black uppercase tracking-widest text-amber-400 flex items-center gap-1">
-            <Flame className="h-3 w-3 fill-amber-400" /> Savage Daily Fuel
+        <div className="flex items-center justify-between mb-2 px-0.5">
+          <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-400">
+            Daily Focus
           </span>
-          <span className="text-[9px] font-bold text-ink-4">Tap to fuel up</span>
+          <span className="text-[11px] font-medium text-zinc-500">Coach Highlights</span>
         </div>
-        <div className="flex gap-3.5 overflow-x-auto pb-1 no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
+        <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
           {MOTIVATION_STORIES.map((st, idx) => (
             <button
               key={st.id}
@@ -386,29 +372,18 @@ function DashboardInner({
                 tapFeedback();
                 onOpenStoryReel?.(idx);
               }}
-              className="flex flex-col items-center gap-1.5 shrink-0 group active:scale-95 transition-transform"
+              className="flex flex-col items-center gap-1.5 shrink-0 group active:scale-95 transition-transform cursor-pointer"
             >
-              <div
-                className="relative h-15 w-15 rounded-full p-[2.5px] shadow-md group-hover:scale-105 transition-transform"
-                style={{
-                  background: `linear-gradient(135deg, ${st.accentColor}, #ec4899, #06b6d4)`,
-                }}
-              >
-                <div className="h-full w-full rounded-full overflow-hidden bg-black p-[1px]">
+              <div className="relative h-14 w-14 rounded-full p-[2px] border border-white/15 group-hover:border-white/50 transition-colors shadow-sm">
+                <div className="h-full w-full rounded-full overflow-hidden bg-zinc-900">
                   <img
                     src={st.image}
                     alt={st.title}
-                    className="h-full w-full rounded-full object-cover"
+                    className="h-full w-full rounded-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
                 </div>
-                <span
-                  className="absolute bottom-0 right-0 h-4 w-4 rounded-full flex items-center justify-center text-[8px] font-black text-black border border-black shadow"
-                  style={{ background: st.accentColor }}
-                >
-                  ⚡
-                </span>
               </div>
-              <span className="text-[10px] font-extrabold text-ink-2 group-hover:text-ink max-w-[62px] truncate">
+              <span className="text-[11px] font-semibold text-zinc-300 group-hover:text-white max-w-[64px] truncate">
                 {st.title}
               </span>
             </button>
@@ -423,63 +398,22 @@ function DashboardInner({
           variants={staggerChild}
           className="col-span-2 sm:col-span-4 lg:col-span-4"
         >
-          <GlassCard
-            glow={goalHit ? "emerald" : "cyan"}
-            variant="aurora"
-            neon
-            grain
-            radius="2xl"
-            className="relative h-full min-h-[236px] p-5 sm:p-6"
+          <div
+            className="relative h-full min-h-[220px] overflow-hidden rounded-2xl border border-zinc-800/80 bg-[#141418] p-4 sm:p-5"
           >
-            {/* Floating ambient orb — gives the hero an internally-lit feel
-                without photography. Positioned top-right and animated on a
-                slow float cycle so it reads as living rather than static. */}
+            {/* Motivational background athlete photo with flat matte overlay */}
             <div
               aria-hidden
-              className="ambient-orb pointer-events-none"
-              style={{
-                width: 220,
-                height: 220,
-                top: -60,
-                right: -40,
-                background: goalHit
-                  ? "radial-gradient(circle, var(--neon-emerald-near) 0%, var(--neon-emerald-far) 60%, transparent 100%)"
-                  : "radial-gradient(circle, var(--neon-cyan-near) 0%, var(--neon-cyan-far) 60%, transparent 100%)",
-                animationDelay: "0s",
-              }}
-            />
-            {/* Secondary smaller orb for depth layering */}
-            <div
-              aria-hidden
-              className="ambient-orb pointer-events-none"
-              style={{
-                width: 120,
-                height: 120,
-                bottom: -20,
-                left: 20,
-                background: "radial-gradient(circle, var(--aurora-b) 0%, transparent 70%)",
-                animationDelay: "-3s",
-                animationDuration: "11s",
-              }}
-            />
-
-            {/* Dynamic motivational background: AI generated gym workout athlete */}
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-2xl2"
+              className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-2xl"
             >
               <img
                 src={featuredMedia?.photo ?? gymHeroImg}
                 alt=""
-                className="h-full w-full object-cover object-[80%_20%] opacity-85 transition-transform duration-700 hover:scale-105"
+                className="h-full w-full object-cover object-[80%_20%] opacity-40 transition-transform duration-700"
                 draggable={false}
               />
               <div
-                className="absolute inset-0"
-                style={{
-                  background:
-                    "linear-gradient(90deg, var(--carbon) 0%, var(--carbon) 36%, color-mix(in srgb, var(--carbon) 60%, transparent) 68%, transparent 100%)",
-                }}
+                className="absolute inset-0 bg-gradient-to-r from-[#141418] via-[#141418]/90 to-transparent"
               />
             </div>
 
@@ -573,15 +507,10 @@ function DashboardInner({
                 </MagneticButton>
               </div>
             </div>
-          </GlassCard>
+          </div>
         </motion.div>
 
-        {/* ---- Reminder opt-in ----
-             High on the page on purpose. Notification opt-in is the single
-             biggest lever on whether somebody is still using this app in a
-             week, and an ask buried in Settings converts a fraction of what
-             an ask in the main flow does. It hides itself for good once
-             enabled or dismissed, so it costs a returning user nothing. */}
+        {/* ---- Reminder opt-in ---- */}
         <motion.div
           variants={staggerChild}
           className="col-span-2 sm:col-span-2 lg:col-span-4"
@@ -594,70 +523,32 @@ function DashboardInner({
           variants={staggerChild}
           className="col-span-2 sm:col-span-2 lg:col-span-2"
         >
-          <GlassCard
-            glow="emerald"
-            variant="aurora"
-            grain
-            radius="2xl"
-            className="flex h-full min-h-[236px] flex-col justify-between p-5"
+          <div
+            className="flex h-full min-h-[220px] flex-col justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-[#141418] p-4"
           >
-            {/* Ambient emerald orb behind the streak number */}
-            <div
-              aria-hidden
-              className="ambient-orb pointer-events-none"
-              style={{
-                width: 160,
-                height: 160,
-                top: -40,
-                right: -20,
-                background: "radial-gradient(circle, var(--neon-emerald-near) 0%, transparent 70%)",
-                animationDelay: "-2s",
-                animationDuration: "10s",
-              }}
-            />
-
             <div className="relative z-10 flex items-start justify-between gap-3">
               <div>
                 <p className="eyebrow">Consistency</p>
-                {/* Streak number inside a PulseOrb for active streaks */}
-                {analytics.currentStreak > 0 && !reduced ? (
-                  <div className="mt-1 flex items-center gap-2">
-                    <PulseOrb
-                      tone="emerald"
-                      size={72}
-                      ripple={analytics.currentStreak >= 3}
-                      label={`${analytics.currentStreak} day streak`}
-                    >
-                      <span className="font-numeric text-xl font-extrabold leading-none text-ink">
-                        {analytics.currentStreak}
-                      </span>
-                    </PulseOrb>
-                    <span className="text-sm font-bold text-ink-3">days</span>
-                  </div>
-                ) : (
-                  <p className="font-numeric mt-2 text-[42px] font-extrabold leading-none text-ink">
-                    {analytics.currentStreak}
-                    <span className="ml-1 text-sm font-bold text-ink-3">days</span>
-                  </p>
-                )}
+                <div className="mt-1 flex items-baseline gap-1.5">
+                  <span className="font-numeric text-[32px] font-bold tabular-nums text-white leading-none">
+                    {analytics.currentStreak > 0 ? analytics.currentStreak : "0"}
+                  </span>
+                  <span className="text-xs font-semibold text-zinc-400">
+                    {analytics.currentStreak > 0
+                      ? pluralize(analytics.currentStreak, "day", "days", false)
+                      : "days streak"}
+                  </span>
+                </div>
               </div>
               <span
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-full"
-                style={{
-                  background: "var(--emerald-wash)",
-                  color: "var(--emerald)",
-                }}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-zinc-800/80 text-[#E1FF00]"
               >
-                <Flame
-                  className={`h-4 w-4 ${
-                    analytics.currentStreak > 0 && !reduced ? "breathe" : ""
-                  }`}
-                />
+                <Flame className="h-4 w-4" />
               </span>
             </div>
 
-            <dl className="mt-4 space-y-2.5">
-              <Row label="Best streak" value={`${analytics.bestStreak} days`} />
+            <dl className="mt-4 space-y-2">
+              <Row label="Best streak" value={pluralize(analytics.bestStreak, "day")} />
               <Row
                 label="This week"
                 value={duration(analytics.thisWeek.minutes)}
@@ -668,31 +559,31 @@ function DashboardInner({
               />
             </dl>
 
-            {/* Sharing a streak is the single highest-intent share moment
-                in a fitness app — people post the number, not the
-                workout. It sits beside the breakdown link rather than
-                above it, so it never competes with the primary action. */}
-            {analytics.currentStreak > 0 && (
+            <div className="mt-4 flex items-center justify-between pt-2 border-t border-zinc-800/60">
+              {analytics.currentStreak > 0 ? (
+                <button
+                  type="button"
+                  onClick={shareStreak}
+                  aria-label={`Share your ${analytics.currentStreak}-day streak`}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-zinc-800 bg-[#1E1E24] px-3 py-1 text-[11px] font-bold text-zinc-300 hover:text-white cursor-pointer"
+                >
+                  <Share2 className="h-3 w-3" />
+                  Share streak
+                </button>
+              ) : (
+                <span className="text-[11px] text-zinc-400 font-medium italic">Day 1 starts today — log a session</span>
+              )}
+
               <button
                 type="button"
-                onClick={shareStreak}
-                aria-label={`Share your ${analytics.currentStreak}-day streak`}
-                className="mt-4 inline-flex items-center gap-1.5 self-start rounded-full border border-line px-3 py-1.5 text-[11px] font-bold text-ink-2 transition-colors hover:text-ink"
+                onClick={() => onOpenAnalytics?.()}
+                className="group inline-flex items-center gap-1 text-[11px] font-bold text-[#E1FF00] hover:underline cursor-pointer"
               >
-                <Share2 className="h-3 w-3" />
-                Share streak
+                Breakdown
+                <ArrowUpRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
               </button>
-            )}
-
-            <button
-              type="button"
-              onClick={() => onOpenAnalytics?.()}
-              className="group mt-4 inline-flex items-center gap-1 self-start text-[11px] font-bold text-emerald-glow"
-            >
-              Full breakdown
-              <ArrowUpRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-            </button>
-          </GlassCard>
+            </div>
+          </div>
         </motion.div>
 
         {/* ---- Stat tiles ---- */}
@@ -711,6 +602,7 @@ function DashboardInner({
         <StatTile
           label="Minutes"
           value={profile.totalMinutes}
+          unit="min"
           icon={Clock3}
           tone="cyan"
           format="compact"
@@ -728,130 +620,19 @@ function DashboardInner({
         <StatTile
           label="Badges"
           value={unlockedCount}
+          unit={`/ ${ACHIEVEMENTS.length}`}
           icon={Trophy}
           tone="gold"
-          // Shown as a fraction so an empty profile reads as progress
-          // toward something rather than as a bare zero.
-          hint={`of ${ACHIEVEMENTS.length}`}
           className="col-span-1 lg:col-span-2"
           onClick={() => onNavigate("premium-hub")}
         />
-
-        {/* ---- 1v1 Beast Arena & Viral Duels ---- */}
-        <motion.div
-          variants={staggerChild}
-          className="col-span-2 sm:col-span-2 lg:col-span-3"
-        >
-          <GlassCard
-            glow="ember"
-            variant="aurora"
-            neon
-            grain
-            radius="2xl"
-            className="group relative flex h-full min-h-[170px] flex-col justify-between overflow-hidden p-5 cursor-pointer"
-            onClick={() => {
-              tapFeedback();
-              onOpenDuels ? onOpenDuels() : onNavigate("beast-duels");
-            }}
-          >
-            {/* Background image tint */}
-            <div className="absolute inset-0 z-0">
-              <img
-                src={gymBeastIron}
-                alt=""
-                className="h-full w-full object-cover opacity-25 group-hover:scale-105 transition-transform duration-500"
-              />
-              <div className="absolute inset-0 bg-gradient-to-r from-black via-black/80 to-transparent" />
-            </div>
-
-            <div className="relative z-10 flex items-start justify-between">
-              <div>
-                <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                  <Swords className="h-3 w-3" /> 1v1 Duel Arena
-                </span>
-                <h3 className="font-display mt-2 text-base font-black text-ink">
-                  Challenge Rivals
-                </h3>
-                <p className="mt-1 text-xs text-ink-3 max-w-[26ch]">
-                  100-rep deathmatches, streak wagers, & live leaderboards.
-                </p>
-              </div>
-
-              <span className="grid h-8 w-8 place-items-center rounded-full bg-amber-400 text-black shadow-md group-hover:scale-110 transition-transform">
-                <Play className="h-3.5 w-3.5 fill-black" />
-              </span>
-            </div>
-
-            <div className="relative z-10 mt-3 flex items-center justify-between text-[11px] font-bold text-amber-400">
-              <span>Enter Arena</span>
-              <span className="text-ink-4 font-mono font-normal">Ranked Duels</span>
-            </div>
-          </GlassCard>
-        </motion.div>
-
-        {/* ---- Viral Beast Flex Studio Card ---- */}
-        <motion.div
-          variants={staggerChild}
-          className="col-span-2 sm:col-span-2 lg:col-span-3"
-        >
-          <GlassCard
-            glow="cyan"
-            variant="aurora"
-            neon
-            grain
-            radius="2xl"
-            className="group relative flex h-full min-h-[170px] flex-col justify-between overflow-hidden p-5 cursor-pointer"
-            onClick={() => {
-              tapFeedback();
-              onOpenFlexStudio?.();
-            }}
-          >
-            {/* Background image tint */}
-            <div className="absolute inset-0 z-0">
-              <img
-                src={gymBeastChalk}
-                alt=""
-                className="h-full w-full object-cover opacity-25 group-hover:scale-105 transition-transform duration-500"
-              />
-              <div className="absolute inset-0 bg-gradient-to-r from-black via-black/80 to-transparent" />
-            </div>
-
-            <div className="relative z-10 flex items-start justify-between">
-              <div>
-                <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
-                  <Camera className="h-3 w-3" /> Flex Studio 2.0
-                </span>
-                <h3 className="font-display mt-2 text-base font-black text-ink">
-                  Viral Story Maker
-                </h3>
-                <p className="mt-1 text-xs text-ink-3 max-w-[26ch]">
-                  Craft aesthetic 9:16 Instagram & WhatsApp story cards.
-                </p>
-              </div>
-
-              <span className="grid h-8 w-8 place-items-center rounded-full bg-cyan-400 text-black shadow-md group-hover:scale-110 transition-transform">
-                <Share2 className="h-3.5 w-3.5" />
-              </span>
-            </div>
-
-            <div className="relative z-10 mt-3 flex items-center justify-between text-[11px] font-bold text-cyan-400">
-              <span>Create Story</span>
-              <span className="text-ink-4 font-mono font-normal">HD Export</span>
-            </div>
-          </GlassCard>
-        </motion.div>
       </div>
 
       {/* ===================== BIOMETRIC RECOVERY & STRAIN ===================== */}
-      <motion.div variants={staggerChild} className="my-7">
-        <BiometricRecoveryHub
+      <motion.div variants={staggerChild} className="my-5">
+        <BiometricSummaryCard
           logs={logs}
-          profile={profile}
-          onNavigateToWorkout={() => {
-            tapFeedback();
-            if (featured) onSelectWorkout(featured);
-            else onNavigate("ai-generator");
-          }}
+          onOpenFull={() => setShowBiometricsDrawer(true)}
         />
       </motion.div>
 
@@ -886,12 +667,64 @@ function DashboardInner({
         </div>
       </motion.div>
 
-      {/* ========================= AI ROUTINES ======================== */}
+      {/* ===================== ZERO LOGS ONBOARDING CARD ===================== */}
+      {logs.length === 0 && (
+        <motion.div
+          variants={staggerChild}
+          className="rounded-2xl border border-zinc-800 bg-[#141418] p-4 sm:p-5"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-zinc-800 text-[#E1FF00]">
+                <Dumbbell className="h-5 w-5" />
+              </div>
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[#E1FF00]">
+                  Get Started
+                </span>
+                <h3 className="text-base font-bold text-white mt-0.5">
+                  Complete your first workout
+                </h3>
+                <p className="mt-1 text-xs text-zinc-400 max-w-md leading-relaxed">
+                  Log your first session to unlock biometric tracking, streak milestones, and workout analytics.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  tapFeedback();
+                  if (featured) onSelectWorkout(featured);
+                }}
+                className="flex min-h-[44px] items-center gap-1.5 rounded-xl bg-[#E1FF00] px-4 py-2.5 text-xs font-bold text-black shadow-sm transition-transform active:scale-95 cursor-pointer"
+              >
+                <Play className="h-3.5 w-3.5 fill-current" />
+                Start Now
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  tapFeedback();
+                  onNavigate("ai-generator");
+                }}
+                className="flex min-h-[44px] items-center gap-1.5 rounded-xl border border-zinc-800 bg-[#1E1E24] px-3.5 py-2.5 text-xs font-bold text-zinc-300 hover:text-white transition-colors cursor-pointer"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-[#E1FF00]" />
+                Build Custom
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* ========================= RECOMMENDED WORKOUTS ======================== */}
       <section className="space-y-4">
         <SectionHeader
-          title="Your AI workouts"
-          subtitle="Sessions generated for your profile"
-          actionLabel="Generate"
+          title="Recommended For You"
+          subtitle="Sessions tailored to your current goals"
+          actionLabel="Build New"
           onAction={() => onNavigate("ai-generator")}
         />
 
@@ -900,30 +733,36 @@ function DashboardInner({
             variants={staggerChild}
             className="rounded-xl2 border border-dashed border-line-strong px-5 py-9 text-center"
           >
-            <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-[var(--emerald-wash)] text-emerald-glow">
+            <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-white/[0.04] text-cyan-400">
               <Sparkles className="h-5 w-5" />
             </span>
             <h4 className="font-display mt-3.5 text-sm font-extrabold text-ink">
-              {searchQuery || activeCategory !== "All"
-                ? "No matches"
+              {searchQuery
+                ? "No matching routines found"
+                : activeCategory !== "All"
+                ? `No custom ${activeCategory} routines yet`
                 : "No custom routines yet"}
             </h4>
             <p className="mx-auto mt-1.5 max-w-[38ch] text-xs leading-relaxed text-ink-3">
-              {searchQuery || activeCategory !== "All"
-                ? "Try a different search term or filter."
-                : "Describe what you want to train and the AI coach builds a full session around your level and equipment."}
+              {searchQuery
+                ? "Try a different search term or synthesize a new routine below."
+                : activeCategory !== "All"
+                ? `Tap below to generate an AI ${activeCategory} protocol, or scroll down for coach routines.`
+                : "Create custom workouts tailored to your goals and equipment."}
             </p>
-            {!(searchQuery || activeCategory !== "All") && (
+            <div className="mt-4 flex justify-center">
               <MagneticButton
                 size="md"
-                tone="emerald"
-                className="mt-4"
-                onClick={() => onNavigate("ai-generator")}
+                tone="cyan"
+                onClick={() => {
+                  tapFeedback();
+                  onNavigate("ai-generator");
+                }}
               >
                 <Plus className="h-3.5 w-3.5" />
-                Generate a workout
+                {activeCategory !== "All" ? `Build ${activeCategory} Routine` : "Build workout"}
               </MagneticButton>
-            )}
+            </div>
           </motion.div>
         ) : (
           <motion.div
@@ -946,23 +785,23 @@ function DashboardInner({
 
       {/* ===================== DAILY MOTIVATION SPOTLIGHT ===================== */}
       <motion.div variants={staggerChild}>
-        <div className="relative overflow-hidden rounded-[26px] border border-cyan-500/30 bg-[var(--graphite)] shadow-2xl">
+        <div className="relative overflow-hidden rounded-[26px] border border-white/[0.08] bg-[#12141c] shadow-xl">
           <div className="flex flex-col sm:flex-row items-stretch">
             {/* Left text column */}
-            <div className="relative z-10 flex flex-1 flex-col justify-between p-6 sm:p-7">
+            <div className="relative z-10 flex flex-1 flex-col justify-between p-6 sm:p-7 pb-6">
               <div>
-                <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
-                  <Flame className="h-3 w-3 text-amber-400" /> Daily Athlete Spotlight
+                <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] bg-white/[0.05] text-slate-300 border border-white/10">
+                  ATHLETE SPOTLIGHT
                 </span>
-                <h3 className="font-display mt-3 text-xl font-black tracking-tight text-ink sm:text-2xl">
-                  Unstoppable Discipline
+                <h3 className="font-display mt-3 text-xl font-black tracking-tight text-white sm:text-2xl">
+                  Discipline Over Motivation
                 </h3>
-                <p className="mt-2 text-xs leading-relaxed text-ink-3 max-w-[38ch] sm:text-sm">
-                  "The pain of discipline is temporary. The pride of achievement lasts forever." Step up and conquer your workout today.
+                <p className="mt-2 text-xs leading-relaxed text-slate-400 max-w-[36ch] sm:text-sm">
+                  "The pain of discipline is temporary. The pride of achievement lasts forever."
                 </p>
               </div>
 
-              <div className="mt-5 flex items-center gap-3">
+              <div className="mt-5 flex items-center gap-3 pt-1">
                 <MagneticButton
                   size="md"
                   tone="cyan"
@@ -972,7 +811,7 @@ function DashboardInner({
                   }}
                 >
                   <Sparkles className="h-3.5 w-3.5" />
-                  Engineered Workout
+                  Start Session
                 </MagneticButton>
                 <button
                   type="button"
@@ -980,7 +819,7 @@ function DashboardInner({
                     tapFeedback();
                     if (CURATED_WORKOUTS[0]) onSelectWorkout(CURATED_WORKOUTS[0]);
                   }}
-                  className="rounded-full border border-line px-3.5 py-2 text-xs font-bold text-ink-2 hover:text-ink transition-colors"
+                  className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-bold text-slate-300 hover:text-white transition-colors"
                 >
                   Quick Start
                 </button>
@@ -1010,7 +849,7 @@ function DashboardInner({
                     "linear-gradient(to bottom, transparent 60%, var(--graphite) 100%)",
                 }}
               />
-              <span className="absolute bottom-3 right-3 rounded-full bg-slate-950/70 backdrop-blur-md border border-white/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-cyan-300">
+              <span className="absolute bottom-3 right-3 rounded-full bg-slate-950/90 border border-white/10 px-2.5 py-1 text-[11px] font-black uppercase tracking-wider text-cyan-300">
                 Battle Ropes Core &amp; Power
               </span>
             </div>
@@ -1149,7 +988,7 @@ function DashboardInner({
           <div className="relative z-10 flex items-center justify-between gap-4">
             <div className="min-w-0">
               <span
-                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-[0.14em]"
+                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-extrabold uppercase tracking-[0.14em]"
                 style={{
                   background: "var(--gold-wash)",
                   color: "var(--gold)",
@@ -1162,8 +1001,7 @@ function DashboardInner({
                 Programs, badges &amp; tools
               </h3>
               <p className="mt-1 text-xs leading-relaxed text-ink-3">
-                Multi-week plans, {ACHIEVEMENTS.length} achievements, BMI and
-                calorie tools, water and breathing coaches.
+                Multi-week training plans, achievements, and wellness tools.
               </p>
             </div>
             <span
@@ -1277,7 +1115,6 @@ function DashboardInner({
                   <motion.button
                     key={level.value}
                     type="button"
-                    whileTap={{ scale: 0.95 }}
                     transition={SPRING_SNAP}
                     onClick={() =>
                       setProfile((p) => ({
@@ -1311,7 +1148,6 @@ function DashboardInner({
                   <motion.button
                     key={g.value}
                     type="button"
-                    whileTap={{ scale: 0.95 }}
                     transition={SPRING_SNAP}
                     onClick={() =>
                       setProfile((p) => ({
@@ -1341,7 +1177,6 @@ function DashboardInner({
             <motion.button
               type="button"
               id="btn-reset-all-data"
-              whileTap={{ scale: 0.98 }}
               onClick={handleResetClick}
               onBlur={() => setConfirmingReset(false)}
               className="flex w-full items-center justify-center gap-2 rounded-md2 border px-4 py-3 text-xs font-extrabold transition-colors"
@@ -1365,6 +1200,25 @@ function DashboardInner({
             </p>
           </div>
         </div>
+      </Drawer>
+
+      {/* Biometric Readiness Drawer */}
+      <Drawer
+        open={showBiometricsDrawer}
+        onClose={() => setShowBiometricsDrawer(false)}
+        title="Biometric Readiness"
+        subtitle="Daily Recovery & Strain"
+      >
+        <BiometricRecoveryHub
+          logs={logs}
+          profile={profile}
+          onNavigateToWorkout={() => {
+            setShowBiometricsDrawer(false);
+            if (featured) onSelectWorkout(featured);
+            else onNavigate("ai-generator");
+          }}
+          onClose={() => setShowBiometricsDrawer(false)}
+        />
       </Drawer>
 
       {/* Milestone moment. A dismissible banner, not a blocking modal: it
@@ -1469,6 +1323,44 @@ function HubStat({ value, label }: { value: number; label: string }) {
   );
 }
 
+/** Renders a coach photo with an initials-gradient fallback if the image fails to load.
+ *  Prevents the "all white circles" bug when image assets are missing. */
+function CoachAvatar({ photo, name }: { photo: string; name: string }) {
+  const [imgError, setImgError] = React.useState(false);
+  // Generate a consistent hue from the name for the gradient
+  const hue = name.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % 360;
+  const initials = name
+    .replace(/^Coach\s+/i, "")
+    .split(/\s+/)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .slice(0, 2)
+    .join("");
+
+  if (imgError) {
+    return (
+      <span
+        className="flex h-full w-full items-center justify-center text-[11px] font-black text-white"
+        style={{
+          background: `linear-gradient(135deg, hsl(${hue},60%,28%) 0%, hsl(${(hue + 40) % 360},55%,40%) 100%)`,
+        }}
+      >
+        {initials}
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={photo}
+      alt=""
+      draggable={false}
+      className="h-full w-full object-cover"
+      onError={() => setImgError(true)}
+    />
+  );
+}
+
+
 function CoachPip({
   label,
   photo,
@@ -1488,7 +1380,6 @@ function CoachPip({
         tapFeedback();
         onClick();
       }}
-      whileTap={{ scale: 0.92 }}
       whileHover={{ y: -2 }}
       transition={SPRING_SNAP}
       aria-pressed={active}
@@ -1504,14 +1395,9 @@ function CoachPip({
         }}
       >
         {photo ? (
-          <img
-            src={photo}
-            alt=""
-            draggable={false}
-            className="h-full w-full object-cover"
-          />
+          <CoachAvatar photo={photo} name={label} />
         ) : (
-          <span className="text-[10px] font-extrabold uppercase tracking-wider text-ink-3">
+          <span className="text-[11px] font-extrabold uppercase tracking-wider text-ink-3">
             All
           </span>
         )}
@@ -1531,7 +1417,7 @@ function CoachPip({
         </AnimatePresence>
       </span>
       <span
-        className="max-w-[60px] truncate text-[10px] font-bold"
+        className="max-w-[60px] truncate text-[11px] font-bold"
         style={{ color: active ? a.color : "var(--ink-4)" }}
       >
         {label}

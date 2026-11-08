@@ -1,7 +1,6 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, memo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
-  HeartPulse,
   Wind,
   Droplets,
   Plus,
@@ -9,10 +8,6 @@ import {
   Play,
   Pause,
   ChevronRight,
-  Flame,
-  Shield,
-  Dumbbell,
-  Activity,
   X,
   Volume2,
   VolumeX,
@@ -23,8 +18,6 @@ import { getTodayWaterGlasses, logWaterGlass } from "../lib/wellness";
 import { ProgressRing, MagneticButton } from "./ui";
 import ExerciseThumb from "./ExerciseThumb";
 import LofiMusicButton from "./LofiMusicButton";
-import gymMobilityRecovery from "../assets/ui/gym-mobility-recovery.jpg";
-import gymRecoveryAthlete from "../assets/ui/gym-recovery-athlete.jpg";
 import type { FigureGender } from "./HumanFigure";
 import type { DemoTone } from "../lib/exercisePhotos.generated";
 import { clock } from "../design/format";
@@ -56,7 +49,7 @@ export interface RestWindowProps {
   demoModel: DemoTone;
 }
 
-export default function RestWindow({
+function RestWindowInner({
   currentExercise,
   currentSet,
   totalSets,
@@ -91,39 +84,28 @@ export default function RestWindow({
   const [waterGlasses, setWaterGlasses] = useState<number>(getTodayWaterGlasses);
   const [waterLoggedToast, setWaterLoggedToast] = useState(false);
 
-  // Perceived exertion / readiness
-  const [readiness, setReadiness] = useState<"ready" | "steady" | "heavy">("ready");
-
-  // Breath pacer state (Inhale -> Hold -> Exhale)
-  const [breathPhase, setBreathPhase] = useState<"inhale" | "hold" | "exhale">("inhale");
-  const [breathCountdown, setBreathCountdown] = useState(restProfile.breathingGuide.inhaleSeconds);
-
+  // Breath pacer: Inhale -> Hold -> Exhale, advancing on its own.
+  // Phase is derived from a single elapsed-seconds counter instead of being
+  // flipped from inside a state updater (which was unreliable and made the
+  // cue appear stuck on "Inhale"). Nothing here needs a tap.
+  const [breathTick, setBreathTick] = useState(0);
   useEffect(() => {
     if (isPaused) return;
+    const id = setInterval(() => setBreathTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [isPaused]);
 
-    const interval = setInterval(() => {
-      setBreathCountdown((prev) => {
-        if (prev <= 1) {
-          // Switch phase
-          if (breathPhase === "inhale") {
-            setBreathPhase(restProfile.breathingGuide.holdSeconds > 0 ? "hold" : "exhale");
-            return restProfile.breathingGuide.holdSeconds > 0
-              ? restProfile.breathingGuide.holdSeconds
-              : restProfile.breathingGuide.exhaleSeconds;
-          } else if (breathPhase === "hold") {
-            setBreathPhase("exhale");
-            return restProfile.breathingGuide.exhaleSeconds;
-          } else {
-            setBreathPhase("inhale");
-            return restProfile.breathingGuide.inhaleSeconds;
-          }
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [breathPhase, isPaused, restProfile.breathingGuide]);
+  const { breathPhase, breathCountdown } = useMemo(() => {
+    const g = restProfile.breathingGuide;
+    const inh = Math.max(1, g.inhaleSeconds);
+    const hold = Math.max(0, g.holdSeconds);
+    const exh = Math.max(1, g.exhaleSeconds);
+    const cycle = inh + hold + exh;
+    const p = breathTick % cycle;
+    if (p < inh) return { breathPhase: "inhale" as const, breathCountdown: inh - p };
+    if (p < inh + hold) return { breathPhase: "hold" as const, breathCountdown: inh + hold - p };
+    return { breathPhase: "exhale" as const, breathCountdown: cycle - p };
+  }, [breathTick, restProfile.breathingGuide]);
 
   const handleLogWater = () => {
     const updated = logWaterGlass(1);
@@ -135,23 +117,6 @@ export default function RestWindow({
   // Progress computation (clamped 0 to 1)
   const effectiveTotal = Math.max(1, totalRestDuration || restProfile.durationSeconds);
   const progressFraction = Math.max(0, Math.min(1, (effectiveTotal - timeLeft) / effectiveTotal));
-
-  // Category Icon
-  const CategoryIcon = useMemo(() => {
-    switch (restProfile.category) {
-      case "strength_power":
-        return Flame;
-      case "hypertrophy":
-        return Dumbbell;
-      case "core_postural":
-        return Shield;
-      case "metabolic_cardio":
-        return HeartPulse;
-      case "mobility_flexibility":
-      default:
-        return Activity;
-    }
-  }, [restProfile.category]);
 
   // Target exercise to preview as "Up Next"
   const previewExercise = isNextExerciseDifferent ? nextExercise : currentExercise;
@@ -197,67 +162,7 @@ export default function RestWindow({
         </div>
       </header>
 
-      {/* ----------------- BIOENERGETIC & RECOVERY BANNER ----------------- */}
-      <section
-        className="aurora-card relative overflow-hidden rounded-2xl p-4 border"
-        style={{
-          borderColor: "color-mix(in srgb, var(--emerald) 25%, transparent)",
-          background: "linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(5, 150, 105, 0.02) 100%)",
-        }}
-      >
-        <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <img
-            src={gymMobilityRecovery}
-            alt=""
-            className="h-full w-full object-cover object-[70%_25%] opacity-45"
-            draggable={false}
-          />
-          <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-950/65 to-transparent" />
-        </div>
-        <div className="relative z-10 flex items-start justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-xl"
-              style={{
-                background: "color-mix(in srgb, var(--emerald) 18%, transparent)",
-                color: "var(--emerald)",
-                border: "1px solid color-mix(in srgb, var(--emerald) 35%, transparent)",
-              }}
-            >
-              <CategoryIcon className="h-4 w-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-400">
-                  {restProfile.categoryLabel}
-                </span>
-                <span className="h-1 w-1 rounded-full bg-emerald-400/50" />
-                <span className="text-[10px] font-bold text-white/50">Scientific Rest</span>
-              </div>
-              <p className="mt-0.5 text-xs font-black text-white">
-                {restProfile.energySystem}
-              </p>
-            </div>
-          </div>
 
-          <div
-            className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black border"
-            style={{
-              background: "rgba(16, 185, 129, 0.12)",
-              borderColor: "rgba(16, 185, 129, 0.3)",
-              color: "#34d399",
-            }}
-          >
-            <HeartPulse className="h-3 w-3 animate-pulse text-emerald-400" />
-            {restProfile.targetHeartRateZone}
-          </div>
-        </div>
-
-        {/* Biological rationale snippet */}
-        <p className="mt-3 text-[11px] leading-relaxed text-slate-300">
-          {restProfile.scientificRationale}
-        </p>
-      </section>
 
       {/* ----------------- CENTRAL RECOVERY COUNTDOWN RING ----------------- */}
       <section className="relative grid place-items-center py-1">
@@ -274,7 +179,7 @@ export default function RestWindow({
         >
           <div className="flex flex-col items-center">
             <span
-              className="text-[10px] font-extrabold uppercase tracking-[0.22em]"
+              className="text-[11px] font-extrabold uppercase tracking-[0.22em]"
               style={{ color: "var(--emerald)" }}
             >
               {isPaused ? "Paused" : "Recovery Window"}
@@ -282,7 +187,7 @@ export default function RestWindow({
 
             {/* Large Tabular Countdown Clock */}
             <span
-              className="font-numeric mt-1 block text-[58px] font-extrabold leading-[0.9] tracking-[-0.05em] text-white tabular-nums sm:text-[68px]"
+              className="font-numeric mt-1 block text-[58px] font-extrabold leading-[0.9] tracking-[-0.05em] text-ink tabular-nums sm:text-[68px]"
               style={{
                 fontVariantNumeric: "tabular-nums",
                 textShadow: isPaused
@@ -298,7 +203,7 @@ export default function RestWindow({
             </span>
 
             <span
-              className="mt-2 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold"
+              className="mt-2 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-extrabold"
               style={{
                 background: "color-mix(in srgb, var(--emerald) 18%, transparent)",
                 color: "var(--emerald)",
@@ -311,150 +216,123 @@ export default function RestWindow({
       </section>
 
       {/* ----------------- TACTILE RECOVERY CONTROLS ----------------- */}
-      <section className="flex items-center justify-center gap-3">
-        {/* -10s button */}
-        <motion.button
-          type="button"
-          onClick={() => onAdjustTime(-10)}
-          whileTap={{ scale: 0.92 }}
-          className="flex h-11 items-center gap-1 rounded-xl bg-white/10 px-3 text-xs font-extrabold text-white border border-white/10 hover:bg-white/15"
-          title="Decrease rest by 10 seconds"
-        >
-          <Minus className="h-3.5 w-3.5" /> 10s
-        </motion.button>
-
-        {/* Play / Pause toggle */}
-        <motion.button
-          type="button"
-          onClick={onTogglePause}
-          whileTap={{ scale: 0.9 }}
-          whileHover={{ scale: 1.05 }}
-          transition={SPRING_SNAP}
-          className="grid h-14 w-14 place-items-center rounded-full text-slate-950 font-black shadow-lg"
-          style={{
-            background: isPaused ? "#f8fafc" : "#10b981",
-            boxShadow: isPaused
-              ? "0 8px 24px -6px rgba(255,255,255,0.4)"
-              : "0 8px 28px -4px rgba(16, 185, 129, 0.6)",
-          }}
-          aria-label={isPaused ? "Resume rest" : "Pause rest"}
-        >
-          {isPaused ? (
-            <Play className="h-6 w-6 translate-x-0.5 fill-current" />
-          ) : (
-            <Pause className="h-6 w-6 fill-current" />
-          )}
-        </motion.button>
-
-        {/* +20s button */}
-        <motion.button
-          type="button"
-          onClick={() => onAdjustTime(20)}
-          whileTap={{ scale: 0.92 }}
-          className="flex h-11 items-center gap-1 rounded-xl bg-emerald-500/20 px-3 text-xs font-extrabold text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30"
-          title="Add 20 seconds recovery"
-        >
-          <Plus className="h-3.5 w-3.5" /> 20s
-        </motion.button>
-
-        {/* Skip Rest CTA */}
+      {/* Primary CTA: Ready — full width, dominant emerald pill */}
+      <section className="flex flex-col items-center gap-3">
         <motion.button
           type="button"
           onClick={onSkipRest}
-          whileTap={{ scale: 0.92 }}
-          className="flex h-11 items-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 px-4 text-xs font-black text-slate-950 shadow-md hover:opacity-95"
+          className="flex w-full items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 py-4 text-sm font-black text-slate-950 shadow-lg shadow-emerald-500/30 active:opacity-90 transition-all"
+          aria-label="Skip rest and start next exercise"
         >
-          <span>Ready</span>
-          <ChevronRight className="h-4 w-4" />
+          <ChevronRight className="h-5 w-5" />
+          <span>I'm Ready — Next Exercise</span>
+        </motion.button>
+
+        {/* Secondary row: time adjust + pause */}
+        <div className="flex items-center justify-center gap-3">
+          {/* -10s button */}
+          <motion.button
+            type="button"
+            onClick={() => onAdjustTime(-10)}
+            className="flex h-11 items-center gap-1 rounded-xl bg-white/8 px-4 text-xs font-extrabold text-white/70 border border-line hover:bg-white/14 hover:text-ink transition-colors"
+            title="Decrease rest by 10 seconds"
+          >
+            <Minus className="h-3.5 w-3.5" /> 10s
+          </motion.button>
+
+          {/* Play / Pause toggle */}
+          <motion.button
+            type="button"
+            onClick={onTogglePause}
+            whileHover={{ scale: 1.05 }}
+            transition={SPRING_SNAP}
+            className="grid h-14 w-14 place-items-center rounded-full text-slate-950 font-black shadow-lg"
+            style={{
+              background: isPaused ? "#f8fafc" : "#10b981",
+              boxShadow: isPaused
+                ? "0 8px 24px -6px rgba(255,255,255,0.4)"
+                : "0 8px 28px -4px rgba(16, 185, 129, 0.6)",
+            }}
+            aria-label={isPaused ? "Resume rest" : "Pause rest"}
+          >
+            {isPaused ? (
+              <Play className="h-6 w-6 translate-x-0.5 fill-current" />
+            ) : (
+              <Pause className="h-6 w-6 fill-current" />
+            )}
+          </motion.button>
+
+          {/* +20s button */}
+          <motion.button
+            type="button"
+            onClick={() => onAdjustTime(20)}
+            className="flex h-11 items-center gap-1 rounded-xl bg-emerald-500/12 px-4 text-xs font-extrabold text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/22 transition-colors"
+            title="Add 20 seconds recovery"
+          >
+            <Plus className="h-3.5 w-3.5" /> 20s
+          </motion.button>
+        </div>
+      </section>
+
+      {/* ----------------- 2. COMPACT BREATHING CUE & QUICK WATER ----------------- */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        {/* Compact Breathing Cue */}
+        <div className="flex items-center gap-3 rounded-2xl border border-line bg-carbon p-3.5">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-cyan-500/15 text-cyan-400 border border-cyan-500/25">
+            <Wind className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-cyan-400">
+                Breathing Cadence
+              </span>
+              <span className="text-[11px] font-bold text-white/40">({breathCountdown}s)</span>
+            </div>
+            <p className="text-xs font-bold text-ink truncate mt-0.5">
+              {breathPhase === "inhale" && "Inhale deeply through nose"}
+              {breathPhase === "hold" && "Hold breath & relax shoulders"}
+              {breathPhase === "exhale" && "Exhale slowly through mouth"}
+            </p>
+          </div>
+        </div>
+
+        {/* Quick Water Button */}
+        <motion.button
+          type="button"
+          onClick={handleLogWater}
+          className="relative flex items-center gap-3 rounded-2xl border border-line bg-carbon p-3.5 text-left hover:border-cyan-500/30 transition"
+        >
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-500/15 text-blue-400 border border-blue-500/25">
+            <Droplets className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-300">
+              Hydration Track
+            </span>
+            <p className="text-xs font-bold text-ink truncate mt-0.5">
+              +1 Glass Water ({waterGlasses}/8)
+            </p>
+          </div>
+          <AnimatePresence>
+            {waterLoggedToast && (
+              <motion.span
+                initial={{ opacity: 0, scale: 0.5, y: -6 }}
+                animate={{ opacity: 1, scale: 1, y: -16 }}
+                exit={{ opacity: 0, scale: 0.5 }}
+                className="absolute right-3 -top-2 rounded-full bg-blue-400 px-2 py-0.5 text-[11px] font-black text-slate-950 shadow"
+              >
+                +250ml!
+              </motion.span>
+            )}
+          </AnimatePresence>
         </motion.button>
       </section>
 
-      {/* ----------------- ACTIVE RECOVERY ATHLETE SPOTLIGHT ----------------- */}
-      <section className="relative overflow-hidden rounded-2xl border border-emerald-500/30 bg-slate-950 p-4 shadow-xl">
-        <div className="flex flex-col sm:flex-row items-center gap-4">
-          <div className="relative h-32 w-full sm:w-44 shrink-0 overflow-hidden rounded-xl border border-emerald-500/20 shadow-md">
-            <img
-              src={gymRecoveryAthlete}
-              alt="Athlete Rehydrating"
-              className="h-full w-full object-cover object-[50%_20%]"
-              draggable={false}
-            />
-            <span className="absolute bottom-2 left-2 rounded-full bg-slate-950/80 px-2.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-emerald-300 backdrop-blur-sm border border-emerald-500/30">
-              Optimal Hydration
-            </span>
-          </div>
-          <div className="min-w-0 flex-1 space-y-1 text-center sm:text-left">
-            <div className="flex items-center justify-center sm:justify-start gap-2">
-              <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">
-                Active Recovery Spotlight
-              </span>
-              <span className="h-1 w-1 rounded-full bg-emerald-400/50" />
-              <span className="text-[10px] font-bold text-slate-400">Cellular Re-Charge</span>
-            </div>
-            <h4 className="text-sm font-black text-white">Sip Water · Steady Heart Rate</h4>
-            <p className="text-[11px] leading-relaxed text-slate-300">
-              {restProfile.recoveryCue}
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* ----------------- GUIDED RECOVERY BREATH PACER ----------------- */}
-      <section className="aurora-card relative overflow-hidden rounded-2xl p-4 border border-line bg-black/30">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Wind className="h-4 w-4 text-cyan-400" />
-            <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
-              Recovery Breathwork
-            </span>
-          </div>
-          <span className="text-[10px] font-bold text-cyan-400/90">
-            {restProfile.breathingGuide.technique}
-          </span>
-        </div>
-
-        <div className="mt-3 flex items-center gap-4">
-          {/* Animated pulsing breath circle */}
-          <div className="relative grid h-16 w-16 shrink-0 place-items-center">
-            <motion.div
-              animate={{
-                scale: breathPhase === "inhale" ? [1, 1.35] : breathPhase === "hold" ? 1.35 : [1.35, 1],
-                opacity: breathPhase === "hold" ? 0.9 : 0.65,
-              }}
-              transition={{
-                duration:
-                  breathPhase === "inhale"
-                    ? restProfile.breathingGuide.inhaleSeconds
-                    : breathPhase === "hold"
-                    ? restProfile.breathingGuide.holdSeconds
-                    : restProfile.breathingGuide.exhaleSeconds,
-                ease: "easeInOut",
-              }}
-              className="absolute inset-0 rounded-full bg-cyan-400/25 blur-sm"
-            />
-            <div className="relative grid h-12 w-12 place-items-center rounded-full border border-cyan-400/50 bg-cyan-950/70 font-black text-cyan-300 shadow-inner">
-              <span className="text-sm font-numeric font-extrabold">{breathCountdown}s</span>
-            </div>
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-black uppercase tracking-wider text-white">
-              {breathPhase === "inhale" && "Inhale deeply through nose"}
-              {breathPhase === "hold" && "Hold breath and relax shoulders"}
-              {breathPhase === "exhale" && "Exhale slowly through mouth"}
-            </p>
-            <p className="mt-1 text-[11px] text-slate-400">
-              {restProfile.recoveryCue}
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* ----------------- UP NEXT MOVEMENT PREVIEW ----------------- */}
+      {/* ----------------- 3. UP NEXT EXERCISE PREVIEW ----------------- */}
       {previewExercise && (
-        <section className="aurora-card relative overflow-hidden rounded-2xl p-4 border border-line bg-slate-900/60">
+        <section className="rounded-2xl border border-line bg-carbon p-4">
           <div className="flex items-center justify-between mb-2.5">
-            <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-400">
+            <span className="text-[11px] font-extrabold uppercase tracking-widest text-emerald-400">
               Up Next
             </span>
             <span className="text-[11px] font-extrabold text-white/70">
@@ -465,7 +343,7 @@ export default function RestWindow({
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-slate-950">
+            <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-line bg-void">
               <ExerciseThumb
                 name={previewExercise.name}
                 targetMuscle={previewExercise.targetMuscle}
@@ -477,86 +355,27 @@ export default function RestWindow({
             </div>
 
             <div className="min-w-0 flex-1">
-              <h4 className="text-sm font-black text-white truncate">
+              <h4 className="text-sm font-black text-ink truncate">
                 {previewExercise.name}
               </h4>
-              <p className="text-[11px] font-semibold text-slate-400 truncate">
+              <p className="text-[11px] font-semibold text-ink-3 truncate mt-0.5">
                 {previewExercise.targetMuscle} ·{" "}
                 {previewExercise.durationSeconds > 0
                   ? `${previewExercise.durationSeconds}s`
                   : `${previewExercise.reps} reps`}
               </p>
               {previewExercise.description && (
-                <p className="mt-1 line-clamp-1 text-[10px] font-medium text-emerald-300/90 italic">
-                  💡 Form: {previewExercise.description}
+                <p className="mt-1 text-[11px] font-medium text-ink-2 leading-snug">
+                  Form cue: {previewExercise.description}
                 </p>
               )}
             </div>
           </div>
         </section>
       )}
-
-      {/* ----------------- PLAY STORE COMPETITIVE UTILITIES ----------------- */}
-      <section className="grid grid-cols-2 gap-2.5">
-        {/* Quick Hydration Logger */}
-        <motion.button
-          type="button"
-          onClick={handleLogWater}
-          whileTap={{ scale: 0.96 }}
-          className="relative flex items-center gap-2 rounded-xl border border-blue-500/30 bg-blue-950/30 p-3 text-left hover:bg-blue-950/50"
-        >
-          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-blue-500/20 text-blue-400">
-            <Droplets className="h-4 w-4" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-extrabold uppercase tracking-wider text-blue-300">
-              Quick Sip
-            </p>
-            <p className="text-xs font-black text-white truncate">
-              +1 Glass 💧 ({waterGlasses}/8)
-            </p>
-          </div>
-          <AnimatePresence>
-            {waterLoggedToast && (
-              <motion.span
-                initial={{ opacity: 0, scale: 0.5, y: -6 }}
-                animate={{ opacity: 1, scale: 1, y: -16 }}
-                exit={{ opacity: 0, scale: 0.5 }}
-                className="absolute right-2 -top-2 rounded-full bg-blue-400 px-2 py-0.5 text-[9px] font-black text-slate-950 shadow"
-              >
-                +250ml Logged!
-              </motion.span>
-            )}
-          </AnimatePresence>
-        </motion.button>
-
-        {/* Readiness Check */}
-        <div className="flex flex-col justify-between rounded-xl border border-white/10 bg-white/5 p-3">
-          <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
-            Current Fatigue
-          </p>
-          <div className="mt-1.5 flex gap-1">
-            {(
-              [
-                { id: "ready", label: "Fresh", color: "bg-emerald-500 text-slate-950" },
-                { id: "steady", label: "Good", color: "bg-amber-400 text-slate-950" },
-                { id: "heavy", label: "Tired", color: "bg-rose-500 text-white" },
-              ] as const
-            ).map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setReadiness(item.id)}
-                className={`flex-1 rounded-lg py-1 text-[10px] font-black transition-all ${
-                  readiness === item.id ? item.color : "bg-white/5 text-white/50 hover:bg-white/10"
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </section>
     </div>
   );
 }
+
+const RestWindow = memo(RestWindowInner);
+export default RestWindow;

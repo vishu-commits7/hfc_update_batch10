@@ -39,23 +39,12 @@ export default function PhotoExerciseDemo({
   };
 
   return (
-    <div className="relative overflow-hidden rounded-[28px] p-[3px]">
-      {/* Rotating neon-conic border — the "shiny glow" card frame. The
-          rotating square is oversized (200%) and centered so its corners
-          never sweep outside the rounded card as they spin — the wrapper's
-          own overflow-hidden then clips it to the border-radius exactly. */}
-      <motion.div
-        className="absolute left-1/2 top-1/2 aspect-square w-[200%] -translate-x-1/2 -translate-y-1/2"
-        style={{ background: "conic-gradient(from 0deg, #00e5a0, #38d6ff, #8b84ff, #ffc94a, #00e5a0)" }}
-        animate={{ rotate: 360 }}
-        transition={{ repeat: Infinity, ease: "linear", duration: 6 }}
-      />
-      <div
-        className="relative h-64 overflow-hidden rounded-[25px] bg-slate-950 shadow-[0_0_32px_rgba(212,255,0,0.22)] sm:h-72"
-        onPointerDown={onPointerDown}
-        onPointerUp={onPointerUp}
-        onPointerCancel={() => { dragStartX.current = null; }}
-      >
+    <div
+      className="relative aspect-video w-full overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-900 shadow-md"
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerCancel={() => { dragStartX.current = null; }}
+    >
         <AnimatePresence>
           <motion.img
             key={frame}
@@ -80,7 +69,7 @@ export default function PhotoExerciseDemo({
         {/* Bottom-to-top scrim so the badges/text stay legible over any photo */}
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/10 to-slate-950/40" />
 
-        <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-black/40 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-lime-300 backdrop-blur">
+        <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-black/40 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-lime-300 backdrop-blur">
           <span className="h-2 w-2 animate-pulse rounded-full bg-lime-300" /> {set.isHold ? "Hold demo" : "Photo demo"}
         </div>
 
@@ -90,7 +79,7 @@ export default function PhotoExerciseDemo({
             <button
               key={r}
               onClick={() => onRaceChange(r)}
-              className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide transition-all ${
+              className={`rounded-full px-2.5 py-1 text-[11px] font-black uppercase tracking-wide transition-all ${
                 race === r ? "bg-white text-slate-950" : "text-white/60 hover:text-white"
               }`}
             >
@@ -116,25 +105,24 @@ export default function PhotoExerciseDemo({
 
         <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-white/50">{set.isHold ? "Isometric hold" : "Demonstration"}</p>
+            <p className="text-[11px] font-black uppercase tracking-widest text-white/50">{set.isHold ? "Isometric hold" : "Demonstration"}</p>
             <p className="text-sm font-black text-white">{exercise.tempo}</p>
           </div>
           {canControl ? (
             <button
               onClick={() => setPaused(p => !p)}
               aria-label={paused ? "Play animation" : "Pause animation"}
-              className="flex items-center gap-1.5 rounded-full bg-black/40 px-3 py-1.5 text-[10px] font-bold text-white/70 backdrop-blur transition-all hover:bg-black/60 hover:text-white active:scale-95"
+              className="flex items-center gap-1.5 rounded-full bg-black/40 px-3 py-1.5 text-[11px] font-bold text-white/70 backdrop-blur transition-all hover:bg-black/60 hover:text-white active:scale-95"
             >
               {paused ? <Play className="h-3.5 w-3.5 fill-current" /> : <Pause className="h-3.5 w-3.5 fill-current" />}
               {paused ? "Paused" : "Looping motion"}
             </button>
           ) : (
-            <div className="flex items-center gap-1 text-[10px] font-bold text-white/60">
+            <div className="flex items-center gap-1 text-[11px] font-bold text-white/60">
               <Play className="h-3.5 w-3.5 fill-current" /> Looping motion
             </div>
           )}
         </div>
       </div>
-    </div>
   );
 }

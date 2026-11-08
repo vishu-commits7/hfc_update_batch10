@@ -93,7 +93,7 @@ export function LiveMetricsBar({
                 transition={{ type: "spring", stiffness: 120, damping: 20 }}
               />
             </div>
-            <span className="font-numeric shrink-0 text-[10px] font-bold text-ink-3">
+            <span className="font-numeric shrink-0 text-[11px] font-bold text-ink-3">
               {setsCompleted}/{totalSets}
             </span>
           </div>
@@ -123,7 +123,7 @@ export function LiveMetricsBar({
             >
               <Zap className="h-2.5 w-2.5" style={{ color: zoneColor }} strokeWidth={2.5} />
               <span
-                className="text-[10px] font-extrabold"
+                className="text-[11px] font-extrabold"
                 style={{ color: zoneColor }}
               >
                 {zoneLabel}

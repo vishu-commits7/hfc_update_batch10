@@ -249,7 +249,7 @@ export default function LiveStreamDuelModal({
       const next = prev + 1;
       audio.playBeastClick();
       tapFeedback();
-      const feedbackPhrases = ["CLEAN 90° DEPTH! 🔥", "SURGICAL TEMPO! ⚡", "MOTOR UNITS LOCKED! 🎯", "POWER REP! 🏆"];
+      const feedbackPhrases = ["CLEAN 90° DEPTH!", "SURGICAL TEMPO!", "MOTOR UNITS LOCKED!", "POWER REP!"];
       setLastRepFeedback(feedbackPhrases[next % feedbackPhrases.length]);
       setTimeout(() => setLastRepFeedback(null), 1200);
       return next;
@@ -304,7 +304,7 @@ export default function LiveStreamDuelModal({
         <div className="flex items-center justify-between px-4 py-2.5 bg-black/80 border-b border-white/10 z-30">
           <div className="flex items-center gap-2">
             <span className="flex h-2.5 w-2.5 rounded-full bg-rose-500 animate-ping" />
-            <span className="text-[10px] font-black uppercase tracking-wider text-rose-400">
+            <span className="text-[11px] font-black uppercase tracking-wider text-rose-400">
               {isSoloPractice ? "SOLO CAMERA REP TRIAL" : opponent ? "1V1 LIVE DUEL" : "LIVE ARENA DUEL"}
             </span>
           </div>
@@ -333,13 +333,13 @@ export default function LiveStreamDuelModal({
               <Zap className="h-3 w-3 text-amber-400 fill-amber-400" />
               <span>{exerciseName}</span>
             </div>
-            <p className="text-[9px] text-cyan-300 font-semibold truncate max-w-[280px]">
+            <p className="text-[11px] text-cyan-300 font-semibold truncate max-w-[280px]">
               {opponent?.targetMuscle || "Muscular Endurance"} · {opponent?.scientificMetric || "Dynamic Cadence"}
             </p>
           </div>
 
           <div className="text-right">
-            <span className="text-[9px] font-bold text-white/50 uppercase">Form Target</span>
+            <span className="text-[11px] font-bold text-white/50 uppercase">Form Target</span>
             <p className="text-[11px] font-black text-emerald-400">{jointAngle}° Flexion</p>
           </div>
         </div>
@@ -368,7 +368,7 @@ export default function LiveStreamDuelModal({
                 <div className="relative z-10 space-y-1">
                   <Camera className="h-8 w-8 text-cyan-400 mx-auto animate-bounce" />
                   <p className="text-xs font-black text-white">Neural Pose Tracker Ready</p>
-                  <p className="text-[10px] text-cyan-200">
+                  <p className="text-[11px] text-cyan-200">
                     Camera preview inactive. Tap screen to log manual reps.
                   </p>
                 </div>
@@ -378,14 +378,14 @@ export default function LiveStreamDuelModal({
             {/* Computer Vision Wireframe Overlay */}
             <div className="absolute inset-0 pointer-events-none">
               <div className="absolute inset-x-8 top-1/4 bottom-1/4 border-2 border-dashed border-cyan-400/40 rounded-3xl animate-pulse" />
-              <div className="absolute top-3 left-3 bg-black/60 backdrop-blur rounded-lg px-2.5 py-1 text-[10px] font-mono text-cyan-300 border border-cyan-500/20">
+              <div className="absolute top-3 left-3 bg-black/60 backdrop-blur rounded-lg px-2.5 py-1 text-[11px] font-mono text-cyan-300 border border-cyan-500/20">
                 CAM POSE: {jointAngle}° | REAL-TIME REP TRACKING
               </div>
             </div>
 
             {/* Big Rep Counter HUD */}
             <div className="absolute bottom-4 right-4 z-10 flex flex-col items-end bg-black/75 backdrop-blur-md px-4 py-2.5 rounded-2xl border border-cyan-500/30 shadow-xl">
-              <span className="text-[10px] font-black uppercase text-cyan-300">Target: {targetReps} reps</span>
+              <span className="text-[11px] font-black uppercase text-cyan-300">Target: {targetReps} reps</span>
               <div className="text-4xl font-black text-cyan-400 tracking-tight drop-shadow-md">
                 {userReps} <span className="text-sm font-bold text-white/50">/ {targetReps}</span>
               </div>
@@ -403,7 +403,7 @@ export default function LiveStreamDuelModal({
             {/* Live Indicator */}
             <div className="absolute top-3 right-3 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/60 backdrop-blur border border-emerald-500/30">
               <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+              <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">
                 LIVE CAMERA TRACKING
               </span>
             </div>
@@ -444,7 +444,7 @@ export default function LiveStreamDuelModal({
                   {opponent.name}
                   <CheckCircle2 className="h-3 w-3 text-cyan-400 fill-cyan-400" />
                 </p>
-                <p className="text-[9px] text-amber-300 font-bold mt-0.5">
+                <p className="text-[11px] text-amber-300 font-bold mt-0.5">
                   {opponent.tier} · {opponent.ratingElo} ELO
                 </p>
               </div>
@@ -452,13 +452,13 @@ export default function LiveStreamDuelModal({
 
             {/* Opponent Reps HUD */}
             <div className="absolute bottom-2.5 right-2.5 z-10 flex flex-col items-end">
-              <span className="text-[9px] font-black uppercase text-amber-300">Rival Score</span>
+              <span className="text-[11px] font-black uppercase text-amber-300">Rival Score</span>
               <div className="text-3xl font-black text-white tracking-tight drop-shadow-md">
                 {opponentReps} <span className="text-xs font-bold text-white/50">reps</span>
               </div>
             </div>
 
-            <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1 rounded-full bg-rose-500/80 px-2 py-0.5 text-[9px] font-black text-white backdrop-blur">
+            <div className="absolute top-2.5 right-2.5 z-10 flex items-center gap-1 rounded-full bg-rose-500/80 px-2 py-0.5 text-[11px] font-black text-white backdrop-blur">
               <span>LIVE</span>
             </div>
           </div>
@@ -487,24 +487,24 @@ export default function LiveStreamDuelModal({
                 <div className="relative z-10 space-y-1">
                   <Camera className="h-8 w-8 text-cyan-400 mx-auto animate-bounce" />
                   <p className="text-xs font-black text-white">Neural Pose Tracker Ready</p>
-                  <p className="text-[10px] text-cyan-200">
+                  <p className="text-[11px] text-cyan-200">
                     Camera preview inactive. Tap screen to log manual reps.
                   </p>
                 </div>
               </div>
             )}
 
-            {/* Computer Vision Wireframe Overlay */}
+            {/* Computer Vision Wireframe Overlay & Telemetry */}
             <div className="absolute inset-0 pointer-events-none">
               <div className="absolute inset-x-8 top-1/4 bottom-1/4 border-2 border-dashed border-cyan-400/40 rounded-3xl animate-pulse" />
-              <div className="absolute top-3 left-3 bg-black/60 backdrop-blur rounded-lg px-2 py-1 text-[9px] font-mono text-cyan-300 border border-cyan-500/20">
+              <div className="absolute top-2.5 right-2.5 bg-black/75 backdrop-blur-md rounded-lg px-2.5 py-1 text-[11px] font-mono text-cyan-300 border border-cyan-500/30 shadow-md">
                 CAM POSE: {jointAngle}° | DEPTH: 98%
               </div>
             </div>
 
             {/* User Rep Counter HUD */}
             <div className="absolute bottom-2.5 right-2.5 z-10 flex flex-col items-end">
-              <span className="text-[9px] font-black uppercase text-cyan-300">Your Score</span>
+              <span className="text-[11px] font-black uppercase text-cyan-300">Your Score</span>
               <div className="text-3xl font-black text-cyan-400 tracking-tight drop-shadow-md">
                 {userReps} <span className="text-xs font-bold text-white/50">reps</span>
               </div>
@@ -522,7 +522,7 @@ export default function LiveStreamDuelModal({
             {/* User Tag */}
             <div className="absolute top-2.5 left-2.5 flex items-center gap-2 z-10">
               <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
-              <span className="text-[10px] font-black uppercase text-white tracking-wider">
+              <span className="text-[11px] font-black uppercase text-white tracking-wider">
                 YOU (LIVE ATHLETE)
               </span>
             </div>
@@ -531,7 +531,7 @@ export default function LiveStreamDuelModal({
             <button
               type="button"
               onClick={handleAutoRepCount}
-              className="absolute bottom-2.5 left-2.5 z-20 flex items-center gap-1 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1.5 text-[10px] font-black text-white active:scale-90 transition"
+              className="absolute bottom-2.5 left-2.5 z-20 flex items-center gap-1 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1.5 text-[11px] font-black text-white active:scale-90 transition"
             >
               <span>+1 Tap Rep</span>
             </button>
@@ -579,25 +579,25 @@ export default function LiveStreamDuelModal({
             <div className="rounded-3xl bg-white/[0.05] border border-white/10 p-4 space-y-3">
               <div className="grid grid-cols-2 gap-4 divide-x divide-white/10">
                 <div>
-                  <p className="text-[10px] font-bold text-cyan-400 uppercase">You</p>
+                  <p className="text-[11px] font-bold text-cyan-400 uppercase">You</p>
                   <p className="text-3xl font-black mt-1 text-white">{userReps}</p>
-                  <span className="text-[10px] text-white/50">reps counted</span>
+                  <span className="text-[11px] text-white/50">reps counted</span>
                 </div>
                 <div>
-                  <p className="text-[10px] font-bold text-amber-400 uppercase">
+                  <p className="text-[11px] font-bold text-amber-400 uppercase">
                     {isSoloPractice ? "Target Goal" : opponent?.name || "Rival"}
                   </p>
                   <p className="text-3xl font-black mt-1 text-white">
                     {isSoloPractice ? targetReps : opponentReps}
                   </p>
-                  <span className="text-[10px] text-white/50">
+                  <span className="text-[11px] text-white/50">
                     {isSoloPractice ? "reps target" : "reps counted"}
                   </span>
                 </div>
               </div>
 
               {/* Scientific Telemetry Stats */}
-              <div className="border-t border-white/10 pt-3 grid grid-cols-3 gap-2 text-center text-[10px]">
+              <div className="border-t border-white/10 pt-3 grid grid-cols-3 gap-2 text-center text-[11px]">
                 <div className="rounded-xl bg-black/40 p-2 border border-white/5">
                   <span className="text-white/40 block">Pacing</span>
                   <span className="font-black text-cyan-300">

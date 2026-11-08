@@ -16,6 +16,10 @@ import {
   VolumeX,
   X,
   Sparkles,
+  Zap,
+  Clock,
+  BatteryLow,
+  Lightbulb,
 } from "lucide-react";
 
 import type { UserProfile, Workout, WorkoutLog } from "../types";
@@ -67,12 +71,12 @@ type WorkoutState = "ready" | "active" | "rest" | "completed";
 /** Rep-based moves have no duration of their own; this is their block. */
 const REP_BLOCK_SECONDS = 45;
 
-const FEELINGS: { value: WorkoutLog["feeling"]; emoji: string }[] = [
-  { value: "Energetic", emoji: "💪" },
-  { value: "Satisfied", emoji: "😊" },
-  { value: "Tired", emoji: "🥱" },
-  { value: "Sore", emoji: "🩹" },
-  { value: "Exhausted", emoji: "🥵" },
+const FEELINGS: { value: WorkoutLog["feeling"]; icon: React.ComponentType<{ className?: string }> }[] = [
+  { value: "Energetic", icon: Zap },
+  { value: "Satisfied", icon: CheckCircle2 },
+  { value: "Sore", icon: Flame },
+  { value: "Tired", icon: Clock },
+  { value: "Exhausted", icon: BatteryLow },
 ];
 
 /**
@@ -99,7 +103,10 @@ const FEELINGS: { value: WorkoutLog["feeling"]; emoji: string }[] = [
  *    the current block, which for rep-based moves the old version
  *    computed against a duration of zero and rendered as NaN.
  */
-export default function ActiveWorkout({
+import { matchPhotoExerciseId } from "../lib/exercisePhotos";
+import { getExerciseVideo } from "../lib/exerciseVideos";
+
+function ActiveWorkoutInner({
   workout,
   onBack,
   onLogWorkout,
@@ -134,6 +141,55 @@ export default function ActiveWorkout({
   const isRunning = gameState === "active" || gameState === "rest";
   useWakeLock(isRunning && !isPaused);
 
+  // Pre-mount and pre-cache all workout exercise images into memory upon start
+  useEffect(() => {
+    if (!workout?.exercises) return;
+    workout.exercises.forEach((ex) => {
+      const matchedId = matchPhotoExerciseId(ex.name);
+      const slug = ex.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      const urls = [
+        matchedId ? `/thumbnails/${matchedId}.jpg` : null,
+        `/thumbnails/${slug}.jpg`,
+      ].filter(Boolean) as string[];
+
+      urls.forEach((u) => {
+        const img = new Image();
+        img.src = u;
+      });
+    });
+  }, [workout]);
+
+  // Pre-mount and pre-buffer the upcoming set/exercise media before set transitions
+  const nextExercise = useMemo(() => {
+    if (!currentExercise) return undefined;
+    return currentSet < currentExercise.sets
+      ? currentExercise
+      : workout.exercises[currentExerciseIndex + 1];
+  }, [currentExercise, currentSet, currentExerciseIndex, workout.exercises]);
+
+  useEffect(() => {
+    if (!nextExercise) return;
+    const matchedId = matchPhotoExerciseId(nextExercise.name);
+    const slug = nextExercise.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    const imgUrl = matchedId ? `/thumbnails/${matchedId}.jpg` : `/thumbnails/${slug}.jpg`;
+    const img = new Image();
+    img.src = imgUrl;
+
+    const vUrl = getExerciseVideo(nextExercise.name);
+    if (vUrl && typeof document !== "undefined") {
+      const link = document.createElement("link");
+      link.rel = "prefetch";
+      link.as = "video";
+      link.href = vUrl;
+      document.head.appendChild(link);
+      return () => {
+        try {
+          document.head.removeChild(link);
+        } catch {}
+      };
+    }
+  }, [nextExercise]);
+
   /* ---------------------------------------------------------------- */
   /*  Timing engine & background audio                                */
   /* ---------------------------------------------------------------- */
@@ -145,22 +201,32 @@ export default function ActiveWorkout({
 
   useEffect(() => {
     audio.setMute(isMuted);
-    lofiMusic.play("cinematic");
+    if (isMuted) {
+      audio.stopSpeaking();
+      setCaption(null);
+      lofiMusic.pause(true);
+    }
+  }, [isMuted]);
+
+  useEffect(() => {
+    if (!isMuted) {
+      lofiMusic.play("cinematic");
+    }
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       audio.stopSpeaking();
-      lofiMusic.pause();
+      lofiMusic.pause(true);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (isPaused) {
-      lofiMusic.pause();
+    if (isPaused || isMuted) {
+      lofiMusic.pause(true);
     } else if (gameState === "active" || gameState === "rest") {
       lofiMusic.play(gameState === "active" ? "cinematic" : "soothing");
     }
-  }, [isPaused, gameState]);
+  }, [isPaused, gameState, isMuted]);
 
   // Depends only on whether a timer *should* be running — never on
   // `timeLeft` — so one interval ticks steadily instead of being torn
@@ -172,10 +238,10 @@ export default function ActiveWorkout({
       timerRef.current = setInterval(() => {
         setTotalSecondsActive((prev) => prev + 1);
         setTimeLeft((prev) => {
-          if (prev <= 1) {
-            handleTimerExpiryRef.current();
-            return 0;
-          }
+          // No side effects inside a state updater: React may run it twice
+          // (StrictMode) and it runs during render, which double-advanced
+          // sets and stalled the UI. Expiry is handled by the effect below.
+          if (prev <= 1) return 0;
           // Crisp tick-tick sound in the last 5 seconds of active exercise (5, 4, 3, 2, 1)
           if (gameStateRef.current === "active" && prev <= 6 && prev > 1) {
             audio.playCountdownTick(prev - 1);
@@ -199,6 +265,10 @@ export default function ActiveWorkout({
   }, [isRunning, isPaused]);
 
   useEffect(() => {
+    if (isMuted) {
+      setCaption(null);
+      return;
+    }
     if (gameState === "active" && currentExercise) {
       const displayReps =
         currentExercise.reps > 0
@@ -225,7 +295,7 @@ export default function ActiveWorkout({
       setCaption(`Nice work — rest up. Next: ${nextName}.`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameState, currentExerciseIndex, currentSet]);
+  }, [gameState, currentExerciseIndex, currentSet, isMuted]);
 
   const blockSeconds = (index: number) => {
     const ex = workout.exercises[index];
@@ -242,8 +312,10 @@ export default function ActiveWorkout({
     setCurrentSet(1);
     setTimeLeft(blockSeconds(0));
     setIsPaused(false);
-    audio.playExerciseStartBell();
-    lofiMusic.play("cinematic");
+    if (!isMuted) {
+      audio.playExerciseStartBell();
+      lofiMusic.play("cinematic");
+    }
   };
 
   const finishActiveSetEarly = () => {
@@ -282,18 +354,26 @@ export default function ActiveWorkout({
     handleTimerExpiryRef.current = handleTimerExpiry;
   });
 
+  // Fires once when the countdown reaches zero during an active/rest block.
+  useEffect(() => {
+    if (timeLeft === 0 && isRunning && !isPaused) {
+      handleTimerExpiryRef.current();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeLeft]);
+
   const advanceWorkoutFlow = () => {
     if (currentSet < currentExercise.sets) {
       setCurrentSet((prev) => prev + 1);
       setGameState("active");
       setTimeLeft(blockSeconds(currentExerciseIndex));
-      audio.playExerciseStartBell();
+      if (!isMuted) audio.playExerciseStartBell();
     } else if (currentExerciseIndex + 1 < workout.exercises.length) {
       setCurrentExerciseIndex((prev) => prev + 1);
       setCurrentSet(1);
       setGameState("active");
       setTimeLeft(blockSeconds(currentExerciseIndex + 1));
-      audio.playExerciseStartBell();
+      if (!isMuted) audio.playExerciseStartBell();
     } else {
       completeWorkoutSession();
     }
@@ -307,18 +387,30 @@ export default function ActiveWorkout({
   const completeWorkoutSession = () => {
     setGameState("completed");
     celebrateFeedback();
-    audio.playSuccessChime();
-    audio.speak(
-      "Fantastic effort! You've successfully finished your training routine. Log your workout to lock in your daily streak!",
-      { gender: figureGender },
-    );
+    if (!isMuted) {
+      audio.playSuccessChime();
+      audio.speak(
+        "Fantastic effort! You've successfully finished your training routine. Log your workout to lock in your daily streak!",
+        { gender: figureGender },
+      );
+    }
   };
 
   const toggleMute = () => {
     tapFeedback();
-    const muted = audio.toggleMute();
-    setIsMuted(muted);
-    localStorage.setItem("kinetic_sound_muted", String(muted));
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+    audio.setMute(nextMuted);
+    if (nextMuted) {
+      audio.stopSpeaking();
+      setCaption(null);
+      lofiMusic.pause(true);
+    } else {
+      if (!isPaused && (gameState === "active" || gameState === "rest")) {
+        lofiMusic.play(gameState === "active" ? "cinematic" : "soothing");
+      }
+    }
+    localStorage.setItem("kinetic_sound_muted", String(nextMuted));
   };
 
   const minutesElapsed = Math.max(1, Math.round(totalSecondsActive / 60));
@@ -339,6 +431,7 @@ export default function ActiveWorkout({
       feeling,
       userNotes: userNotes.trim() || undefined,
       estimatedCaloriesBurned: estimatedBurn,
+      targetArea: workout.targetArea,
     });
   };
 
@@ -409,26 +502,24 @@ export default function ActiveWorkout({
       className="session-surface relative min-h-[100dvh] w-full"
       style={{ ["--glow" as string]: toneTokens.color }}
     >
-      {/* Primary ambient field — large, slow colour-shifting orb.
-          The whole screen feels like it breathes a different colour on
-          each state change, registering peripherally before the copy does. */}
-      <motion.div
+      {/* Primary ambient field — hardware accelerated via GPU layer and CSS transition */}
+      <div
         aria-hidden
-        className="pointer-events-none fixed inset-x-0 top-0 -z-10 h-[65vh]"
-        animate={{
+        className="pointer-events-none fixed inset-x-0 top-0 -z-10 h-[65vh] transition-all duration-1000 ease-out will-change-transform"
+        style={{
+          transform: "translateZ(0)",
           background: `radial-gradient(ellipse 90% 70% at 50% 0%, color-mix(in srgb, ${toneTokens.color} 16%, transparent) 0%, transparent 70%)`,
         }}
-        transition={{ duration: 1.2, ease: "easeInOut" }}
       />
 
-      {/* Secondary ambient orb — bottom edge, slower animation for depth */}
-      <motion.div
+      {/* Secondary ambient orb — bottom edge */}
+      <div
         aria-hidden
-        className="pointer-events-none fixed inset-x-0 bottom-0 -z-10 h-[40vh]"
-        animate={{
+        className="pointer-events-none fixed inset-x-0 bottom-0 -z-10 h-[40vh] transition-all duration-1000 ease-out will-change-transform"
+        style={{
+          transform: "translateZ(0)",
           background: `radial-gradient(ellipse 70% 50% at 50% 100%, color-mix(in srgb, ${toneTokens.color} 7%, transparent) 0%, transparent 70%)`,
         }}
-        transition={{ duration: 1.6, ease: "easeInOut" }}
       />
 
       <div className="mx-auto w-full max-w-3xl px-5 pb-8 sm:px-6">
@@ -479,7 +570,7 @@ export default function ActiveWorkout({
                 </div>
                 <div className="relative z-10 space-y-2.5">
                   <span
-                    className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-[0.16em]"
+                    className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.16em]"
                     style={{
                       background: "var(--cyan-wash)",
                       color: "var(--cyan)",
@@ -553,7 +644,7 @@ export default function ActiveWorkout({
                           still
                         />
                         <span
-                          className="font-numeric absolute -left-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full text-[10px] font-extrabold"
+                          className="font-numeric absolute -left-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full text-[11px] font-extrabold"
                           style={{
                             background: "var(--cyan)",
                             color: "var(--void)",
@@ -584,18 +675,18 @@ export default function ActiveWorkout({
                 variants={staggerChild}
                 className="flex gap-3 rounded-lg2 border p-4"
                 style={{
-                  background: "var(--gold-wash)",
-                  borderColor: "color-mix(in srgb, var(--gold) 26%, transparent)",
+                  background: "color-mix(in srgb, var(--cyan) 8%, transparent)",
+                  borderColor: "color-mix(in srgb, var(--cyan) 22%, transparent)",
                 }}
               >
-                <AlertTriangle
-                  className="h-4 w-4 shrink-0"
-                  style={{ color: "var(--gold)" }}
+                <Lightbulb
+                  className="h-4 w-4 shrink-0 fill-current"
+                  style={{ color: "var(--cyan)" }}
                 />
                 <div className="min-w-0">
                   <p
-                    className="text-[10px] font-extrabold uppercase tracking-[0.14em]"
-                    style={{ color: "var(--gold)" }}
+                    className="text-[11px] font-extrabold uppercase tracking-[0.14em]"
+                    style={{ color: "var(--cyan)" }}
                   >
                     Coach reminders
                   </p>
@@ -619,7 +710,7 @@ export default function ActiveWorkout({
                 type="button"
                 id="btn-toggle-sound-ready"
                 onClick={toggleMute}
-                className="inline-flex items-center gap-2 text-[11px] font-semibold text-ink-3 transition-colors hover:text-ink"
+                className="inline-flex items-center gap-2 text-[11px] font-semibold text-ink-2 transition-colors hover:text-ink"
               >
                 {isMuted ? (
                   <VolumeX className="h-3.5 w-3.5" />
@@ -658,7 +749,7 @@ export default function ActiveWorkout({
                 tapFeedback();
                 setIsPaused((p) => !p);
               }}
-              onAdjustTime={(delta) => {
+              onAdjustTime={(delta: number) => {
                 tapFeedback();
                 setTimeLeft((prev) => Math.max(5, prev + delta));
               }}
@@ -747,20 +838,9 @@ export default function ActiveWorkout({
                   not have existed. The clock lost 52px of ring to make
                   room; it is still the largest thing on the screen. */}
               <section
-                className="aurora-card neon-border relative overflow-hidden rounded-xl2"
-                style={{ ["--glow" as string]: toneTokens.color }}
+                className="relative overflow-hidden rounded-2xl border border-white/[0.07] bg-[#12141c]"
               >
-                {/* Demo card ambient orb that shifts with state */}
-                <motion.div
-                  aria-hidden
-                  className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full"
-                  animate={{
-                    background: `radial-gradient(circle, color-mix(in srgb, ${toneTokens.color} 18%, transparent) 0%, transparent 70%)`,
-                  }}
-                  transition={{ duration: 1, ease: "easeInOut" }}
-                  style={{ filter: "blur(20px)" }}
-                />
-                <div className="relative h-52 w-full sm:h-60">
+                <div className="relative w-full aspect-video overflow-hidden">
                   <ExerciseThumb
                     name={currentExercise.name}
                     targetMuscle={currentExercise.targetMuscle}
@@ -801,7 +881,7 @@ export default function ActiveWorkout({
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -6 }}
                         transition={{ duration: 0.2 }}
-                        className="text-[10px] font-extrabold uppercase tracking-[0.2em]"
+                        className="text-[11px] font-extrabold uppercase tracking-[0.2em]"
                         style={{ color: toneTokens.color }}
                       >
                         {isRest ? "Recover" : `Set ${currentSet} of ${currentExercise.sets}`}
@@ -842,7 +922,7 @@ export default function ActiveWorkout({
                           : currentExercise.name}
                     </motion.span>
 
-                    {!isRest && currentExercise.reps > 0 && (
+                    {!isRest && (
                       <span
                         className="mt-2.5 inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-extrabold"
                         style={{
@@ -850,7 +930,9 @@ export default function ActiveWorkout({
                           color: toneTokens.color,
                         }}
                       >
-                        {currentExercise.reps} reps
+                        {currentExercise.durationSeconds > 0
+                          ? `${currentExercise.durationSeconds}s Timed Set`
+                          : `Target: ${currentExercise.reps || 10} Reps`}
                       </span>
                     )}
                   </div>
@@ -910,7 +992,6 @@ export default function ActiveWorkout({
                     tapFeedback();
                     setIsPaused((p) => !p);
                   }}
-                  whileTap={{ scale: 0.9 }}
                   whileHover={{ scale: 1.05 }}
                   transition={SPRING_SNAP}
                   className="grid h-[72px] w-[72px] place-items-center rounded-full"
@@ -949,21 +1030,23 @@ export default function ActiveWorkout({
                 </TactileControl>
 
                 <TactileControl
-                  label="Beast Hype Coach"
-                  id="btn-beast-hype"
+                  label="Coach Audio Boost"
+                  id="btn-coach-hype"
                   onClick={() => {
                     celebrateFeedback();
-                    audio.playBeastDrop();
-                    const lines = [
-                      "Light weight baby! You've got this!",
-                      "One more rep for glory! Don't you dare stop!",
-                      "Leave nothing in the tank! Finish strong!",
-                      "Pain is temporary, pride is forever! Push!",
-                      "Champions are forged in the final seconds!",
-                      "Dig deep! Own this workout!",
-                    ];
-                    const pick = lines[Math.floor(Math.random() * lines.length)];
-                    audio.speak(pick, { gender: "male" });
+                    if (!isMuted) {
+                      audio.playBeastDrop();
+                      const lines = [
+                        "Light weight baby! You've got this!",
+                        "One more rep for glory! Don't you dare stop!",
+                        "Leave nothing in the tank! Finish strong!",
+                        "Pain is temporary, pride is forever! Push!",
+                        "Champions are forged in the final seconds!",
+                        "Dig deep! Own this workout!",
+                      ];
+                      const pick = lines[Math.floor(Math.random() * lines.length)];
+                      audio.speak(pick, { gender: "male" });
+                    }
                   }}
                 >
                   <Flame className="h-5 w-5 text-amber-400 fill-amber-400" />
@@ -971,20 +1054,19 @@ export default function ActiveWorkout({
               </section>
 
               {/* ---------- COMPLETE EXERCISE & RECOVERY CTA ---------- */}
-              <section className="flex flex-col items-center gap-1.5 pt-1">
+              <section className="flex w-full flex-col items-center gap-2 pt-1">
                 <motion.button
                   type="button"
                   id="btn-finish-set-rest"
                   onClick={finishActiveSetEarly}
-                  whileTap={{ scale: 0.96 }}
                   whileHover={{ scale: 1.02 }}
-                  className="flex items-center gap-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 px-7 py-3 text-xs font-black text-slate-950 shadow-md shadow-emerald-500/25 hover:opacity-95 transition-all"
+                  className="flex w-full items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 py-4 text-sm font-black text-slate-950 shadow-lg shadow-emerald-500/30 active:opacity-90 transition-all"
                 >
-                  <CheckCircle2 className="h-4 w-4 text-slate-950" />
-                  <span>Complete Exercise · Recover</span>
+                  <CheckCircle2 className="h-5 w-5 text-slate-950" />
+                  <span>Complete Set · Start Recovery</span>
                 </motion.button>
-                <p className="text-[10px] font-semibold tracking-wide text-emerald-400/90">
-                  ⚡ Scientific recovery window automatically follows each exercise
+                <p className="text-[11px] font-semibold tracking-wide text-emerald-400/90">
+                  Recovery interval automatically follows each exercise
                 </p>
               </section>
 
@@ -1009,7 +1091,7 @@ export default function ActiveWorkout({
                 <div className="surface rounded-xl2 p-5">
                   <div className="flex items-center justify-between gap-2">
                     <span
-                      className="inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-[0.14em]"
+                      className="inline-flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.14em]"
                       style={{ color: toneTokens.color }}
                     >
                       <Clipboard className="h-3.5 w-3.5" />
@@ -1021,12 +1103,14 @@ export default function ActiveWorkout({
                       tone="neutral"
                       className="border border-line"
                       aria-label="Replay voice cue"
-                      onClick={() =>
-                        audio.speak(
-                          `${currentExercise.name}. ${currentExercise.description}`,
-                          { gender: figureGender },
-                        )
-                      }
+                      onClick={() => {
+                        if (!isMuted) {
+                          audio.speak(
+                            `${currentExercise.name}. ${currentExercise.description}`,
+                            { gender: figureGender },
+                          );
+                        }
+                      }}
                     >
                       <Volume2 className="h-3 w-3" />
                       Replay
@@ -1046,7 +1130,7 @@ export default function ActiveWorkout({
                     </span>
                     {!isMuted && caption && (
                       <span
-                        className="inline-flex min-w-0 items-center gap-1.5 text-[10px] font-semibold"
+                        className="inline-flex min-w-0 items-center gap-1.5 text-[11px] font-semibold"
                         style={{ color: toneTokens.color }}
                       >
                         <VoiceBars color={toneTokens.color} />
@@ -1067,7 +1151,7 @@ export default function ActiveWorkout({
                         key={`${ex.name}-${i}`}
                         className="surface flex shrink-0 items-center gap-2 rounded-full py-1 pl-1 pr-3.5"
                       >
-                        <span className="font-numeric grid h-6 w-6 place-items-center rounded-full bg-[var(--graphite)] text-[10px] font-extrabold text-ink-3">
+                        <span className="font-numeric grid h-6 w-6 place-items-center rounded-full bg-[var(--graphite)] text-[11px] font-extrabold text-ink-3">
                           {String(currentExerciseIndex + i + 2).padStart(2, "0")}
                         </span>
                         <span className="whitespace-nowrap text-[11px] font-bold text-ink-2">
@@ -1136,7 +1220,7 @@ export default function ActiveWorkout({
                   </span>
 
                   <p
-                    className="mt-5 text-[10px] font-extrabold uppercase tracking-[0.2em]"
+                    className="mt-5 text-[11px] font-extrabold uppercase tracking-[0.2em]"
                     style={{ color: "var(--emerald)" }}
                   >
                     Victory Achieved · Routine finished
@@ -1176,7 +1260,6 @@ export default function ActiveWorkout({
               <motion.div variants={staggerChild} className="space-y-2">
                 <motion.button
                   type="button"
-                  whileTap={{ scale: 0.96 }}
                   onClick={() => {
                     tapFeedback();
                     setShowViralFlex(true);
@@ -1221,14 +1304,13 @@ export default function ActiveWorkout({
                         <motion.button
                           key={f.value}
                           type="button"
-                          whileTap={{ scale: 0.94 }}
                           transition={SPRING_SNAP}
                           onClick={() => {
                             tapFeedback();
                             setFeeling(f.value);
                           }}
                           aria-pressed={on}
-                          className="rounded-md2 border px-1 py-2.5 text-center text-[10px] font-bold leading-tight transition-colors"
+                          className="rounded-md2 border px-1 py-2.5 text-center text-[11px] font-bold leading-tight transition-colors"
                           style={{
                             borderColor: on
                               ? "color-mix(in srgb, var(--emerald) 50%, transparent)"
@@ -1239,8 +1321,8 @@ export default function ActiveWorkout({
                             color: on ? "var(--emerald)" : "var(--ink-3)",
                           }}
                         >
-                          <span className="block text-lg" aria-hidden>
-                            {f.emoji}
+                          <span className="flex justify-center text-lg py-0.5" aria-hidden>
+                            <f.icon className="h-4 w-4" />
                           </span>
                           {/* Wraps instead of truncating. At five across on
                               a 360px phone "Exhausted" does not fit on one
@@ -1439,7 +1521,7 @@ function Spec({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
       <p className="eyebrow truncate">{label}</p>
-      <p className="mt-1 truncate text-sm font-bold text-ink">{value}</p>
+      <p className="mt-1 text-sm font-bold text-ink break-words leading-snug">{value}</p>
     </div>
   );
 }
@@ -1474,11 +1556,11 @@ function Summary({
       >
         {value}
       </p>
-      <p className="relative mt-1.5 text-[10px] font-bold text-ink-4">{unit}</p>
+      <p className="relative mt-1.5 text-[11px] font-bold text-ink-4">{unit}</p>
       {/* The label sits under the number, and wraps rather than truncates.
           As an `eyebrow` above it, "Movements" and "Est. burn" both
           ellipsised to "MOVEME…" and "EST. B…" at 3-up on a phone. */}
-      <p className="relative mt-2 flex items-center justify-center gap-1 text-[10px] font-bold leading-tight text-ink-3">
+      <p className="relative mt-2 flex items-center justify-center gap-1 text-[11px] font-bold leading-tight text-ink-3">
         {Icon && <Icon className="h-3 w-3 shrink-0" style={{ color: t.color }} />}
         {label}
       </p>
@@ -1510,7 +1592,6 @@ function TactileControl({
       aria-label={label}
       title={label}
       onClick={onClick}
-      whileTap={{ scale: 0.88 }}
       whileHover={{ scale: 1.06 }}
       transition={SPRING_SNAP}
       className="surface grid h-14 w-14 place-items-center rounded-full text-ink-3 transition-colors hover:text-ink"
@@ -1522,13 +1603,13 @@ function TactileControl({
 
 function VoiceBars({ color }: { color: string }) {
   return (
-    <span className="flex shrink-0 items-end gap-[2px]" aria-hidden>
+    <span className="flex shrink-0 items-end gap-[2px] h-3.5" aria-hidden>
       {[0, 1, 2].map((i) => (
         <motion.span
           key={i}
-          className="w-[2px] rounded-full"
+          className="w-[2px] h-3.5 rounded-full origin-bottom will-change-transform"
           style={{ background: color }}
-          animate={{ height: [4, 10, 5, 8, 4] }}
+          animate={{ scaleY: [0.3, 1, 0.45, 0.85, 0.3] }}
           transition={{
             duration: 1.1,
             repeat: Infinity,
@@ -1540,3 +1621,6 @@ function VoiceBars({ color }: { color: string }) {
     </span>
   );
 }
+
+const ActiveWorkout = React.memo(ActiveWorkoutInner);
+export default ActiveWorkout;
