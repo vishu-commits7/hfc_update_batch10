@@ -7,11 +7,13 @@ import { signUp, logIn, logInWithGoogle, logInAsGuest, resetPassword, friendlyAu
 interface AuthScreenProps {
   onBack: () => void;
   onAuthed: () => void;
+  /** Login-first: hides Back and guest access. */
+  required?: boolean;
 }
 
 type Mode = "login" | "signup" | "reset";
 
-function AuthScreenInner({ onBack, onAuthed }: AuthScreenProps) {
+function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps) {
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -102,6 +104,7 @@ function AuthScreenInner({ onBack, onAuthed }: AuthScreenProps) {
     <div className="max-w-md mx-auto animate-fade-in text-slate-100 pb-16 px-4">
       {/* Top Header */}
       <div className="mb-5 flex items-center justify-between">
+        {required ? <span className="h-10 w-10" /> : (
         <button
           onClick={onBack}
           className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-slate-900/80 text-slate-300 shadow-md backdrop-blur-md transition-all hover:border-cyan-500/40 hover:text-white active:scale-95"
@@ -109,6 +112,7 @@ function AuthScreenInner({ onBack, onAuthed }: AuthScreenProps) {
         >
           <ArrowLeft className="h-4 w-4" />
         </button>
+        )}
 
         <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/20 bg-cyan-950/40 px-3 py-1 text-[11px] font-bold tracking-wider uppercase text-cyan-400">
           <ShieldCheck className="h-3.5 w-3.5 text-cyan-400" /> Cloud Sync
@@ -164,6 +168,7 @@ function AuthScreenInner({ onBack, onAuthed }: AuthScreenProps) {
             <span>Continue with Google</span>
           </button>
 
+          {!required && (<>
           {/* Instant 1-Tap Guest Access */}
           <button
             type="button"
@@ -178,6 +183,8 @@ function AuthScreenInner({ onBack, onAuthed }: AuthScreenProps) {
             )}
             <span>Instant Guest Access (No Password Needed)</span>
           </button>
+
+          </>)}
 
           <div className="relative my-4 flex items-center justify-center">
             <div className="w-full border-t border-white/10" />
@@ -237,7 +244,7 @@ function AuthScreenInner({ onBack, onAuthed }: AuthScreenProps) {
                     Switch to Sign In
                   </button>
                 )}
-                {isStorageBlocked && (
+                {isStorageBlocked && !required && (
                   <button
                     type="button"
                     onClick={handleGuestSignIn}

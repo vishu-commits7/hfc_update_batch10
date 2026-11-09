@@ -201,3 +201,8 @@ Storage rules were reviewed earlier (Batch 8) and not re-reviewed in this pass.
 RELEASE CONTENTS (v1.0.0 = Batches 7 to 13): progression and profile, safety and moderation, private reels, analytics and error log, onboarding and 2-minute starter, streaks, quests, weekly leagues, friends, challenges, crews, Arena rating/rematch/quick match/spectate, camera rep counting, adaptive plans, Health Connect, Pro subscription (off until BILLING_ENABLED=true), UX and accessibility pass.
 BEFORE USERS GET IT: deploy functions + rules + indexes first (cd functions && npm install && npm run build && cd .. ; firebase deploy --only firestore:rules,firestore:indexes,storage,functions), then npm run build, npx cap sync android, rebuild. If the web app is auto-deployed from main (Render), merge to main only AFTER the Firebase deploy, otherwise the new screens call functions that don't exist yet.
 Also bump versionCode in android/app/build.gradle (it is still 1) before uploading to Play.
+
+Fix: minSdkVersion raised 24 -> 26 in android/variables.gradle (Health Connect requires Android 8.0+). Android 7 phones can no longer install the app.
+
+## Batch 14 — Login first
+- After the 2 intro slides, signed-out users see a full-screen sign-in/sign-up (Google or email). No Back, no guest button (`AuthScreen required`). GoalSetup and the app start only once signed in. Existing guest (anonymous) sessions keep working. To revert, remove the gate block in App.tsx.

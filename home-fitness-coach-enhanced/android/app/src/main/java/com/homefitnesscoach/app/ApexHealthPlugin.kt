@@ -55,7 +55,7 @@ class ApexHealthPlugin : Plugin() {
     }
 
     @PluginMethod
-    fun requestPermissions(call: PluginCall) {
+    fun requestHealthAccess(call: PluginCall) {
         if (sdkStatus() != HealthConnectClient.SDK_AVAILABLE) { call.reject("Health Connect isn't available on this device."); return }
         val intent = PermissionController.createRequestPermissionResultContract().createIntent(context, permissions)
         startActivityForResult(call, intent, "onPermissionResult")

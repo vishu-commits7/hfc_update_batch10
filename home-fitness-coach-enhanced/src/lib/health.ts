@@ -5,7 +5,7 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 export interface HealthDay { dayKey: string; steps: number; kcal: number }
 interface HealthPlugin {
   status(): Promise<{ available: boolean; needsInstall: boolean; granted: boolean }>;
-  requestPermissions(): Promise<{ granted: boolean }>;
+  requestHealthAccess(): Promise<{ granted: boolean }>;
   getSummary(o: { days: number }): Promise<{ days: HealthDay[] }>;
 }
 const Health = registerPlugin<HealthPlugin>("ApexHealth");
@@ -47,7 +47,7 @@ export function useHealth() {
   const connect = async () => {
     setBusy(true); setError(null);
     try {
-      const r = await Health.requestPermissions();
+      const r = await Health.requestHealthAccess();
       if (r.granted) { try { localStorage.setItem(ON_KEY, "1"); } catch { /* ignore */ } await load(); }
       else setError("Permission wasn't granted. You can allow steps and calories in Health Connect settings.");
     } catch (e: any) { setError(e?.message || "Couldn't open Health Connect."); } finally { setBusy(false); }

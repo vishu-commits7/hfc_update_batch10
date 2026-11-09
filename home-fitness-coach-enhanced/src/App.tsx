@@ -197,7 +197,7 @@ export default function App() {
 
   const isDesktop = useIsDesktop();
   const [, , themeMode, setThemeMode] = useTheme();
-  const { user } = useAuthUser();
+  const { user, loading: authLoading } = useAuthUser();
   // One identity for the whole app: photo (on-device copy first), name and handle.
   const me = useMyIdentity();
   const [celebration, setCelebration] = useState<RewardResult | null>(null);
@@ -1382,7 +1382,15 @@ export default function App() {
       {celebration && <LevelUpOverlay reward={celebration} onClose={() => setCelebration(null)} />}
 
       {showOnboarding && <Onboarding onDone={dismissOnboarding} />}
-      {!showOnboarding && showGoalSetup && (
+      {/* Login-first: after the intro slides, an account is required. */}
+      {!showOnboarding && !authLoading && !user && (
+        <div className="fixed inset-0 z-[200] overflow-y-auto bg-slate-950 pt-[env(safe-area-inset-top)]">
+          <Suspense fallback={null}>
+            <AuthScreen required onBack={() => {}} onAuthed={() => {}} />
+          </Suspense>
+        </div>
+      )}
+      {!showOnboarding && !!user && showGoalSetup && (
         <GoalSetup
           initial={{ goal: profile.goal, fitnessLevel: profile.fitnessLevel, preferredEquipment: profile.preferredEquipment }}
           onDone={finishGoalSetup}
