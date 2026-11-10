@@ -3,6 +3,12 @@ import { Loader2, Mail, Lock, User as UserIcon, ArrowLeft, CheckCircle2, Eye, Ey
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { signUp, logIn, logInWithGoogle, logInAsGuest, resetPassword, friendlyAuthError } from "../lib/useAuth";
+import { track } from "../lib/track";
+import { EV } from "../lib/analyticsEvents";
+import { getAuthGate } from "../lib/flags";
+import { useT, tSplit } from "../i18n";
+import { ContentPolicySheet } from "./ContentPolicy";
+import LanguageSwitch from "./LanguageSwitch";
 
 interface AuthScreenProps {
   onBack: () => void;
@@ -14,6 +20,7 @@ interface AuthScreenProps {
 type Mode = "login" | "signup" | "reset";
 
 function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps) {
+  const t = useT();
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,7 +30,11 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
   const [googleBusy, setGoogleBusy] = useState(false);
   const [guestBusy, setGuestBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPolicy, setShowPolicy] = useState(false);
   const [resetSent, setResetSent] = useState(false);
+
+  // funnel: how many people see this screen, tap a sign-in method, and finish. `gate` says which gate mode they were in.
+  useEffect(() => { track(EV.signinShown, { gate: required ? getAuthGate() : "optional" }); }, [required]);
 
   // Automatically advance if already authenticated or returning from mobile Google redirect
   useEffect(() => {
@@ -41,11 +52,15 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
     setBusy(true);
     try {
       if (mode === "login") {
+        track(EV.signinStarted, { method: "email" });
         await logIn(email.trim(), password);
+        track(EV.signinCompleted, { method: "email" });
         onAuthed();
       } else if (mode === "signup") {
-        if (!displayName.trim()) throw new Error("Please enter your athlete alias.");
+        if (!displayName.trim()) throw new Error(t("auth.err.alias"));
+        track(EV.signinStarted, { method: "email" });
         await signUp(email.trim(), password, displayName.trim());
+        track(EV.signinCompleted, { method: "email" });
         onAuthed();
       } else {
         await resetPassword(email.trim());
@@ -61,17 +76,19 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
   const handleGoogleSignIn = async () => {
     setError(null);
     setGoogleBusy(true);
+    track(EV.signinStarted, { method: "google" });
 
     // The native account picker can legitimately stay open for a while.
     const timeoutTimer = setTimeout(() => {
       setGoogleBusy(false);
-      setError("Sign-in is taking too long. Please try again or use Instant Guest Access.");
+      setError(t("auth.err.slow"));
     }, 120000);
 
     try {
       const user = await logInWithGoogle();
       clearTimeout(timeoutTimer);
       if (user) {
+        track(EV.signinCompleted, { method: "google" });
         onAuthed();
       }
     } catch (err: any) {
@@ -88,8 +105,10 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
   const handleGuestSignIn = async () => {
     setError(null);
     setGuestBusy(true);
+    track(EV.signinStarted, { method: "guest" });
     try {
       await logInAsGuest();
+      track(EV.signinCompleted, { method: "guest" });
       onAuthed();
     } catch (err) {
       setError(friendlyAuthError(err));
@@ -98,24 +117,26 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
     }
   };
 
-  const isStorageBlocked = error?.includes("Mobile browser security") || error?.includes("blocked");
+  const isStorageBlocked = !!error && (error === t("auth.err.storage") || error === t("auth.err.popup"));
+  const isAlreadyExists = !!error && error === t("auth.err.exists");
 
   return (
     <div className="max-w-md mx-auto animate-fade-in text-slate-100 pb-16 px-4">
       {/* Top Header */}
+      <div className="mb-2 flex justify-end"><LanguageSwitch /></div>
       <div className="mb-5 flex items-center justify-between">
         {required ? <span className="h-10 w-10" /> : (
         <button
           onClick={onBack}
           className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-slate-900/80 text-slate-300 shadow-md backdrop-blur-md transition-all hover:border-cyan-500/40 hover:text-white active:scale-95"
-          title="Back"
+          title={t("common.back")}
         >
           <ArrowLeft className="h-4 w-4" />
         </button>
         )}
 
         <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/20 bg-cyan-950/40 px-3 py-1 text-[11px] font-bold tracking-wider uppercase text-cyan-400">
-          <ShieldCheck className="h-3.5 w-3.5 text-cyan-400" /> Cloud Sync
+          <ShieldCheck className="h-3.5 w-3.5 text-cyan-400" /> {t("auth.cloudSync")}
         </span>
       </div>
 
@@ -129,24 +150,25 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
             APEX <span className="bg-gradient-to-r from-cyan-400 to-amber-400 bg-clip-text text-transparent">PULSE</span>
           </h1>
           <p className="mt-1 text-xs text-slate-400">
-            {mode === "login" && "Sign in to save your workouts, climb duels & sync across devices"}
-            {mode === "signup" && "Create your athlete profile and join the global arena"}
-            {mode === "reset" && "Enter your email to receive a password reset link"}
+            {mode === "login" && t("auth.sub.login")}
+            {mode === "signup" && t("auth.sub.signup")}
+            {mode === "reset" && t("auth.sub.reset")}
           </p>
         </div>
 
         {/* 1-Tap Google Sign-In */}
         <div className="space-y-3">
+          <p className="text-center text-base font-black text-cyan-300">{t("auth.tagline")}</p>
           <button
             type="button"
             onClick={handleGoogleSignIn}
             disabled={googleBusy || busy || guestBusy}
-            className="flex w-full items-center justify-center gap-3 rounded-2xl border border-white/15 bg-white text-slate-900 py-3.5 px-4 font-bold text-sm shadow-md transition-all hover:bg-slate-100 hover:shadow-cyan-500/20 active:scale-98 disabled:opacity-50 cursor-pointer"
+            className="flex min-h-[64px] w-full items-center justify-center gap-3 rounded-2xl border border-white/15 bg-white px-4 py-4 text-base font-black text-slate-900 shadow-lg transition-all hover:bg-slate-100 hover:shadow-cyan-500/20 active:scale-98 disabled:opacity-50 cursor-pointer"
           >
             {googleBusy ? (
-              <Loader2 className="h-5 w-5 animate-spin text-slate-900" />
+              <Loader2 className="h-6 w-6 animate-spin text-slate-900" />
             ) : (
-              <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24">
+              <svg className="h-6 w-6 shrink-0" viewBox="0 0 24 24">
                 <path
                   fill="#4285F4"
                   d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -165,7 +187,7 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
                 />
               </svg>
             )}
-            <span>Continue with Google</span>
+            <span>{t("auth.google")}</span>
           </button>
 
           {!required && (<>
@@ -181,7 +203,7 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
             ) : (
               <Zap className="h-4 w-4 text-cyan-400" />
             )}
-            <span>Instant Guest Access (No Password Needed)</span>
+            <span>{t("auth.guest")}</span>
           </button>
 
           </>)}
@@ -189,7 +211,7 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
           <div className="relative my-4 flex items-center justify-center">
             <div className="w-full border-t border-white/10" />
             <span className="absolute bg-slate-900 px-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              or with email & password
+              {t("auth.or")}
             </span>
           </div>
         </div>
@@ -208,7 +230,7 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
                 : "text-slate-400 hover:text-white"
             }`}
           >
-            Sign In
+            {t("auth.signIn")}
           </button>
           <button
             type="button"
@@ -222,7 +244,7 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
                 : "text-slate-400 hover:text-white"
             }`}
           >
-            Create Account
+            {t("auth.create")}
           </button>
         </div>
 
@@ -232,7 +254,7 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
               <AlertCircle className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
               <div className="flex-1">
                 <p className="font-semibold">{error}</p>
-                {error.includes("switch to Sign In") && (
+                {isAlreadyExists && (
                   <button
                     type="button"
                     onClick={() => {
@@ -241,7 +263,7 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
                     }}
                     className="mt-2 inline-flex items-center gap-1 rounded-lg bg-cyan-400 px-3 py-1 text-[11px] font-black text-slate-950 hover:bg-cyan-300"
                   >
-                    Switch to Sign In
+                    {t("auth.switchToSignIn")}
                   </button>
                 )}
                 {isStorageBlocked && !required && (
@@ -250,7 +272,7 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
                     onClick={handleGuestSignIn}
                     className="mt-2 inline-flex items-center gap-1 rounded-lg bg-amber-400 px-2.5 py-1 text-[11px] font-black text-slate-950"
                   >
-                    <Zap className="h-3 w-3" /> Enter As Guest Instead
+                    <Zap className="h-3 w-3" /> {t("auth.guestInstead")}
                   </button>
                 )}
               </div>
@@ -262,7 +284,7 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
           <div className="mt-4 flex flex-col items-center gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-950/40 p-6 text-center">
             <CheckCircle2 className="h-8 w-8 text-emerald-400" />
             <p className="text-sm font-bold text-emerald-200">
-              Password reset link sent to <span className="text-white underline">{email}</span>. Check your inbox!
+              {tSplit("auth.resetSent", "email")[0]}<span className="text-white underline">{email}</span>{tSplit("auth.resetSent", "email")[1]}
             </p>
             <button
               onClick={() => {
@@ -271,22 +293,29 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
               }}
               className="mt-2 text-xs font-black uppercase tracking-wider text-emerald-400 hover:text-emerald-300 underline"
             >
-              Back to Sign In
+              {t("auth.backToSignIn")}
             </button>
           </div>
         ) : (
           <form onSubmit={submit} className="space-y-3.5">
             {mode === "signup" && (
+              <p className="text-xs leading-relaxed text-slate-400">
+                {tSplit("auth.policyLine", "link")[0]}
+                <button type="button" onClick={() => setShowPolicy(true)} className="font-semibold text-cyan-400 underline underline-offset-2">{t("policy.title")}</button>
+                {tSplit("auth.policyLine", "link")[1]}
+              </p>
+            )}
+            {mode === "signup" && (
               <label className="block">
                 <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Athlete Name
+                  {t("auth.athleteName")}
                 </span>
                 <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3.5 py-3 transition focus-within:border-cyan-400 focus-within:bg-black/60">
                   <UserIcon className="h-4 w-4 shrink-0 text-slate-400" />
                   <input
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="e.g. ApexTitan"
+                    placeholder={t("auth.athletePlaceholder")}
                     className="w-full text-sm text-white placeholder-slate-500 outline-none bg-transparent"
                     required
                   />
@@ -296,7 +325,7 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
 
             <label className="block">
               <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-400">
-                Email
+                {t("auth.email")}
               </span>
               <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3.5 py-3 transition focus-within:border-cyan-400 focus-within:bg-black/60">
                 <Mail className="h-4 w-4 shrink-0 text-slate-400" />
@@ -314,7 +343,7 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
             {mode !== "reset" && (
               <label className="block">
                 <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Password
+                  {t("auth.password")}
                 </span>
                 <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3.5 py-3 transition focus-within:border-cyan-400 focus-within:bg-black/60">
                   <Lock className="h-4 w-4 shrink-0 text-slate-400" />
@@ -322,15 +351,15 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="At least 6 characters"
+                    placeholder={t("auth.passwordPlaceholder")}
                     className="w-full text-sm text-white placeholder-slate-500 outline-none bg-transparent"
                     required
                     minLength={6}
                   />
-                  <button
+                  <button aria-label={showPassword ? t("auth.hidePw") : t("auth.showPw")}
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="text-slate-400 hover:text-slate-200"
+                    className="flex min-h-[44px] min-w-[44px] items-center justify-center text-slate-400 hover:text-slate-200"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -341,10 +370,10 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
             <button
               type="submit"
               disabled={busy || googleBusy || guestBusy}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 py-3.5 text-sm font-black uppercase tracking-wider text-white shadow-lg shadow-cyan-500/30 transition hover:brightness-110 active:scale-98 disabled:opacity-60 cursor-pointer"
+              className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl border border-white/20 bg-white/5 py-3 text-xs font-black uppercase tracking-wider text-white transition hover:bg-white/10 active:scale-98 disabled:opacity-60 cursor-pointer"
             >
               {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-              {mode === "login" ? "Sign In" : mode === "signup" ? "Create Account" : "Send Reset Link"}
+              {mode === "login" ? t("auth.signIn") : mode === "signup" ? t("auth.create") : t("auth.sendReset")}
             </button>
 
             <div className="flex items-center justify-between pt-2 text-xs font-bold">
@@ -358,7 +387,7 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
                     }}
                     className="text-slate-400 hover:text-white transition"
                   >
-                    Forgot password?
+                    {t("auth.forgot")}
                   </button>
                   <button
                     type="button"
@@ -368,7 +397,7 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
                     }}
                     className="text-cyan-400 hover:text-cyan-300 transition"
                   >
-                    Create Account
+                    {t("auth.create")}
                   </button>
                 </>
               )}
@@ -381,7 +410,7 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
                   }}
                   className="mx-auto text-cyan-400 hover:text-cyan-300 transition"
                 >
-                  Already have an account? Sign In
+                  {t("auth.haveAccount")}
                 </button>
               )}
               {mode === "reset" && (
@@ -393,13 +422,14 @@ function AuthScreenInner({ onBack, onAuthed, required = false }: AuthScreenProps
                   }}
                   className="mx-auto text-cyan-400 hover:text-cyan-300 transition"
                 >
-                  Back to Sign In
+                  {t("auth.backToSignIn")}
                 </button>
               )}
             </div>
           </form>
         )}
       </div>
+      {showPolicy && <ContentPolicySheet onClose={() => setShowPolicy(false)} />}
     </div>
   );
 }

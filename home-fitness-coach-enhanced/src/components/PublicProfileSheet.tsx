@@ -147,7 +147,12 @@ export default function PublicProfileSheet({ uid, onClose, onMessage, onChalleng
 
         <div className="flex-1 overflow-y-auto px-5 pb-16 pt-6">
           {loading && !shown ? (
-            <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-ink-3" /></div>
+            <div className="flex flex-col items-center py-10" aria-hidden>
+              <span className="h-24 w-24 animate-pulse rounded-full bg-graphite" />
+              <span className="mt-4 h-4 w-40 animate-pulse rounded bg-graphite" />
+              <span className="mt-2 h-3 w-24 animate-pulse rounded bg-graphite" />
+              <span className="mt-8 h-20 w-full max-w-sm animate-pulse rounded-2xl bg-graphite" />
+            </div>
           ) : !shown ? (
             <div className="py-16 text-center">
               <p className="text-sm text-ink-2">{error || "Profile unavailable."}</p>
@@ -222,7 +227,7 @@ export default function PublicProfileSheet({ uid, onClose, onMessage, onChalleng
 
               <ProgressSummary uid={shown.uid} />
 
-              <ProfileReelsGrid uid={shown.uid} />
+              <ProfileReelsGrid uid={shown.uid} onEmptyAction={{ label: "Back", run: onClose }} />
 
               {!isMe && me.signedIn && (
                 <div className="mx-auto mt-5 max-w-sm space-y-2">

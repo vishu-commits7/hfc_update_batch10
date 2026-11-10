@@ -1,4 +1,5 @@
 import { track } from "../lib/track";
+import { EV } from "../lib/analyticsEvents";
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Sparkles, Trophy, ChevronRight, ChevronLeft, X } from "lucide-react";
@@ -6,25 +7,28 @@ import Dumbbell3D from "./Dumbbell3DLazy";
 import heroPullupStrip from "../assets/ui/hero-pullup-strip.jpg";
 import { tapFeedback, successFeedback } from "../lib/haptics";
 import { SPRING_SNAP, SPRING_WEIGHTED } from "../design/motion";
+import { useT, type TKey } from "../i18n";
+import LanguageSwitch from "./LanguageSwitch";
 
 const SLIDES = [
   {
     icon: Sparkles,
     hero3d: false,
     heroPhoto: true,
-    title: "Apex Pulse",
-    body: "Your adaptive biomechanics coach and daily training companion.",
+    title: "onb.s1.title" as TKey,
+    body: "onb.s1.body" as TKey,
   },
   {
     icon: Trophy,
     hero3d: false,
     heroPhoto: false,
-    title: "Ready to Train",
-    body: "Build your streak, unlock achievements, and conquer every set.",
+    title: "onb.s2.title" as TKey,
+    body: "onb.s2.body" as TKey,
   },
 ];
 
 export default function Onboarding({ onDone }: { onDone: () => void }) {
+  const t = useT();
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
   const slide = SLIDES[step];
@@ -34,13 +38,13 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   const goTo = (delta: number) => {
     tapFeedback();
     setDirection(delta);
-    track("onboarding_step", { step: Math.max(0, Math.min(SLIDES.length - 1, step + delta)) });
+    track(EV.onboardingStep, { step: Math.max(0, Math.min(SLIDES.length - 1, step + delta)) });
     setStep((s) => Math.max(0, Math.min(SLIDES.length - 1, s + delta)));
   };
 
   const handleFinish = () => {
     successFeedback();
-    track("onboarding_complete");
+    track(EV.onboardingComplete);
     onDone();
   };
 
@@ -50,10 +54,12 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         <button
           onClick={handleFinish}
           className="absolute right-3.5 top-3.5 z-20 rounded-full border border-white/10 bg-black/50 p-1.5 text-ink-3 backdrop-blur transition hover:text-white"
-          aria-label="Skip onboarding"
+          aria-label={t("onb.skipAria")}
         >
           <X className="h-4 w-4" />
         </button>
+
+        <div className="absolute left-3 top-3 z-20"><LanguageSwitch /></div>
 
         {slide.heroPhoto && (
           <div className="relative h-40 w-full overflow-hidden">
@@ -89,10 +95,10 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
               )}
 
               <h2 className="font-display mt-4 text-xl font-black tracking-tight text-white">
-                {slide.title}
+                {t(slide.title)}
               </h2>
               <p className="mx-auto mt-2 max-w-[28ch] text-xs leading-relaxed text-ink-3">
-                {slide.body}
+                {t(slide.body)}
               </p>
             </motion.div>
           </AnimatePresence>
@@ -107,7 +113,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
                   setDirection(i > step ? 1 : -1);
                   setStep(i);
                 }}
-                aria-label={`Go to slide ${i + 1}`}
+                aria-label={t("onb.gotoAria", { n: i + 1 })}
                 className={`h-1.5 rounded-full transition-all ${
                   i === step ? "w-6 bg-cyan-400" : "w-1.5 bg-white/20 hover:bg-white/40"
                 }`}
@@ -123,7 +129,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
                 transition={SPRING_SNAP}
                 onClick={() => goTo(-1)}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-ink-3 hover:text-white"
-                aria-label="Previous slide"
+                aria-label={t("onb.prevAria")}
               >
                 <ChevronLeft className="h-4 w-4" />
               </motion.button>
@@ -132,9 +138,9 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
               type="button"
               transition={SPRING_SNAP}
               onClick={() => (isLast ? handleFinish() : goTo(1))}
-              className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-cyan-400 to-emerald-400 text-xs font-black text-slate-950 shadow-md"
+              className="flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-xl py-2 bg-gradient-to-r from-cyan-400 to-emerald-400 text-xs font-black text-slate-950 shadow-md"
             >
-              <span>{isLast ? "Start Training" : "Next"}</span>
+              <span>{isLast ? t("onb.start") : t("onb.next")}</span>
               <ChevronRight className="h-4 w-4" />
             </motion.button>
           </div>

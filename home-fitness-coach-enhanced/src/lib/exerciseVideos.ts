@@ -1,5 +1,3 @@
-import { resolveMotion } from "../anim/resolve";
-
 /**
  * Registry mapping exercise IDs and names to video file paths.
  * 
@@ -374,8 +372,8 @@ export const EXERCISE_VIDEOS: Record<string, string> = {
  * 1. Explicit videoUrl passed in exercise definition
  * 2. Exact match in EXERCISE_VIDEOS dictionary
  * 3. Normalized / slugified lookup
- * 4. Fallback motion match from the Obsidian motion resolver
- * 5. Returns null if no video is found
+ * 4. Returns null if no video is found. There is deliberately no fuzzy match:
+ *    a look-alike exercise's clip is a wrong form demo.
  */
 export function getExerciseVideo(
   exerciseIdOrName?: string | null,
@@ -414,27 +412,6 @@ export function getExerciseVideo(
     const compact = slug.replace(/-/g, "");
     if (EXERCISE_VIDEOS[compact]) {
       return encodeURI(EXERCISE_VIDEOS[compact]);
-    }
-
-    // 5. Check via Obsidian motion resolver
-    try {
-      const match = resolveMotion(key);
-      if (match?.motion?.id) {
-        const motionId = match.motion.id;
-        if (EXERCISE_VIDEOS[motionId]) {
-          return encodeURI(EXERCISE_VIDEOS[motionId]);
-        }
-        const motionSlug = motionId.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-        if (EXERCISE_VIDEOS[motionSlug]) {
-          return encodeURI(EXERCISE_VIDEOS[motionSlug]);
-        }
-        const motionCompact = motionSlug.replace(/-/g, "");
-        if (EXERCISE_VIDEOS[motionCompact]) {
-          return encodeURI(EXERCISE_VIDEOS[motionCompact]);
-        }
-      }
-    } catch {
-      // Ignore motion resolver errors
     }
   }
 

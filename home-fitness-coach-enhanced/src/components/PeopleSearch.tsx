@@ -1,11 +1,12 @@
 import { useBackClose } from "../lib/backStack";
 import { useBlocked } from "../lib/blocks";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Search, X, Loader2, UserPlus, UserCheck, Clock, Film } from "lucide-react";
+import { ArrowLeft, Search, X, UserPlus, UserCheck, Clock, Film } from "lucide-react";
 import OverlayPortal from "./ui/OverlayPortal";
 import Avatar from "./ui/Avatar";
 import { searchProfiles, requestFollow, cancelFollow, friendlySocialError, type SocialProfile } from "../lib/social";
 import { useMyIdentity, useFollowEdges } from "../lib/useSocial";
+import { ErrorState, EmptyState, EmptyAction, SkeletonRows } from "./ui/StateViews";
 import { getAllFeedReels, getCreatorById } from "../lib/socialFeed";
 import { tapFeedback } from "../lib/haptics";
 
@@ -23,6 +24,8 @@ export default function PeopleSearch({ onClose, onOpenProfile, onPickReel }: Pro
   const blocked = useBlocked();
   const [people, setPeople] = useState<SocialProfile[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [searchFailed, setSearchFailed] = useState(false);
+  const [searchTry, setSearchTry] = useState(0);
   const [busyUid, setBusyUid] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const seq = useRef(0);
@@ -34,16 +37,17 @@ export default function PeopleSearch({ onClose, onOpenProfile, onPickReel }: Pro
     if (!me.signedIn) { setPeople([]); return; }
     const id = ++seq.current;
     setError(null);
+    setSearchFailed(false);
     const t = setTimeout(async () => {
       try {
         const res = await searchProfiles(term, me.uid);
         if (id === seq.current) setPeople(res);
-      } catch (e) {
-        if (id === seq.current) { setPeople([]); setError(friendlySocialError(e)); }
+      } catch {
+        if (id === seq.current) { setPeople([]); setSearchFailed(true); }
       }
     }, term ? 280 : 0);
     return () => clearTimeout(t);
-  }, [term, me.uid, me.signedIn]);
+  }, [term, me.uid, me.signedIn, searchTry]);
 
   const videos = useMemo(() => {
     const q = term.trim().toLowerCase();
@@ -117,10 +121,12 @@ export default function PeopleSearch({ onClose, onOpenProfile, onPickReel }: Pro
           {me.signedIn && (
             <>
               <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-3">{term ? "People" : "People on Apex"}</p>
-              {people === null ? (
-                <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-ink-3" /></div>
+              {searchFailed ? (
+                <ErrorState message="Couldn't search right now." onRetry={() => { setPeople(null); setSearchTry(n => n + 1); }} />
+              ) : people === null ? (
+                <SkeletonRows rows={5} />
               ) : people.length === 0 ? (
-                <p className="py-8 text-center text-sm text-ink-3">{term ? "No athletes found." : "No other athletes yet. Invite a friend!"}</p>
+                <EmptyState icon={<Search className="h-6 w-6" />} title={term ? "No athletes found" : "No other athletes yet"} body={term ? "Check the spelling or try another name." : "Be one of the first. Invite a friend to join."} action={term ? <EmptyAction label="Clear search" onClick={() => setTerm("")} /> : <EmptyAction label="Invite a friend" onClick={() => { const text = "Train with me on Apex Pulse."; if (navigator.share) void navigator.share({ text }).catch(() => {}); else void navigator.clipboard?.writeText(text).catch(() => {}); }} />} />
               ) : (
                 <ul className="space-y-1">
                   {people.filter(p => !blocked.has(p.uid)).map(p => {

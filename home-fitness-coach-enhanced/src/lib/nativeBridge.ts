@@ -23,6 +23,14 @@ interface ApexNativePlugin {
     displayName?: string;
     photoUrl?: string | null;
   }>;
+  /** Voice coaching: is the ringer on silent/vibrate? */
+  audioState(): Promise<{ silent: boolean }>;
+  /** Voice coaching: lower other apps' audio while the coach speaks (on) and restore it (off). */
+  voiceFocus(opts: { on: boolean }): Promise<void>;
+  /** Invite rule: an app-scoped id for this phone (Android ANDROID_ID). The server keeps only a hash. */
+  deviceId(): Promise<{ id: string }>;
+  /** Rating prompt: asks Google Play to show its in-app review card (Play may decide not to). */
+  requestReview(): Promise<void>;
 }
 
 export const ApexNative = registerPlugin<ApexNativePlugin>("ApexNative");

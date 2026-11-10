@@ -5,10 +5,13 @@ import { AVAILABLE_EQUIPMENT, FITNESS_LEVELS, WORKOUT_GOALS } from "../constants
 import { generateApexNeuralWorkout } from "../lib/proceduralWorkout";
 import { tapFeedback, successFeedback } from "../lib/haptics";
 import { track } from "../lib/track";
+import { EV } from "../lib/analyticsEvents";
 import type { UserProfile, Workout } from "../types";
+import { useT, type TKey } from "../i18n";
 
 const GOAL_ICON: Record<string, React.ElementType> = { Zap, Flame, Activity, Heart };
-const STEPS = ["Your goal", "Your level", "Your equipment"] as const;
+const STEPS = ["gs.step0", "gs.step1", "gs.step2"] as const;
+const GOAL_KEY: Record<string, string> = { Strength: "strength", "Cardio / Fat Loss": "cardio", Flexibility: "flex", "General Health": "health" };
 
 /** Three quick questions, then a first workout built on the spot. Skippable at every step. */
 export default function GoalSetup({
@@ -18,6 +21,7 @@ export default function GoalSetup({
   onDone: (choices: Pick<UserProfile, "goal" | "fitnessLevel" | "preferredEquipment">, firstWorkout: Workout) => void;
   onSkip: () => void;
 }) {
+  const t = useT();
   const [step, setStep] = useState(0);
   const [goal, setGoal] = useState<UserProfile["goal"]>(initial.goal);
   const [level, setLevel] = useState<UserProfile["fitnessLevel"]>(initial.fitnessLevel);
@@ -36,7 +40,7 @@ export default function GoalSetup({
 
   const next = () => {
     void tapFeedback();
-    track("goalsetup_step", { step: step + 1 });
+    track(EV.goalSetupStep, { step: step + 1 });
     if (step < 2) { setStep(step + 1); return; }
     setBusy(true);
     const names = equip.map(id => AVAILABLE_EQUIPMENT.find(e => e.id === id)?.name || id);
@@ -54,7 +58,7 @@ export default function GoalSetup({
       createdAt: new Date().toISOString(),
     };
     void successFeedback();
-    track("goalsetup_complete", { goal, level });
+    track(EV.goalSet, { goal, level });
     onDone({ goal, fitnessLevel: level, preferredEquipment: equip }, workout);
   };
 
@@ -62,29 +66,29 @@ export default function GoalSetup({
     <div className="fixed inset-0 z-[110] flex flex-col overflow-y-auto bg-void px-5 pb-8 pt-6 text-ink">
       <div className="mx-auto flex w-full max-w-md flex-1 flex-col">
         <div className="flex items-center justify-between">
-          <button onClick={() => (step ? setStep(step - 1) : onSkip())} aria-label="Back" className="flex h-10 w-10 items-center justify-center rounded-full border border-line bg-carbon active:scale-95">
+          <button onClick={() => (step ? setStep(step - 1) : onSkip())} aria-label={t("common.back")} className="flex h-10 w-10 items-center justify-center rounded-full border border-line bg-carbon active:scale-95">
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <button onClick={() => { track("goalsetup_skipped", { step }); onSkip(); }} className="text-xs font-semibold text-ink-3">Skip</button>
+          <button onClick={() => { track(EV.goalSetupSkipped, { step }); onSkip(); }} className="text-xs font-semibold text-ink-3">{t("common.skip")}</button>
         </div>
         <div className="mt-4 flex gap-1.5">{STEPS.map((s, i) => <span key={s} className={`h-1 flex-1 rounded-full ${i <= step ? "bg-volt" : "bg-graphite"}`} />)}</div>
 
         <AnimatePresence mode="wait">
           <motion.div key={step} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.18 }} className="mt-8 flex-1">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-ink-3">Step {step + 1} of 3</p>
-            <h1 className="mt-1 text-2xl font-black tracking-tight">{step === 0 ? "What's your goal?" : step === 1 ? "How active are you?" : "What can you train with?"}</h1>
-            <p className="mt-1 text-sm text-ink-2">{step === 0 ? "We'll build your first workout around it." : step === 1 ? "Be honest, you can change this any time." : "Pick everything you have. No equipment is fine."}</p>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-ink-3">{t("gs.stepOf", { n: step + 1 })}</p>
+            <h1 className="mt-1 text-2xl font-black tracking-tight">{t(`gs.h${step}` as TKey)}</h1>
+            <p className="mt-1 text-sm text-ink-2">{t(`gs.s${step}` as TKey)}</p>
 
             <div className="mt-6 space-y-2.5">
               {step === 0 && WORKOUT_GOALS.map(g => {
                 const Icon = GOAL_ICON[g.icon] || Zap;
-                return <Option key={g.value} active={goal === g.value} onClick={() => { void tapFeedback(); setGoal(g.value as UserProfile["goal"]); }} icon={<Icon className="h-5 w-5" />} title={g.label} sub={g.desc} />;
+                return <Option key={g.value} active={goal === g.value} onClick={() => { void tapFeedback(); setGoal(g.value as UserProfile["goal"]); }} icon={<Icon className="h-5 w-5" />} title={t(`goal.${GOAL_KEY[g.value]}.label` as TKey)} sub={t(`goal.${GOAL_KEY[g.value]}.desc` as TKey)} />;
               })}
               {step === 1 && FITNESS_LEVELS.map(l => (
-                <Option key={l.value} active={level === l.value} onClick={() => { void tapFeedback(); setLevel(l.value as UserProfile["fitnessLevel"]); }} title={l.label} sub={l.desc} />
+                <Option key={l.value} active={level === l.value} onClick={() => { void tapFeedback(); setLevel(l.value as UserProfile["fitnessLevel"]); }} title={t(`level.${l.value.toLowerCase()}.label` as TKey)} sub={t(`level.${l.value.toLowerCase()}.desc` as TKey)} />
               ))}
               {step === 2 && AVAILABLE_EQUIPMENT.map(e => (
-                <Option key={e.id} active={equip.includes(e.id)} onClick={() => toggle(e.id)} title={e.name} />
+                <Option key={e.id} active={equip.includes(e.id)} onClick={() => toggle(e.id)} title={t(`equip.${e.id}` as TKey)} />
               ))}
             </div>
           </motion.div>
@@ -92,7 +96,7 @@ export default function GoalSetup({
 
         <button onClick={next} disabled={busy} className="mt-6 flex min-h-[54px] w-full items-center justify-center gap-2 rounded-2xl bg-volt text-base font-black text-void active:scale-[0.98] disabled:opacity-60">
           {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
-          {step < 2 ? "Continue" : "Start my 2-minute workout"}
+          {step < 2 ? t("common.continue") : t("gs.start")}
         </button>
       </div>
     </div>

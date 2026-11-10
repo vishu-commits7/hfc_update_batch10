@@ -140,7 +140,7 @@ export default function ProgressGallery() {
         <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-10 text-center">
           <ImageOff className="mx-auto h-8 w-8 text-slate-300" />
           <p className="mt-3 font-black text-slate-600">No photos yet</p>
-          <p className="mt-1 text-xs text-slate-400">Tap "Add Photo" after each check-in to start your timeline.</p>
+          <p className="mt-1 text-xs text-slate-500">Tap "Add Photo" after each check-in to start your timeline.</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">

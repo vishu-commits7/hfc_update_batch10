@@ -107,13 +107,13 @@ export const crewSetGoal = onCall(async req => {
   return { ok: true };
 });
 
-/** Push to the other members when someone posts in the crew chat (respects each member's "groups" setting). */
+/** Push to the other members when someone posts in the crew chat (respects each member's "crew" setting, the daily cap and quiet hours). */
 export const onCrewMessage = onDocumentCreated("crews/{crewId}/messages/{mid}", async e => {
   const m = e.data?.data();
   if (!m) return;
   const crew = (await db.doc(`crews/${e.params.crewId}`).get()).data();
   const members = await db.collection(`crews/${e.params.crewId}/members`).limit(MAX_MEMBERS).get();
   await Promise.all(members.docs.filter(d => d.id !== m.from).map(d =>
-    push(d.id, "groups", String(crew?.name || "Crew"), `${m.name || "Someone"}: ${String(m.text || "")}`, { type: "crew", crewId: e.params.crewId }).catch(() => {}),
+    push(d.id, "crew", String(crew?.name || "Crew"), `${m.name || "Someone"}: ${String(m.text || "")}`, { type: "crew", crewId: e.params.crewId }).catch(() => {}),
   ));
 });

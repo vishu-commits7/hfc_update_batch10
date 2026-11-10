@@ -20,11 +20,19 @@ import {
   Clock,
   BatteryLow,
   Lightbulb,
+  Mic,
+  MicOff,
+  WifiOff,
 } from "lucide-react";
 
 import type { UserProfile, Workout, WorkoutLog } from "../types";
 import { audio } from "../lib/audio";
 import { lofiMusic } from "../lib/lofiMusic";
+import { useOnline } from "../lib/useOnline";
+import { useT } from "../i18n";
+import { usePendingReports } from "../lib/reportQueue";
+import { withWarmupCooldown, readWrapOn, writeWrapOn } from "../lib/warmup";
+import { coachSay, coachSayNow, stopCoach, useVoiceCoach, useSilentPhone } from "../lib/voiceCoach";
 import { estimateCaloriesBurned } from "../lib/fitness";
 import { getScientificRest } from "../lib/scientificRest";
 import { registerWorkoutExercises } from "../lib/customExercises";
@@ -104,15 +112,32 @@ const FEELINGS: { value: WorkoutLog["feeling"]; icon: React.ComponentType<{ clas
  *    computed against a duration of zero and rendered as NaN.
  */
 import { matchPhotoExerciseId } from "../lib/exercisePhotos";
-import { getExerciseVideo } from "../lib/exerciseVideos";
+import { prefetchClips } from "../lib/clipCache";
+
+/** Small badge while the phone has no connection. The session keeps working; the result is sent when it is back. */
+function OfflinePill() {
+  const online = useOnline();
+  const waiting = usePendingReports();
+  if (online) return null;
+  return (
+    <div className="flex justify-center pt-[calc(var(--safe-t)+4px)]">
+      <span role="status" className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-400/10 px-3 py-1 text-[11px] font-bold text-amber-300">
+        <WifiOff className="h-3 w-3" aria-hidden /> Offline · workout saves on this phone{waiting > 0 ? ` · ${waiting} waiting to sync` : ""}
+      </span>
+    </div>
+  );
+}
 
 function ActiveWorkoutInner({
-  workout,
+  workout: workoutProp,
   onBack,
   onLogWorkout,
   profile,
 }: ActiveWorkoutProps) {
   const reduced = useReducedMotion();
+  const t = useT();
+  const [wrapOn, setWrapOn] = useState(readWrapOn);
+  const workout = useMemo(() => (wrapOn ? withWarmupCooldown(workoutProp) : workoutProp), [workoutProp, wrapOn]);
 
   const [gameState, setGameState] = useState<WorkoutState>("ready");
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
@@ -123,6 +148,8 @@ function ActiveWorkoutInner({
   const [isMuted, setIsMuted] = useState(
     () => localStorage.getItem("kinetic_sound_muted") === "true",
   );
+  const [voiceOn, setVoiceOn] = useVoiceCoach();
+  const silentPhone = useSilentPhone();
   const [totalSecondsActive, setTotalSecondsActive] = useState(0);
   const [feeling, setFeeling] = useState<WorkoutLog["feeling"]>("Satisfied");
   const [userNotes, setUserNotes] = useState("");
@@ -167,6 +194,11 @@ function ActiveWorkoutInner({
       : workout.exercises[currentExerciseIndex + 1];
   }, [currentExercise, currentSet, currentExerciseIndex, workout.exercises]);
 
+  // Fetch every demo clip for this session up front (online only), so a full session can run with no connection.
+  useEffect(() => {
+    void prefetchClips(workout.exercises.map((e) => e.name));
+  }, [workout]);
+
   useEffect(() => {
     if (!nextExercise) return;
     const matchedId = matchPhotoExerciseId(nextExercise.name);
@@ -175,19 +207,7 @@ function ActiveWorkoutInner({
     const img = new Image();
     img.src = imgUrl;
 
-    const vUrl = getExerciseVideo(nextExercise.name);
-    if (vUrl && typeof document !== "undefined") {
-      const link = document.createElement("link");
-      link.rel = "prefetch";
-      link.as = "video";
-      link.href = vUrl;
-      document.head.appendChild(link);
-      return () => {
-        try {
-          document.head.removeChild(link);
-        } catch {}
-      };
-    }
+    void prefetchClips([nextExercise.name]);
   }, [nextExercise]);
 
   /* ---------------------------------------------------------------- */
@@ -274,9 +294,10 @@ function ActiveWorkoutInner({
         currentExercise.reps > 0
           ? `${currentExercise.reps} reps`
           : `${currentExercise.durationSeconds} seconds`;
-      audio.speak(
-        `Exercise ${currentExerciseIndex + 1}: ${currentExercise.name}. Set ${currentSet} of ${currentExercise.sets}. Target: ${displayReps}. Remember to: ${currentExercise.description.substring(0, 100)}`,
-        { gender: figureGender },
+      coachSay(
+        currentExercise.sets > 1
+          ? `${currentExercise.name}. Set ${currentSet} of ${currentExercise.sets}. ${displayReps}.`
+          : `${currentExercise.name}. ${displayReps}.`,
       );
       setCaption(
         `${currentExercise.name} — set ${currentSet} of ${currentExercise.sets}. ${displayReps}.`,
@@ -288,14 +309,32 @@ function ActiveWorkoutInner({
           : currentExerciseIndex + 1 < workout.exercises.length
             ? workout.exercises[currentExerciseIndex + 1].name
             : "Workout complete";
-      audio.speak(
-        `Well done. Take a rest for ${timeLeft} seconds. Next up: ${nextName}`,
-        { gender: figureGender },
+      coachSay(
+        nextName === "Workout complete"
+          ? `Rest for ${timeLeft} seconds.`
+          : `Rest for ${timeLeft} seconds. Next: ${nextName}.`,
       );
       setCaption(`Nice work — rest up. Next: ${nextName}.`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState, currentExerciseIndex, currentSet, isMuted]);
+
+  // Voice coaching on the clock: 3-2-1 countdowns and a halfway cue. Does nothing while coaching is off.
+  useEffect(() => {
+    if (!voiceOn || isPaused || !currentExercise) return;
+    if (gameState === "active") {
+      const total = currentExercise.durationSeconds > 0 ? currentExercise.durationSeconds : REP_BLOCK_SECONDS;
+      if (timeLeft >= 1 && timeLeft <= 3) coachSay(String(timeLeft));
+      else if (total >= 20 && timeLeft === Math.floor(total / 2)) coachSay("Halfway there.");
+    } else if (gameState === "rest") {
+      if (timeLeft >= 1 && timeLeft <= 3) coachSay(timeLeft === 3 ? "Get ready. 3" : String(timeLeft));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeLeft]);
+
+  // Pausing, turning coaching off, or leaving the screen silences the coach at once.
+  useEffect(() => { if (isPaused || !voiceOn) stopCoach(); }, [isPaused, voiceOn]);
+  useEffect(() => () => stopCoach(), []);
 
   const blockSeconds = (index: number) => {
     const ex = workout.exercises[index];
@@ -318,6 +357,32 @@ function ActiveWorkoutInner({
     }
   };
 
+  // Warm-up and cool-down moves, and the hand-off into the cool-down, use a short 10 s change-over.
+  const restSecondsFor = (scientific: number) => {
+    const ex = workout.exercises[currentExerciseIndex];
+    if (!ex) return scientific;
+    const lastSet = currentSet >= ex.sets;
+    return ex.phase || (lastSet && workout.exercises[currentExerciseIndex + 1]?.phase === "cooldown") ? 10 : scientific;
+  };
+
+  const skipPhase = () => {
+    const ex = workout.exercises[currentExerciseIndex];
+    if (!ex?.phase) return;
+    tapFeedback();
+    if (ex.phase === "warmup") {
+      const first = workout.exercises.findIndex((e) => !e.phase);
+      const idx = first < 0 ? 0 : first;
+      setCurrentExerciseIndex(idx);
+      setCurrentSet(1);
+      setGameState("active");
+      setTimeLeft(blockSeconds(idx));
+      setIsPaused(false);
+      if (!isMuted) audio.playExerciseStartBell();
+    } else {
+      completeWorkoutSession();
+    }
+  };
+
   const finishActiveSetEarly = () => {
     if (gameState !== "active" || !currentExercise) return;
     tapFeedback();
@@ -328,9 +393,10 @@ function ActiveWorkoutInner({
       currentExercise.targetMuscle,
       currentExercise.restSeconds
     );
-    setTotalRestDuration(sci.durationSeconds);
+    const restSecs = restSecondsFor(sci.durationSeconds);
+    setTotalRestDuration(restSecs);
     setGameState("rest");
-    setTimeLeft(sci.durationSeconds);
+    setTimeLeft(restSecs);
   };
 
   const handleTimerExpiry = () => {
@@ -342,9 +408,10 @@ function ActiveWorkoutInner({
         currentExercise.targetMuscle,
         currentExercise.restSeconds
       );
-      setTotalRestDuration(sci.durationSeconds);
+      const restSecs = restSecondsFor(sci.durationSeconds);
+      setTotalRestDuration(restSecs);
       setGameState("rest");
-      setTimeLeft(sci.durationSeconds);
+      setTimeLeft(restSecs);
     } else if (gameState === "rest") {
       advanceWorkoutFlow();
     }
@@ -389,10 +456,7 @@ function ActiveWorkoutInner({
     celebrateFeedback();
     if (!isMuted) {
       audio.playSuccessChime();
-      audio.speak(
-        "Fantastic effort! You've successfully finished your training routine. Log your workout to lock in your daily streak!",
-        { gender: figureGender },
-      );
+      coachSay("Workout complete. Nice work. Log it to keep your streak.");
     }
   };
 
@@ -427,7 +491,7 @@ function ActiveWorkoutInner({
       workoutTitle: workout.workoutTitle,
       completedAt: new Date().toISOString(),
       durationMinutes: minutesElapsed,
-      exercisesCompleted: workout.exercises.length,
+      exercisesCompleted: workout.exercises.filter((e) => !e.phase).length || workout.exercises.length,
       feeling,
       userNotes: userNotes.trim() || undefined,
       estimatedCaloriesBurned: estimatedBurn,
@@ -523,6 +587,7 @@ function ActiveWorkoutInner({
       />
 
       <div className="mx-auto w-full max-w-3xl px-5 pb-8 sm:px-6">
+        <OfflinePill />
         <AnimatePresence mode="wait">
           {/* ==================== READY ==================== */}
           {gameState === "ready" && (
@@ -606,19 +671,19 @@ function ActiveWorkoutInner({
                     animationDuration: "9s",
                   }}
                 />
-                <p className="eyebrow relative z-10">Session shape</p>
+                <p className="eyebrow relative z-10">{t("wo.sessionShape")}</p>
                 <div className="relative z-10 mt-3">
                   <SessionPacing segments={segments} elapsed={0} height={52} />
                 </div>
                 <div className="relative z-10 mt-4 grid grid-cols-2 gap-3 border-t border-line pt-4 sm:grid-cols-4">
-                  <Spec label="Duration" value={`${workout.totalDurationMinutes} min`} />
-                  <Spec label="Focus" value={workout.targetArea} />
+                  <Spec label={t("wo.duration")} value={t("wo.minShort", { n: workout.totalDurationMinutes })} />
+                  <Spec label={t("wo.focus")} value={workout.targetArea} />
                   <Spec
-                    label="Equipment"
+                    label={t("wo.equipment")}
                     value={workout.equipmentNeeded.join(", ") || "Bodyweight"}
                   />
                   <Spec
-                    label="Movements"
+                    label={t("wo.movements")}
                     value={`${workout.exercises.length}`}
                   />
                 </div>
@@ -644,7 +709,7 @@ function ActiveWorkoutInner({
                           still
                         />
                         <span
-                          className="font-numeric absolute -left-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full text-[11px] font-extrabold"
+                          className="font-numeric absolute -left-1.5 -top-1.5 grid min-h-5 min-w-5 px-1 place-items-center rounded-full text-[11px] font-extrabold"
                           style={{
                             background: "var(--cyan)",
                             color: "var(--void)",
@@ -658,12 +723,13 @@ function ActiveWorkoutInner({
                         <span className="block truncate text-sm font-bold text-ink">
                           {ex.name}
                         </span>
+                        {ex.phase && <span className="block text-[10px] font-bold uppercase tracking-wide text-volt">{ex.phase === "warmup" ? t("wo.warmup") : t("wo.cooldown")}</span>}
                         <span className="mt-0.5 block truncate text-[11px] text-ink-4">
-                          {ex.sets} sets ·{" "}
+                          {t("wo.setsLine", { n: ex.sets })} ·{" "}
                           {ex.durationSeconds > 0
                             ? `${ex.durationSeconds}s`
-                            : `${ex.reps} reps`}
-                          {ex.restSeconds > 0 ? ` · ${ex.restSeconds}s rest` : ""}
+                            : t("wo.repsLine", { n: ex.reps })}
+                          {ex.restSeconds > 0 ? ` · ${t("wo.restLine", { n: ex.restSeconds })}` : ""}
                         </span>
                       </span>
                     </li>
@@ -697,15 +763,15 @@ function ActiveWorkoutInner({
                       ))
                     ) : (
                       <>
-                        <li>· Listen to your body — never push through joint pain.</li>
-                        <li>· Stay hydrated and land lightly during jumps.</li>
+                        <li>· {t("wo.tip1")}</li>
+                        <li>· {t("wo.tip2")}</li>
                       </>
                     )}
                   </ul>
                 </div>
               </motion.aside>
 
-              <motion.button
+              <motion.button aria-label={isMuted ? t("wo.soundOnAria") : t("wo.soundOffAria")}
                 variants={staggerChild}
                 type="button"
                 id="btn-toggle-sound-ready"
@@ -717,15 +783,68 @@ function ActiveWorkoutInner({
                 ) : (
                   <Volume2 className="h-3.5 w-3.5" />
                 )}
-                {isMuted
-                  ? "Sound muted — chimes and voice off"
-                  : "Vocal coach active — voice form guidance"}
+                {isMuted ? t("wo.soundMuted") : t("wo.soundOn")}
               </motion.button>
+
+              {workoutProp.wrap && (
+                <motion.div variants={staggerChild} className="w-full max-w-sm">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={wrapOn}
+                    id="btn-toggle-warmup"
+                    onClick={() => { tapFeedback(); const n = !wrapOn; setWrapOn(n); writeWrapOn(n); }}
+                    className="flex min-h-[48px] w-full items-center gap-3 rounded-2xl border border-line bg-carbon px-4 py-2 text-left"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-bold text-ink">{t("wo.wrapTitle")}</span>
+                      <span className="block text-[11px] text-ink-3">{t("wo.wrapSub")}</span>
+                    </span>
+                    <span aria-hidden className={`flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors ${wrapOn ? "bg-volt" : "bg-graphite"}`}>
+                      <span className={`h-5 w-5 rounded-full bg-white transition-transform ${wrapOn ? "translate-x-5" : ""}`} />
+                    </span>
+                  </button>
+                </motion.div>
+              )}
+
+              <motion.div variants={staggerChild} className="w-full max-w-sm">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={voiceOn}
+                  id="btn-toggle-voice-coach"
+                  onClick={() => { tapFeedback(); setVoiceOn(!voiceOn); }}
+                  className="flex min-h-[48px] w-full items-center gap-3 rounded-2xl border border-line bg-carbon px-4 py-2 text-left"
+                >
+                  {voiceOn ? <Mic className="h-4 w-4 text-volt" aria-hidden /> : <MicOff className="h-4 w-4 text-ink-3" aria-hidden />}
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-bold text-ink">{t("wo.voiceTitle")}</span>
+                    <span className="block text-[11px] text-ink-3">{t("wo.voiceSub")}</span>
+                  </span>
+                  <span aria-hidden className={`flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors ${voiceOn ? "bg-volt" : "bg-graphite"}`}>
+                    <span className={`h-5 w-5 rounded-full bg-white transition-transform ${voiceOn ? "translate-x-5" : ""}`} />
+                  </span>
+                </button>
+                {voiceOn && silentPhone && (
+                  <p role="status" className="mt-1.5 px-1 text-[11px] text-amber-300">{t("wo.voiceSilent")}</p>
+                )}
+              </motion.div>
             </motion.div>
           )}
 
           {/* ==================== SCIENTIFIC REST WINDOW ==================== */}
           {gameState === "rest" && currentExercise && (
+            <>
+            {currentExercise?.phase && (
+                <div className="mx-auto mt-[calc(var(--safe-t)+8px)] flex items-center justify-between gap-3 rounded-2xl border border-line bg-carbon px-3 py-2" role="status">
+                  <span className="text-xs font-bold text-ink-2">
+                    {t("wo.phaseOf", { phase: currentExercise.phase === "warmup" ? t("wo.warmup") : t("wo.cooldown"), i: workout.exercises.slice(0, currentExerciseIndex + 1).filter((e) => e.phase === currentExercise.phase).length })}
+                  </span>
+                  <button type="button" id="btn-skip-phase" onClick={skipPhase} className="min-h-[44px] rounded-xl border border-volt/50 px-4 text-sm font-bold text-volt active:scale-95">
+                    {currentExercise.phase === "warmup" ? t("wo.skipWarmup") : t("wo.skipCooldown")}
+                  </button>
+                </div>
+              )}
             <RestWindow
               currentExercise={currentExercise}
               currentSet={currentSet}
@@ -769,6 +888,7 @@ function ActiveWorkoutInner({
               figureGender={figureGender}
               demoModel={demoModel}
             />
+            </>
           )}
 
           {/* ==================== ACTIVE SET VIEW ==================== */}
@@ -821,10 +941,34 @@ function ActiveWorkoutInner({
                     ) : (
                       <Volume2 className="h-3.5 w-3.5" />
                     )}
-                    {isMuted ? "Muted" : "Voice"}
+                    {isMuted ? t("wo.mutedBtn") : t("wo.soundBtn")}
+                  </MagneticButton>
+                  <MagneticButton
+                    size="sm"
+                    variant="ghost"
+                    tone="neutral"
+                    id="btn-active-toggle-coach"
+                    aria-pressed={voiceOn}
+                    aria-label={voiceOn ? t("wo.coachOffAria") : t("wo.coachOnAria")}
+                    onClick={() => { tapFeedback(); setVoiceOn(!voiceOn); }}
+                    className={`border ${voiceOn ? "border-volt/60 text-volt" : "border-line"}`}
+                  >
+                    {voiceOn ? <Mic className="h-3.5 w-3.5" /> : <MicOff className="h-3.5 w-3.5" />}
+                    {t("wo.coachBtn")}
                   </MagneticButton>
                 </div>
               </header>
+
+              {currentExercise?.phase && (
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-carbon px-3 py-2" role="status">
+                  <span className="text-xs font-bold text-ink-2">
+                    {t("wo.phaseOf", { phase: currentExercise.phase === "warmup" ? t("wo.warmup") : t("wo.cooldown"), i: workout.exercises.slice(0, currentExerciseIndex + 1).filter((e) => e.phase === currentExercise.phase).length })}
+                  </span>
+                  <button type="button" id="btn-skip-phase" onClick={skipPhase} className="min-h-[44px] rounded-xl border border-volt/50 px-4 text-sm font-bold text-volt active:scale-95">
+                    {currentExercise.phase === "warmup" ? t("wo.skipWarmup") : t("wo.skipCooldown")}
+                  </button>
+                </div>
+              )}
 
               {/* ---------- THE DEMO ----------
                   Above the clock, deliberately.
@@ -871,7 +1015,7 @@ function ActiveWorkoutInner({
                   glow
                   animate={false}
                   className="max-w-full"
-                  label={`${Math.round(blockProgress * 100)}% of the current block complete`}
+                  label={t("wo.blockPct", { n: Math.round(blockProgress * 100) })}
                 >
                   <div className="flex flex-col items-center">
                     <AnimatePresence mode="wait">
@@ -884,7 +1028,7 @@ function ActiveWorkoutInner({
                         className="text-[11px] font-extrabold uppercase tracking-[0.2em]"
                         style={{ color: toneTokens.color }}
                       >
-                        {isRest ? "Recover" : `Set ${currentSet} of ${currentExercise.sets}`}
+                        {isRest ? t("wo.recover") : t("wo.setOf", { n: currentSet, total: currentExercise.sets })}
                       </motion.span>
                     </AnimatePresence>
 
@@ -914,11 +1058,11 @@ function ActiveWorkoutInner({
                       className="mt-1.5 max-w-[190px] truncate text-center text-xs font-bold text-ink-2"
                     >
                       {isPaused
-                        ? "Paused"
+                        ? t("wo.paused")
                         : isRest
                           ? currentExerciseIndex + 1 < workout.exercises.length
-                            ? `Next: ${workout.exercises[currentExerciseIndex + 1].name}`
-                            : "Final stretch"
+                            ? t("wo.nextName", { name: workout.exercises[currentExerciseIndex + 1].name })
+                            : t("wo.finalStretch")
                           : currentExercise.name}
                     </motion.span>
 
@@ -931,8 +1075,8 @@ function ActiveWorkoutInner({
                         }}
                       >
                         {currentExercise.durationSeconds > 0
-                          ? `${currentExercise.durationSeconds}s Timed Set`
-                          : `Target: ${currentExercise.reps || 10} Reps`}
+                          ? t("wo.timedSet", { n: currentExercise.durationSeconds })
+                          : t("wo.targetReps", { n: currentExercise.reps || 10 })}
                       </span>
                     )}
                   </div>
@@ -970,7 +1114,7 @@ function ActiveWorkoutInner({
               {/* ---------- CONTROLS ---------- */}
               <section className="flex items-center justify-center gap-4">
                 <TactileControl
-                  label="Reset timer"
+                  label={t("wo.resetTimer")}
                   id="btn-timer-reset"
                   onClick={() => {
                     tapFeedback();
@@ -987,7 +1131,7 @@ function ActiveWorkoutInner({
                 <motion.button
                   type="button"
                   id="btn-timer-play-pause"
-                  aria-label={isPaused ? "Resume" : "Pause"}
+                  aria-label={isPaused ? t("wo.resume") : t("wo.pause")}
                   onClick={() => {
                     tapFeedback();
                     setIsPaused((p) => !p);
@@ -1022,7 +1166,7 @@ function ActiveWorkoutInner({
                 </motion.button>
 
                 <TactileControl
-                  label="Skip to next exercise"
+                  label={t("wo.skipNext")}
                   id="btn-timer-skip"
                   onClick={skipCurrentExercise}
                 >
@@ -1030,7 +1174,7 @@ function ActiveWorkoutInner({
                 </TactileControl>
 
                 <TactileControl
-                  label="Coach Audio Boost"
+                  label={t("wo.hype")}
                   id="btn-coach-hype"
                   onClick={() => {
                     celebrateFeedback();
@@ -1045,7 +1189,7 @@ function ActiveWorkoutInner({
                         "Dig deep! Own this workout!",
                       ];
                       const pick = lines[Math.floor(Math.random() * lines.length)];
-                      audio.speak(pick, { gender: "male" });
+                      coachSayNow(pick);
                     }
                   }}
                 >
@@ -1063,19 +1207,19 @@ function ActiveWorkoutInner({
                   className="flex w-full items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 py-4 text-sm font-black text-slate-950 shadow-lg shadow-emerald-500/30 active:opacity-90 transition-all"
                 >
                   <CheckCircle2 className="h-5 w-5 text-slate-950" />
-                  <span>Complete Set · Start Recovery</span>
+                  <span>{t("wo.completeSet")}</span>
                 </motion.button>
                 <p className="text-[11px] font-semibold tracking-wide text-emerald-400/90">
-                  Recovery interval automatically follows each exercise
+                  {t("wo.recoveryNote")}
                 </p>
               </section>
 
               {/* ---------- PACING ---------- */}
               <section className="surface rounded-xl2 px-4 py-3.5">
                 <div className="mb-1.5 flex items-center justify-between">
-                  <p className="eyebrow">Session pace</p>
+                  <p className="eyebrow">{t("wo.sessionPace")}</p>
                   <p className="font-numeric text-[11px] font-bold text-ink-3">
-                    {movesLeft > 0 ? `${movesLeft} moves left` : "Final move"}
+                    {movesLeft > 0 ? t("wo.movesLeft", { n: movesLeft }) : t("wo.finalMove")}
                   </p>
                 </div>
                 <SessionPacing
@@ -1102,18 +1246,15 @@ function ActiveWorkoutInner({
                       variant="ghost"
                       tone="neutral"
                       className="border border-line"
-                      aria-label="Replay voice cue"
+                      aria-label={t("wo.replayAria")}
                       onClick={() => {
                         if (!isMuted) {
-                          audio.speak(
-                            `${currentExercise.name}. ${currentExercise.description}`,
-                            { gender: figureGender },
-                          );
+                          coachSayNow(`${currentExercise.name}. ${currentExercise.description}`);
                         }
                       }}
                     >
                       <Volume2 className="h-3 w-3" />
-                      Replay
+                      {t("wo.replay")}
                     </MagneticButton>
                   </div>
 
@@ -1151,7 +1292,7 @@ function ActiveWorkoutInner({
                         key={`${ex.name}-${i}`}
                         className="surface flex shrink-0 items-center gap-2 rounded-full py-1 pl-1 pr-3.5"
                       >
-                        <span className="font-numeric grid h-6 w-6 place-items-center rounded-full bg-[var(--graphite)] text-[11px] font-extrabold text-ink-3">
+                        <span className="font-numeric grid min-h-6 min-w-6 px-1 place-items-center rounded-full bg-[var(--graphite)] text-[11px] font-extrabold text-ink-3">
                           {String(currentExerciseIndex + i + 2).padStart(2, "0")}
                         </span>
                         <span className="whitespace-nowrap text-[11px] font-bold text-ink-2">
@@ -1240,15 +1381,15 @@ function ActiveWorkoutInner({
                 variants={staggerChild}
                 className="grid grid-cols-3 gap-2.5"
               >
-                <Summary label="Active" value={`${minutesElapsed}`} unit="min" />
+                <Summary label={t("wo.active")} value={`${minutesElapsed}`} unit={t("wo.unitMin")} />
                 <Summary
-                  label="Movements"
+                  label={t("wo.movements")}
                   value={`${workout.exercises.length}`}
-                  unit="done"
+                  unit={t("wo.unitDone")}
                   tone="gold"
                 />
                 <Summary
-                  label="Est. burn"
+                  label={t("wo.estBurn")}
                   value={`${estimatedBurn}`}
                   unit="kcal"
                   tone="ember"
@@ -1270,7 +1411,7 @@ function ActiveWorkoutInner({
                   }}
                 >
                   <Sparkles className="h-4 w-4 fill-black" />
-                  <span>Create Viral Beast Story (IG / WhatsApp)</span>
+                  <span>{t("wo.story")}</span>
                 </motion.button>
 
                 <MagneticButton
@@ -1296,7 +1437,7 @@ function ActiveWorkoutInner({
                 className="space-y-6 border-t border-line pt-6"
               >
                 <fieldset>
-                  <legend className="eyebrow mb-3">How did that feel?</legend>
+                  <legend className="eyebrow mb-3">{t("wo.feel")}</legend>
                   <div className="grid grid-cols-5 gap-1.5">
                     {FEELINGS.map((f) => {
                       const on = feeling === f.value;
@@ -1347,7 +1488,7 @@ function ActiveWorkoutInner({
                     value={userNotes}
                     onChange={(e) => setUserNotes(e.target.value)}
                     rows={3}
-                    placeholder="Felt strong on push-ups, squats were smooth…"
+                    placeholder={t("wo.notesPlaceholder")}
                     className="w-full resize-none rounded-lg2 border border-line bg-[var(--graphite)] p-4 text-sm text-ink outline-none transition-colors placeholder:text-ink-4 focus:border-[color-mix(in_srgb,var(--emerald)_48%,transparent)]"
                   />
                 </div>
@@ -1433,8 +1574,8 @@ function ActiveWorkoutInner({
             >
               <Play className="h-5 w-5 fill-current" />
               {workout.exercises.length === 0
-                ? "No exercises available"
-                : "Start workout"}
+                ? t("wo.noExercises")
+                : t("wo.begin")}
             </MagneticButton>
           </div>
         </motion.div>

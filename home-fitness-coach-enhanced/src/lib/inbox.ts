@@ -17,11 +17,11 @@ import { showSocialNotification, loadSocialPrefs, onSocialPrefsChange, type Noti
 import { registerPush, unregisterPush } from "./push";
 import { getProfile } from "./social";
 
-export type NotifType = "like" | "comment" | "follow" | "follow_request" | "follow_accepted" | "new_reel" | "group" | "challenge" | "challenge_result";
+export type NotifType = "like" | "comment" | "follow" | "follow_request" | "follow_accepted" | "new_reel" | "group" | "challenge" | "challenge_result" | "moderation";
 
 const TYPE_TO_CAT: Record<NotifType, NotifCategory> = {
   like: "likes", comment: "comments", follow: "follows", follow_request: "follows",
-  follow_accepted: "follows", new_reel: "newReels", group: "groups", challenge: "follows", challenge_result: "follows",
+  follow_accepted: "follows", new_reel: "newReels", group: "groups", challenge: "challenge", challenge_result: "challenge", moderation: "follows",
 };
 
 /** Notifications are created by the server (Cloud Functions). Kept as no-ops for older call sites. */
@@ -40,7 +40,8 @@ export function startNotifier(uid: string) {
   if (startedFor === uid) return;
   stopNotifier();
   startedFor = uid;
-  const syncPrefs = () => { void setDoc(doc(db, "users", uid), { notifPrefs: loadSocialPrefs() }, { merge: true }).catch(() => {}); };
+  // tzOffset (minutes from UTC) lets the server respect quiet hours and time the streak nudge to your evening
+  const syncPrefs = () => { void setDoc(doc(db, "users", uid), { notifPrefs: loadSocialPrefs(), tzOffset: -new Date().getTimezoneOffset() }, { merge: true }).catch(() => {}); };
   syncPrefs();
   const offPrefs = onSocialPrefsChange(syncPrefs);
   void registerPush(uid);
@@ -97,7 +98,8 @@ export function startNotifier(uid: string) {
           type === "follow_accepted" ? `${name} accepted your request` :
           type === "new_reel" ? `${name} posted a new reel` :
           type === "challenge" ? `${name} sent you a challenge` :
-          type === "challenge_result" ? "Challenge finished" : name;
+          type === "challenge_result" ? "Challenge finished" :
+          type === "moderation" ? "A message from the Apex Pulse team" : name;
         void showSocialNotification(cat, title, x.text || "");
       });
     },

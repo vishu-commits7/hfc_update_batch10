@@ -21,26 +21,6 @@ app.use((req, res, next) => {
 
 const PORT = 3000;
 
-// Initialize Gemini safely
-let ai: GoogleGenAI | null = null;
-function getGeminiClient(): GoogleGenAI {
-  if (!ai) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      console.warn("GEMINI_API_KEY environment variable is not defined.");
-    }
-    ai = new GoogleGenAI({
-      apiKey: apiKey || "",
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
-    });
-  }
-  return ai;
-}
-
 // Rich generative biomechanical synthesizer providing dynamic variations tailored to user inputs
 function generateApexNeuralWorkout(options: {
   fitnessLevel: string;
@@ -50,7 +30,7 @@ function generateApexNeuralWorkout(options: {
   equipment: string[];
   healthNotes?: string;
 }) {
-  const { fitnessLevel, goal, duration, targetArea, equipment, healthNotes } = options;
+  const { fitnessLevel, goal, duration, targetArea, equipment, healthNotes: _healthNotes } = options;
 
   // Kinetic movement database categorized by plane and joint vectors
   const movementsByRegion: Record<string, Array<{ name: string; description: string; targetMuscle: string; durationSeconds: number; reps: number; restSeconds: number }>> = {
@@ -140,6 +120,100 @@ function generateApexNeuralWorkout(options: {
     isRealGemini: false
   };
 }
+
+// Health Check Endpoint
+app.get("/api/health", (_req, res) => {
+  return res.json({
+    status: "ok",
+    timestamp: Date.now(),
+    geminiConfigured: !!process.env.GEMINI_API_KEY,
+    mode: process.env.NODE_ENV || "development",
+  });
+});
+
+// Proxy Firebase Auth requests to solve storage-partitioned iframe issues on mobile Chrome
+app.use("/__/auth", async (req, res) => {
+  try {
+    const targetUrl = `https://fitness-app-1e5f0.firebaseapp.com/__/auth${req.url}`;
+    const headers: Record<string, string> = {};
+    for (const [k, v] of Object.entries(req.headers)) {
+      if (typeof v === "string") headers[k] = v;
+    }
+    headers["host"] = "fitness-app-1e5f0.firebaseapp.com";
+
+    const fetchRes = await fetch(targetUrl, {
+      method: req.method,
+      headers,
+      body: ["GET", "HEAD"].includes(req.method) ? undefined : JSON.stringify(req.body),
+    });
+
+    res.status(fetchRes.status);
+    fetchRes.headers.forEach((val, key) => {
+      res.setHeader(key, val);
+    });
+    const buffer = await fetchRes.arrayBuffer();
+    return res.send(Buffer.from(buffer));
+  } catch (err: any) {
+    console.warn("Auth proxy error:", err?.message || err);
+    return res.status(502).json({ error: "Auth proxy error", message: err?.message });
+  }
+});
+
+// AI Gym Photography Generator Endpoint (Imagen 3 / Gemini)
+app.post("/api/exercises/generate-image", async (req, res) => {
+  const { name, targetMuscle, compartment } = req.body || {};
+  if (!name) {
+    return res.status(400).json({ error: "Exercise name is required" });
+  }
+
+  const clientKey = ((req.headers["x-gemini-key"] as string) || req.body?.geminiApiKey || process.env.GEMINI_API_KEY || "").trim();
+  const hasKey = clientKey.length > 20 && !clientKey.startsWith("MY_");
+
+  if (hasKey) {
+    try {
+      const genai = new GoogleGenAI({
+        apiKey: clientKey,
+        httpOptions: { headers: { "User-Agent": "aistudio-build" } },
+      });
+
+      const prompt = `Photorealistic cinematic gym photography: an athletic fitness model performing the signature apex pose of ${name} (${targetMuscle || compartment || "Athletic"}) inside a luxury modern gym. Crisp dramatic gym lighting, dark slate and matte steel background, authentic athletic posture, anatomical muscle definition, 8k resolution, photorealistic style.`;
+
+      // Try Imagen 3 image generation
+      const imgResponse = await (genai.models as any).generateImages({
+        model: "imagen-3.0-generate-002",
+        prompt,
+        config: {
+          numberOfImages: 1,
+          aspectRatio: "1:1",
+          outputMimeType: "image/jpeg",
+        },
+      });
+
+      if (imgResponse?.generatedImages?.[0]?.image?.imageBytes) {
+        return res.json({
+          success: true,
+          imageUrl: `data:image/jpeg;base64,${imgResponse.generatedImages[0].image.imageBytes}`,
+          engine: "imagen-3.0-generate-002",
+          prompt,
+        });
+      }
+    } catch (err: any) {
+      console.warn("Imagen generation error, fallback active:", err?.message || err);
+    }
+  }
+
+  return res.json({
+    success: true,
+    imageUrl: null,
+    fallback: true,
+    message: "Procedural gym photo archetype assigned",
+  });
+});
+
+// Health & ping endpoint for warm-up & monitoring
+app.get("/api/health", (_req, res) => {
+  return res.json({ ok: true, status: "healthy", timestamp: Date.now() });
+});
 
 // API endpoint to validate Gemini API key
 app.post("/api/gemini/validate", async (req, res) => {

@@ -3,6 +3,7 @@ import {
   ArrowLeft, Heart, MessageCircle, Camera, X, Send, Loader2,
   Trash2, ImageOff, UserCircle2,
 } from "lucide-react";
+import { ErrorState, EmptyState, EmptyAction, SkeletonLines } from "./ui/StateViews";
 import { useAuthUser, getUserProfile, UserProfileDoc } from "../lib/useAuth";
 import { compressImageToBlob } from "../lib/imageCompress";
 import { tapFeedback, successFeedback } from "../lib/haptics";
@@ -15,6 +16,9 @@ import PublicProfileSheet from "./PublicProfileSheet";
 import OverlayPortal from "./ui/OverlayPortal";
 import Avatar from "./ui/Avatar";
 import { useMyIdentity } from "../lib/useSocial";
+import { useBlocked } from "../lib/blocks";
+import ReportSheet, { type ReportTarget } from "./ReportSheet";
+import { Flag } from "lucide-react";
 
 interface CommunityGalleryProps {
   onBack: () => void;
@@ -55,15 +59,21 @@ function FeedView({ uid, onBack }: { uid: string; onBack: () => void }) {
   const [profileUid, setProfileUid] = useState<string | null>(null);
   const tab = "feed" as const;
   const [feedError, setFeedError] = useState<string | null>(null);
+  const [feedTry, setFeedTry] = useState(0);
   const me = useMyIdentity();
+  const blocked = useBlocked();
+  const [feedMax, setFeedMax] = useState(30); // newest 30; "Load more" adds 30
 
   useEffect(() => {
-    const unsub = subscribeToFeed(setPosts, 60, () => {
+    setFeedError(null);
+    if (feedMax === 30) setPosts(null);
+    // hidden = reported by several people and waiting for a moderator; the author still sees their own
+    const unsub = subscribeToFeed(all => setPosts(all.filter(p => !(p as CommunityPost & { hidden?: boolean }).hidden || p.uid === uid)), feedMax, () => {
       setPosts([]);
-      setFeedError("Couldn't load the feed. Publish the Firestore rules (see BUGFIX_NOTES.md) and check your connection.");
+      setFeedError("Couldn't load the community feed. Check your connection and try again.");
     });
     return unsub;
-  }, []);
+  }, [feedTry, feedMax]);
 
   useEffect(() => {
     getUserProfile(uid).then(setProfile);
@@ -85,34 +95,32 @@ function FeedView({ uid, onBack }: { uid: string; onBack: () => void }) {
             <h1 className="font-sans text-2xl font-black uppercase tracking-tight text-ink">Progress Feed</h1>
           </div>
         </div>
-        <button onClick={() => setProfileUid(uid)} className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-line bg-graphite">
+        <button aria-label="Open your profile" onClick={() => setProfileUid(uid)} className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-line bg-graphite">
           <Avatar src={me.avatar} name={me.name} size={40} />
         </button>
       </div>
-      {feedError && <p className="mb-4 rounded-xl bg-rose-500/10 px-3 py-2 text-center text-xs text-rose-300">{feedError}</p>}
-
       {tab === "feed" && (
       <div>
-        <button
-          onClick={() => setComposerOpen(true)}
-          className="mb-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-volt py-3.5 text-xs font-black uppercase tracking-wider text-white active:scale-95"
-        >
-          <Camera className="h-4 w-4" /> Share Your Progress
-        </button>
+        {!feedError && (
+          <button
+            onClick={() => setComposerOpen(true)}
+            className="mb-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-volt py-3.5 text-xs font-black uppercase tracking-wider text-void active:scale-95"
+          >
+            <Camera className="h-4 w-4" /> Share Your Progress
+          </button>
+        )}
 
-        {posts === null ? (
+        {feedError ? (
+          <ErrorState message={feedError} onRetry={() => setFeedTry(n => n + 1)} />
+        ) : posts === null ? (
           <div className="space-y-4">
             {[0, 1, 2].map(i => <PostCardSkeleton key={i} />)}
           </div>
         ) : posts.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-line bg-carbon p-10 text-center">
-            <ImageOff className="mx-auto h-8 w-8 text-ink-3" />
-            <p className="mt-3 font-black text-ink-2">No posts yet</p>
-            <p className="mt-1 text-xs text-ink-3">Be the first to share your progress with the community.</p>
-          </div>
+          <EmptyState icon={<ImageOff className="h-6 w-6" />} title="No posts yet" body="Be the first to share your progress with the community." action={<EmptyAction label="Share a photo" onClick={() => setComposerOpen(true)} />} />
         ) : (
           <div className="space-y-4">
-            {posts.map(post => (
+            {posts.filter(p => !blocked.has(p.uid)).map(post => (
               <PostCard
                 key={post.id}
                 post={post}
@@ -122,6 +130,9 @@ function FeedView({ uid, onBack }: { uid: string; onBack: () => void }) {
                 onDeleted={() => {}}
               />
             ))}
+            {posts.length >= feedMax && feedMax < 150 && (
+              <button onClick={() => setFeedMax(n => n + 30)} className="mx-auto block min-h-[44px] rounded-full border border-line bg-carbon px-5 text-xs font-bold text-ink-2">Load more</button>
+            )}
           </div>
         )}
       </div>
@@ -171,6 +182,8 @@ function PostCard({ post, myUid, onOpenComments, onOpenProfile, onDeleted }: {
 }) {
   const liked = post.likedBy?.includes(myUid);
   const [busy, setBusy] = useState(false);
+  const [report, setReport] = useState<ReportTarget | null>(null);
+  const [reportMsg, setReportMsg] = useState<string | null>(null);
 
   const handleLike = async () => {
     if (busy) return;
@@ -194,11 +207,17 @@ function PostCard({ post, myUid, onOpenComments, onOpenProfile, onDeleted }: {
           <p className="truncate text-xs font-black text-ink">{post.displayName || "Anonymous"}</p>
           <p className="text-[11px] text-ink-3">{timeAgo(post.createdAt)}</p>
         </div>
-        {post.uid === myUid && (
+        {post.uid === myUid ? (
           <span onClick={(e) => { e.stopPropagation(); handleDelete(); }} className="rounded-full p-1.5 text-ink-3 hover:bg-red-50 hover:text-red-400">
             <Trash2 className="h-4 w-4" />
           </span>
+        ) : (
+          <span role="button" aria-label="Report this post" onClick={(e) => { e.stopPropagation(); tapFeedback(); setReport({ type: "post", targetId: post.id, ownerUid: post.uid, ownerName: post.displayName || "this person" }); }} className="flex h-11 w-11 items-center justify-center rounded-full text-ink-3">
+            <Flag className="h-4 w-4" />
+          </span>
         )}
+        {report && <span onClick={e => e.stopPropagation()}><ReportSheet target={report} onClose={() => setReport(null)} onDone={msg => setReportMsg(msg)} /></span>}
+        {reportMsg && <span className="sr-only" role="status">{reportMsg}</span>}
       </button>
 
       <img src={post.photoUrl} alt={post.caption} className="aspect-square w-full object-cover" />
@@ -206,7 +225,7 @@ function PostCard({ post, myUid, onOpenComments, onOpenProfile, onDeleted }: {
       <div className="px-4 py-3">
         {post.caption && <p className="mb-2 text-sm text-ink-2">{post.caption}</p>}
         <div className="flex items-center gap-4">
-          <button onClick={handleLike} className="flex items-center gap-1.5 text-xs font-black text-ink-3">
+          <button aria-label={liked ? "Unlike this post" : "Like this post"} onClick={handleLike} className="flex min-h-[44px] min-w-[44px] items-center gap-1.5 text-xs font-black text-ink-3">
             <Heart className={`h-[18px] w-[18px] ${liked ? "fill-red-500 text-red-500" : "text-ink-3"}`} />
             {post.likeCount || 0}
           </button>
@@ -290,7 +309,7 @@ function Composer({ uid, profile, onClose }: { uid: string; profile: UserProfile
         <button
           onClick={post}
           disabled={!preview || busy}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-volt py-3 text-xs font-black uppercase tracking-wider text-white disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-volt py-3 text-xs font-black uppercase tracking-wider text-void disabled:opacity-50"
         >
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Post to Community
         </button>
@@ -301,15 +320,22 @@ function Composer({ uid, profile, onClose }: { uid: string; profile: UserProfile
 
 function CommentsSheet({ post, myUid, onClose }: { post: CommunityPost; myUid: string; onClose: () => void }) {
   const [comments, setComments] = useState<CommunityComment[] | null>(null);
+  const blocked = useBlocked();
+  const [report, setReport] = useState<ReportTarget | null>(null);
+  const [reportMsg, setReportMsg] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [myName, setMyName] = useState("Anonymous");
+  const [failed, setFailed] = useState(false);
+  const [tryN, setTryN] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => { getUserProfile(myUid).then(p => p && setMyName(p.displayName)); }, [myUid]);
   useEffect(() => {
-    getUserProfile(myUid).then(p => p && setMyName(p.displayName));
-    const unsub = subscribeToComments(post.id, setComments);
-    return unsub;
-  }, [post.id, myUid]);
+    setFailed(false);
+    setComments(null);
+    return subscribeToComments(post.id, c => { setFailed(false); setComments(c); }, () => { setFailed(true); setComments([]); });
+  }, [post.id, tryN]);
 
   const send = async () => {
     if (!text.trim() || busy) return;
@@ -328,26 +354,38 @@ function CommentsSheet({ post, myUid, onClose }: { post: CommunityPost; myUid: s
           <button onClick={onClose}><X className="h-5 w-5 text-ink-3" /></button>
         </div>
         <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
-          {comments === null ? (
-            <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-ink-3" /></div>
+          {failed ? (
+            <ErrorState message="Couldn't load the comments." onRetry={() => setTryN(n => n + 1)} />
+          ) : comments === null ? (
+            <SkeletonLines rows={3} />
           ) : comments.length === 0 ? (
-            <p className="py-6 text-center text-xs text-ink-3">No comments yet — say something encouraging!</p>
-          ) : comments.map(c => (
-            <div key={c.id} className="rounded-2xl bg-void px-3.5 py-2.5">
-              <p className="text-xs font-black text-ink">{c.displayName}</p>
-              <p className="mt-0.5 text-sm text-ink-2">{c.text}</p>
+            <EmptyState icon={<MessageCircle className="h-6 w-6" />} title="No comments yet" body="Say something encouraging." action={<EmptyAction label="Write a comment" onClick={() => inputRef.current?.focus()} />} />
+          ) : comments.filter(c => !blocked.has(c.uid)).map(c => (
+            <div key={c.id} className="flex items-start gap-2 rounded-2xl bg-void px-3.5 py-2.5">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-black text-ink">{c.displayName}</p>
+                <p className="mt-0.5 text-sm text-ink-2">{c.text}</p>
+              </div>
+              {c.uid !== myUid && (
+                <button aria-label="Report this comment" onClick={() => { tapFeedback(); setReport({ type: "postComment", targetId: `${post.id}/${c.id}`, ownerUid: c.uid, ownerName: c.displayName || "this person" }); }} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-3">
+                  <Flag className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
           ))}
+          {reportMsg && <p className="text-center text-xs text-ink-3">{reportMsg}</p>}
+          {report && <ReportSheet target={report} onClose={() => setReport(null)} onDone={setReportMsg} />}
         </div>
         <div className="flex items-center gap-2 border-t border-line p-4">
           <input
+            ref={inputRef}
             value={text}
             onChange={e => setText(e.target.value)}
             onKeyDown={e => e.key === "Enter" && send()}
             placeholder="Add a comment..."
             className="flex-1 rounded-xl border border-line px-3.5 py-2.5 text-sm outline-none focus:border-blue-500"
           />
-          <button onClick={send} disabled={busy || !text.trim()} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-volt text-void disabled:opacity-40">
+          <button aria-label="Send comment" onClick={send} disabled={busy || !text.trim()} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-volt text-void disabled:opacity-40">
             <Send className="h-4 w-4" />
           </button>
         </div>

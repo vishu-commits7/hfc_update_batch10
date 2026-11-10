@@ -4,7 +4,7 @@ import { Film, Heart, Loader2, Play, X, Eye } from "lucide-react";
 import OverlayPortal from "./ui/OverlayPortal";
 import { loadReelMedia, subscribeTagReels, subscribeUserReels, type SharedReel } from "../lib/reelsStore";
 import { tapFeedback } from "../lib/haptics";
-import { ErrorState } from "./ui/StateViews";
+import { ErrorState, EmptyState, EmptyAction, SkeletonGrid } from "./ui/StateViews";
 
 /** Caption with tappable #hashtags. */
 export function Caption({ text, onTag, className }: { text: string; onTag?: (tag: string) => void; className?: string }) {
@@ -66,7 +66,7 @@ export function ReelViewer({ reel, onClose, onTag }: { reel: SharedReel; onClose
 }
 
 /** Reels grid on a profile. Shows what the viewer is allowed to see. */
-export function ProfileReelsGrid({ uid }: { uid: string }) {
+export function ProfileReelsGrid({ uid, onEmptyAction }: { uid: string; onEmptyAction?: { label: string; run: () => void } }) {
   const [reels, setReels] = useState<SharedReel[] | null>(null);
   const [open, setOpen] = useState<SharedReel | null>(null);
   const [tag, setTag] = useState<string | null>(null);
@@ -77,8 +77,8 @@ export function ProfileReelsGrid({ uid }: { uid: string }) {
     <div className="mx-auto mt-6 w-full max-w-sm text-left">
       <h3 className="mb-2 flex items-center gap-1.5 text-sm font-bold"><Film className="h-4 w-4 text-volt" /> Reels</h3>
       {failed ? <ErrorState message="Couldn't load reels." onRetry={() => setTryN(n => n + 1)} />
-        : reels === null ? <div className="grid grid-cols-3 gap-1.5">{[0, 1, 2].map(i => <div key={i} className="aspect-[3/4] animate-pulse rounded-lg bg-graphite" />)}</div>
-        : reels.length === 0 ? <p className="rounded-xl border border-line bg-carbon py-6 text-center text-xs text-ink-3">No reels to show yet.</p>
+        : reels === null ? <SkeletonGrid count={3} />
+        : reels.length === 0 ? <EmptyState icon={<Film className="h-6 w-6" />} title="No reels to show yet" action={onEmptyAction ? <EmptyAction label={onEmptyAction.label} onClick={onEmptyAction.run} /> : undefined} />
         : <div className="grid grid-cols-3 gap-1.5">{reels.map(r => <Tile key={r.id} r={r} onOpen={setOpen} />)}</div>}
       {open && <ReelViewer reel={open} onClose={() => setOpen(null)} onTag={t => { setOpen(null); setTag(t); }} />}
       {tag && <TagFeed tag={tag} onClose={() => setTag(null)} />}
@@ -91,8 +91,9 @@ export function TagFeed({ tag, onClose }: { tag: string; onClose: () => void }) 
   useBackClose(true, onClose);
   const [reels, setReels] = useState<SharedReel[] | null>(null);
   const [failed, setFailed] = useState(false);
+  const [tryN, setTryN] = useState(0);
   const [open, setOpen] = useState<SharedReel | null>(null);
-  useEffect(() => subscribeTagReels(tag, r => { setFailed(false); setReels(r); }, () => { setFailed(true); setReels([]); }), [tag]);
+  useEffect(() => { setReels(null); setFailed(false); return subscribeTagReels(tag, r => { setFailed(false); setReels(r); }, () => { setFailed(true); setReels([]); }); }, [tag, tryN]);
   return (
     <OverlayPortal>
       <div className="fixed inset-0 z-[70] overflow-y-auto bg-void text-ink">
@@ -101,9 +102,9 @@ export function TagFeed({ tag, onClose }: { tag: string; onClose: () => void }) 
           <button onClick={onClose} aria-label="Close" className="flex h-11 w-11 items-center justify-center rounded-full border border-line bg-carbon active:scale-90"><X className="h-5 w-5" /></button>
         </div>
         <div className="mx-auto max-w-md p-3 pb-24">
-          {reels === null ? <div className="flex justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-ink-3" /></div>
-            : failed ? <p className="py-16 text-center text-sm text-ink-3">Couldn't load this hashtag.</p>
-            : reels.length === 0 ? <p className="py-16 text-center text-sm text-ink-3">No public reels use #{tag} yet.</p>
+          {failed ? <ErrorState message="Couldn't load this hashtag." onRetry={() => setTryN(n => n + 1)} />
+            : reels === null ? <SkeletonGrid count={9} />
+            : reels.length === 0 ? <EmptyState icon={<Film className="h-6 w-6" />} title={`No public reels use #${tag} yet`} action={<EmptyAction label="Back to reels" onClick={onClose} />} />
             : <div className="grid grid-cols-3 gap-1.5">{reels.map(r => <Tile key={r.id} r={r} onOpen={setOpen} />)}</div>}
         </div>
         {open && <ReelViewer reel={open} onClose={() => setOpen(null)} />}

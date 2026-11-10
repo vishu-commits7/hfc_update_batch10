@@ -2,6 +2,9 @@ package com.homefitnesscoach.app;
 
 import android.content.Context;
 import android.content.Intent;
+import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
+import android.media.AudioManager;
 import android.net.Uri;
 import android.util.Base64;
 
@@ -137,5 +140,86 @@ public class ApexNativePlugin extends Plugin {
         } catch (Exception e) {
             call.reject("google-sign-in-failed: " + e.getMessage());
         }
+    }
+
+    // ---- voice coaching helpers ----------------------------------------------------------
+
+    private AudioFocusRequest voiceFocusRequest;
+
+    /**
+     * Google Play in-app review. Play shows its own rating card over the app, or nothing at all if its quota
+     * for this user is used up; the app is never told which, so this always resolves.
+     */
+    @PluginMethod
+    public void requestReview(final PluginCall call) {
+        try {
+            final com.google.android.play.core.review.ReviewManager manager =
+                com.google.android.play.core.review.ReviewManagerFactory.create(getContext());
+            manager.requestReviewFlow().addOnCompleteListener(task -> {
+                if (!task.isSuccessful() || getActivity() == null) { call.reject("Review is not available right now."); return; }
+                manager.launchReviewFlow(getActivity(), task.getResult()).addOnCompleteListener(done -> call.resolve());
+            });
+        } catch (Exception e) {
+            call.reject("Review is not available right now.");
+        }
+    }
+
+    /**
+     * App-scoped device id (ANDROID_ID): the same after a reinstall, different for every app signing key.
+     * Used only so one phone cannot invite itself; the server stores a hash of it.
+     */
+    @PluginMethod
+    public void deviceId(PluginCall call) {
+        JSObject ret = new JSObject();
+        String id = "";
+        try {
+            String v = android.provider.Settings.Secure.getString(getContext().getContentResolver(), android.provider.Settings.Secure.ANDROID_ID);
+            if (v != null) id = v;
+        } catch (Exception ignored) { }
+        ret.put("id", id);
+        call.resolve(ret);
+    }
+
+    /** True when the phone's ringer is on silent or vibrate, so the coach should stay quiet. */
+    @PluginMethod
+    public void audioState(PluginCall call) {
+        JSObject ret = new JSObject();
+        boolean silent = false;
+        try {
+            AudioManager am = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+            if (am != null) {
+                int mode = am.getRingerMode();
+                silent = mode == AudioManager.RINGER_MODE_SILENT || mode == AudioManager.RINGER_MODE_VIBRATE;
+            }
+        } catch (Exception ignored) { }
+        ret.put("silent", silent);
+        call.resolve(ret);
+    }
+
+    /** Asks other apps (music, podcasts) to lower their volume while the coach speaks, and gives it back after. */
+    @PluginMethod
+    public void voiceFocus(PluginCall call) {
+        boolean on = Boolean.TRUE.equals(call.getBoolean("on", false));
+        try {
+            AudioManager am = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+            if (am != null) {
+                if (on) {
+                    if (voiceFocusRequest == null) {
+                        AudioAttributes attrs = new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build();
+                        voiceFocusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                            .setAudioAttributes(attrs)
+                            .setWillPauseWhenDucked(false)
+                            .build();
+                    }
+                    am.requestAudioFocus(voiceFocusRequest);
+                } else if (voiceFocusRequest != null) {
+                    am.abandonAudioFocusRequest(voiceFocusRequest);
+                }
+            }
+        } catch (Exception ignored) { }
+        call.resolve();
     }
 }

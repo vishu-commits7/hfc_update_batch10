@@ -5,7 +5,10 @@
  */
 import { useEffect, useState } from "react";
 import { collection, doc, limit as fsLimit, onSnapshot, orderBy, query, where } from "firebase/firestore";
-import { db } from "./firebase";
+import { sharedQuery } from "./sharedQuery";
+import { DEMO, demoLadder, demoLeague, demoProgress, demoQuests, demoReward } from "./demo";
+import { auth, db } from "./firebase";
+import { reportWorkout as queueReport } from "./reportQueue";
 import { callFn } from "./functions";
 import { RANKS } from "./ranks";
 import type { WorkoutLog } from "../types";
@@ -16,6 +19,7 @@ export interface TrophyDef { id: string; title: string; desc: string; tier: Trop
 
 /** Mirror of the server catalog (used to show locked trophies). */
 export const TROPHY_CATALOG: TrophyDef[] = [
+  { id: "program_complete", title: "Program Finisher", desc: "Finish a full training program", tier: "gold", icon: "medal" },
   { id: "first_workout", title: "First Rep", desc: "Complete your first workout", tier: "bronze", icon: "dumbbell" },
   { id: "workouts_10", title: "Getting Serious", desc: "10 workouts completed", tier: "bronze", icon: "dumbbell" },
   { id: "workouts_50", title: "Iron Habit", desc: "50 workouts completed", tier: "silver", icon: "dumbbell" },
@@ -41,6 +45,8 @@ export const TROPHY_CATALOG: TrophyDef[] = [
   { id: "league_gold", title: "Gold League", desc: "Get promoted to the Gold league", tier: "silver", icon: "medal" },
   { id: "league_platinum", title: "Platinum League", desc: "Get promoted to the Platinum league", tier: "diamond", icon: "medal" },
   { id: "league_diamond", title: "Diamond League", desc: "Get promoted to the Diamond league", tier: "diamond", icon: "medal" },
+  { id: "invite_friend", title: "Recruiter", desc: "A friend you invited finishes a first workout", tier: "silver", icon: "medal" },
+  { id: "invited_by_friend", title: "Brought by a Friend", desc: "Join with a friend's invite and finish a first workout", tier: "bronze", icon: "medal" },
 ];
 
 export const TIER_COLOR: Record<TrophyTier, string> = {
@@ -49,6 +55,8 @@ export const TIER_COLOR: Record<TrophyTier, string> = {
 
 export interface RewardResult {
   duplicate?: boolean;
+  /** set on the first workout of an account that joined with a friend's invite code */
+  inviteReward?: { freeze: boolean; badge: string } | null;
   xpGained: number;
   xp: number;
   level: number;
@@ -59,7 +67,23 @@ export interface RewardResult {
   freezes?: number;
   freezeUsed?: boolean;
   freezeEarned?: boolean;
+  freezesSpent?: number;
+  weekDone?: number;
+  weeklyGoal?: number;
+  weekGoalHit?: boolean;
   questsCompleted?: { title: string; xp: number }[];
+  program?: {
+    id: string;
+    credited: boolean;
+    reason?: string;
+    done?: number;
+    total?: number;
+    completed?: boolean;
+    week?: number;
+    weekDone?: number;
+    weekTotal?: number;
+    weekComplete?: boolean;
+  };
   newTrophies: { id: string; title: string; desc: string; tier: TrophyTier; icon: TrophyDef["icon"] }[];
 }
 
@@ -69,18 +93,13 @@ const dayKey = () => {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 
-/** Tell the server a workout was completed; returns rewards to celebrate. */
-export async function reportWorkout(log: WorkoutLog): Promise<RewardResult | null> {
+/** Tell the server a workout was completed; returns rewards to celebrate, or null when it was queued for later (offline) or has no rewards. */
+export async function reportWorkout(log: WorkoutLog, program?: { id: string; session: number }): Promise<RewardResult | null> {
+  if (DEMO) return demoReward() as RewardResult;
+  const uid = auth.currentUser?.uid;
+  if (!uid) return null;
   try {
-    const res = await callFn<RewardResult>("recordWorkout", {
-      workoutId: log.id,
-      minutes: log.durationMinutes || 1,
-      calories: log.estimatedCaloriesBurned || 0,
-      dayKey: dayKey(),
-      area: log.targetArea || "Full Body",
-      feeling: log.feeling,
-    });
-    return res.duplicate ? null : res;
+    return await queueReport(uid, log, program);
   } catch {
     return null;
   }
@@ -120,6 +139,9 @@ export interface ProgressData {
   loading: boolean;
   lastWorkoutDay: string;
   freezes: number;
+  weeklyGoal: number;
+  weekDone: number;
+  weekDoneId: string;
   weekXp: number;
   weekId: string;
   leagueTier: number;
@@ -135,10 +157,14 @@ export interface LeagueResult { week: string; tier: number; newTier: number; ran
 const toMs = (v: any) => (v?.toMillis ? v.toMillis() : 0);
 
 export function useProgress(uid: string | null | undefined): ProgressData {
+  return DEMO ? DEMO_PROGRESS : useRealProgress(uid);
+}
+const DEMO_PROGRESS: ProgressData = demoProgress();
+function useRealProgress(uid: string | null | undefined): ProgressData {
   const [data, setData] = useState<ProgressData>({
     xp: 0, level: 1, totalWorkouts: 0, streakDays: 0, arenaWins: 0, arenaMatches: 0,
     trophies: new Map(), matches: [], loading: true,
-    lastWorkoutDay: "", freezes: 1, weekXp: 0, weekId: "", leagueTier: 0, leagueGroup: "", lastLeagueResult: null, rating: 1000, ratingPeak: 1000, challengeWins: 0,
+    lastWorkoutDay: "", freezes: 1, weeklyGoal: 3, weekDone: 0, weekDoneId: "", weekXp: 0, weekId: "", leagueTier: 0, leagueGroup: "", lastLeagueResult: null, rating: 1000, ratingPeak: 1000, challengeWins: 0,
   });
 
   useEffect(() => {
@@ -156,6 +182,9 @@ export function useProgress(uid: string | null | undefined): ProgressData {
         arenaMatches: Number(x.arenaMatches || 0),
         lastWorkoutDay: String(x.lastWorkoutDay || ""),
         freezes: x.freezes === undefined ? 1 : Number(x.freezes),
+        weeklyGoal: [3, 4, 5].includes(Number(x.weeklyGoal)) ? Number(x.weeklyGoal) : 3,
+        weekDone: Number(x.weekDone || 0),
+        weekDoneId: String(x.weekDoneId || ""),
         weekXp: Number(x.weekXp || 0),
         weekId: String(x.weekId || ""),
         leagueTier: Number(x.leagueTier || 0),
@@ -201,6 +230,11 @@ export interface LeaderRow {
 
 /** Ranked by xp, highest first. Only people who have actually trained/played appear. */
 export function subscribeLeaderboard(cb: (rows: LeaderRow[]) => void, onError?: (e: unknown) => void, by: "xp" | "rating" = "xp") {
+  if (DEMO) { queueMicrotask(() => cb(demoLadder(by))); return () => {}; }
+  // one shared listener per board, kept for a minute after the tab closes (see sharedQuery.ts)
+  return sharedQuery<LeaderRow[]>(`ladder:${by}`, (emit, fail) => rawLeaderboard(emit, fail, by), cb, onError);
+}
+function rawLeaderboard(cb: (rows: LeaderRow[]) => void, onError: ((e: unknown) => void) | undefined, by: "xp" | "rating") {
   return onSnapshot(query(collection(db, "users"), orderBy(by, "desc"), fsLimit(50)), snap => {
     cb(
       snap.docs
@@ -234,14 +268,28 @@ export function streakStatus(p: Pick<ProgressData, "streakDays" | "lastWorkoutDa
   const gap = dayNum(dayKey()) - dayNum(p.lastWorkoutDay);
   if (gap <= 0) return { days: p.streakDays, state: "safe" as const };          // trained today
   if (gap === 1) return { days: p.streakDays, state: "at-risk" as const };      // train today to keep it
-  if (gap === 2 && p.freezes > 0) return { days: p.streakDays, state: "frozen" as const }; // a freeze will cover one missed day
+  if (gap - 1 <= p.freezes) return { days: p.streakDays, state: "frozen" as const }; // one freeze covers each missed day
   return { days: 0, state: "lost" as const };
+}
+
+/** ISO week id (Monday to Sunday) of the phone's calendar day, e.g. 2026-W46. Matches the server's weekIdOfDay. */
+export function localWeekId(d = new Date()): string {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dow = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - dow);
+  const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((t.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+  return `${t.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
 }
 
 export interface Quest { id: string; title: string; metric: string; target: number; progress: number; xp: number; done: boolean }
 export interface QuestDoc { dayKey: string; weekId: string; daily: Quest[]; weekly: Quest[] }
 
 export function useQuests(uid: string | null | undefined): QuestDoc | null {
+  return DEMO ? DEMO_QUESTS : useRealQuests(uid);
+}
+const DEMO_QUESTS: QuestDoc = demoQuests();
+function useRealQuests(uid: string | null | undefined): QuestDoc | null {
   const [q, setQ] = useState<QuestDoc | null>(null);
   useEffect(() => {
     if (!uid) { setQ(null); return; }
@@ -267,6 +315,10 @@ export function joinLeague() {
 export interface LeagueRow { uid: string; name: string; avatarUrl: string | null; weekXp: number; level: number }
 
 export function subscribeLeague(group: string, cb: (rows: LeagueRow[]) => void, onError?: (e: unknown) => void) {
+  if (DEMO) { queueMicrotask(() => cb(demoLeague())); return () => {}; }
+  return sharedQuery<LeagueRow[]>(`league:${group}`, (emit, fail) => rawLeague(group, emit, fail), cb, onError);
+}
+function rawLeague(group: string, cb: (rows: LeagueRow[]) => void, onError?: (e: unknown) => void) {
   return onSnapshot(
     query(collection(db, "users"), where("leagueGroup", "==", group), orderBy("weekXp", "desc"), fsLimit(30)),
     snap => cb(snap.docs.map(d => {

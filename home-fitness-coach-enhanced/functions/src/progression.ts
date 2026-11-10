@@ -45,6 +45,7 @@ export const TROPHIES: Record<string, { title: string; desc: string; tier: Tier;
   rank_legend: { title: "Legend", desc: "Reached Legend", tier: "diamond", icon: "medal" },
   challenge_win_1: { title: "Challenger", desc: "Won a friend challenge", tier: "bronze", icon: "swords" },
   challenge_wins_5: { title: "Rival Slayer", desc: "Won 5 friend challenges", tier: "gold", icon: "swords" },
+  program_complete: { title: "Program Finisher", desc: "Finished a full training program", tier: "gold", icon: "medal" },
   quests_10: { title: "Quest Hunter", desc: "Completed 10 quests", tier: "silver", icon: "medal" },
   quests_50: { title: "Quest Master", desc: "Completed 50 quests", tier: "gold", icon: "medal" },
   league_silver: { title: "Silver League", desc: "Promoted to the Silver league", tier: "silver", icon: "medal" },
@@ -53,7 +54,7 @@ export const TROPHIES: Record<string, { title: string; desc: string; tier: Tier;
   league_diamond: { title: "Diamond League", desc: "Promoted to the Diamond league", tier: "diamond", icon: "medal" },
 };
 
-export interface Stats { xp: number; totalWorkouts: number; streakDays: number; arenaWins: number; arenaMatches: number; questsDone: number; challengeWins: number }
+export interface Stats { xp: number; totalWorkouts: number; streakDays: number; arenaWins: number; arenaMatches: number; questsDone: number; challengeWins: number; programsDone?: number }
 export function earnedIds(st: Stats): string[] {
   const ids: string[] = [];
   if (st.totalWorkouts >= 1) ids.push("first_workout");
@@ -63,6 +64,7 @@ export function earnedIds(st: Stats): string[] {
   for (const n of [10, 50]) if (st.arenaWins >= n) ids.push(`arena_wins_${n}`);
   if (st.arenaMatches >= 10) ids.push("arena_played_10");
   for (const n of [10, 50]) if (st.questsDone >= n) ids.push(`quests_${n}`);
+  if ((st.programsDone ?? 0) >= 1) ids.push("program_complete");
   if (st.challengeWins >= 1) ids.push("challenge_win_1");
   if (st.challengeWins >= 5) ids.push("challenge_wins_5");
   const ri = rankIdxOf(st.xp);
@@ -89,7 +91,7 @@ export async function readProgress(tx: FirebaseFirestore.Transaction, uid: strin
 /** Applies an xp / stat change, awards trophies, returns what the UI should celebrate. */
 export function applyProgress(
   tx: FirebaseFirestore.Transaction, uid: string, p: Progress,
-  delta: { xp: number; workouts?: number; minutes?: number; streakDays?: number; arenaWin?: boolean; arenaMatch?: boolean; challengeWin?: boolean; extra?: Record<string, unknown> },
+  delta: { xp: number; workouts?: number; minutes?: number; streakDays?: number; arenaWin?: boolean; arenaMatch?: boolean; challengeWin?: boolean; programDone?: boolean; extra?: Record<string, unknown> },
 ) {
   const before = Number(p.user.xp || 0);
   const q = advanceQuests(p.quests, {
@@ -109,6 +111,7 @@ export function applyProgress(
     arenaMatches: Number(p.user.arenaMatches || 0) + (delta.arenaMatch ? 1 : 0),
     questsDone,
     challengeWins: Number(p.user.challengeWins || 0) + (delta.challengeWin ? 1 : 0),
+    programsDone: Number(p.user.programsDone || 0) + (delta.programDone ? 1 : 0),
   };
   const newTrophies = earnedIds(stats).filter(id => !p.have.has(id));
   newTrophies.forEach(id => {
@@ -122,7 +125,7 @@ export function applyProgress(
     streakDays: stats.streakDays,
     arenaWins: stats.arenaWins,
     arenaMatches: stats.arenaMatches,
-    questsDone, weekXp, weekId: week, challengeWins: stats.challengeWins,
+    questsDone, weekXp, weekId: week, challengeWins: stats.challengeWins, programsDone: stats.programsDone,
     ...(delta.minutes ? { totalMinutes: FieldValue.increment(delta.minutes) } : {}),
     ...(delta.extra ?? {}),
   }, { merge: true });

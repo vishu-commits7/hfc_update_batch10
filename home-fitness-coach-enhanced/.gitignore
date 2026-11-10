@@ -27,3 +27,6 @@ android/capacitor-cordova-android-plugins/
 Thumbs.db
 .vscode/*
 !.vscode/extensions.json
+
+# exercise demo clips: filmed/encoded files go here, uploaded to Storage, not committed
+exercise-clips/

@@ -291,7 +291,7 @@ export default function BiometricRecoveryHub({
             <span className="text-[11px] font-bold uppercase tracking-wider text-ink-3 flex items-center gap-1.5">
               <Flame className="h-3.5 w-3.5 text-amber-400" /> Daily Strain
             </span>
-            <button
+            <button aria-label="What daily strain means"
               onClick={() => setShowTooltip(!showTooltip)}
               className="text-ink-4 hover:text-ink"
             >

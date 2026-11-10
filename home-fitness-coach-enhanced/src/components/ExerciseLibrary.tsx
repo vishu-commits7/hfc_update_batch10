@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef, useDeferredValue, memo } from "react";
+import { useMemo, useState, useEffect, useDeferredValue, memo } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "motion/react";
 import {
@@ -34,7 +34,8 @@ import type { DemoTone } from "../lib/exercisePhotos.generated";
 import { readDemoModel } from "../lib/demoPrefs";
 import { UserProfile } from "../types";
 import { audio } from "../lib/audio";
-import { getExerciseVideo } from "../lib/exerciseVideos";
+import ExerciseClip from "./ExerciseClip";
+import { resolveClipId, hasClip } from "../data/exerciseClips";
 import {
   getCustomAcademyExercises,
   CustomExerciseItem,
@@ -1289,13 +1290,13 @@ function MotionDemo({
   const hot = "#38d6ff";
   const cool = "#00e5a0";
 
-  const videoSrc = useMemo(
-    () => (exercise.isBlankPhoto ? null : getExerciseVideo(exercise.id, exercise.videoUrl, exercise.name)),
-    [exercise.id, exercise.videoUrl, exercise.name, exercise.isBlankPhoto]
-  );
+  const clipId = useMemo(() => {
+    if (exercise.isBlankPhoto) return null;
+    const id = resolveClipId(exercise.id) ?? resolveClipId(exercise.name);
+    return hasClip(id, exercise.videoUrl) ? id : null;
+  }, [exercise.id, exercise.name, exercise.videoUrl, exercise.isBlankPhoto]);
   const [videoError, setVideoError] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
-  const videoRef = useRef<HTMLVideoElement>(null);
 
   const [viewMode, setViewMode] = useState<"video" | "stickman">("video");
 
@@ -1303,21 +1304,12 @@ function MotionDemo({
     setVideoError(false);
     setIsPlaying(true);
     setViewMode("video");
-  }, [exercise.id, videoSrc]);
+  }, [exercise.id, clipId]);
 
-  const hasVideo = !!videoSrc && !videoError;
+  const hasVideo = !!clipId && !videoError;
   const isShowingVideo = viewMode === "video" && hasVideo;
 
-  const togglePlay = () => {
-    if (!videoRef.current) return;
-    if (videoRef.current.paused) {
-      videoRef.current.play();
-      setIsPlaying(true);
-    } else {
-      videoRef.current.pause();
-      setIsPlaying(false);
-    }
-  };
+  const togglePlay = () => setIsPlaying((p) => !p);
 
   return (
     <div
@@ -1344,23 +1336,21 @@ function MotionDemo({
       />
 
       {isShowingVideo ? (
-        <div className="absolute inset-0 z-10 flex items-center justify-center overflow-hidden bg-black">
-          <video
-            ref={videoRef}
-            key={videoSrc}
-            src={videoSrc}
-            autoPlay
-            loop
-            muted
-            playsInline
-            onPlay={() => setIsPlaying(true)}
-            onPause={() => setIsPlaying(false)}
-            onError={() => {
+        <div
+          className="absolute inset-0 z-10 cursor-pointer overflow-hidden bg-black"
+          onClick={togglePlay}
+        >
+          <ExerciseClip
+            clipId={clipId!}
+            name={exercise.name}
+            poster={exercise.signaturePose}
+            paused={!isPlaying}
+            lazy={false}
+            fallbackUrl={exercise.videoUrl}
+            onFailed={() => {
               setVideoError(true);
               setViewMode("stickman");
             }}
-            onClick={togglePlay}
-            className="h-full w-full cursor-pointer object-contain"
           />
         </div>
       ) : (
@@ -1434,7 +1424,7 @@ function MotionDemo({
       {/* Bottom controls */}
       <div className="absolute inset-x-4 bottom-4 z-30 flex items-end justify-between">
         <div>
-          <p className="text-[11px] font-black uppercase tracking-widest text-white/40">Tempo</p>
+          <p className="text-[11px] font-black uppercase tracking-widest text-white/60">Tempo</p>
           <p className="text-sm font-black text-ink">{exercise.tempo}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -2112,18 +2102,18 @@ export default function ExerciseLibrary({
                 {/* Parameters */}
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   <div className="rounded-2xl bg-graphite p-3">
-                    <Timer className="h-4 w-4 text-white/40" />
-                    <p className="mt-1 text-[11px] uppercase text-white/35">Tempo</p>
+                    <Timer className="h-4 w-4 text-white/60" />
+                    <p className="mt-1 text-[11px] uppercase text-white/60">Tempo</p>
                     <p className="text-xs font-black">{selected.tempo}</p>
                   </div>
                   <div className="rounded-2xl bg-graphite p-3">
-                    <Dumbbell className="h-4 w-4 text-white/40" />
-                    <p className="mt-1 text-[11px] uppercase text-white/35">Equipment</p>
+                    <Dumbbell className="h-4 w-4 text-white/60" />
+                    <p className="mt-1 text-[11px] uppercase text-white/60">Equipment</p>
                     <p className="text-xs font-black">{selected.equipment || "Bodyweight"}</p>
                   </div>
                   <div className="rounded-2xl bg-graphite p-3">
-                    <HeartPulse className="h-4 w-4 text-white/40" />
-                    <p className="mt-1 text-[11px] uppercase text-white/35">Compartment</p>
+                    <HeartPulse className="h-4 w-4 text-white/60" />
+                    <p className="mt-1 text-[11px] uppercase text-white/60">Compartment</p>
                     <p className="text-xs font-black">{selected.compartment}</p>
                   </div>
                 </div>

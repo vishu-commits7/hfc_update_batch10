@@ -4,15 +4,22 @@ import FriendsView from "./FriendsView";
 import CrewView from "./CrewView";
 import { QuickMatchCard, LiveRoomsCard, SpectateScreen } from "./ArenaExtras";
 import { callFn } from "../lib/functions";
-import { motionFor, usePoseCounter } from "../lib/poseCounter";
+import { motionFor, usePoseCounter, cameraCountingPlan, rememberCamChoice, allowCameraAnyway } from "../lib/poseCounter";
 import { useBackClose } from "../lib/backStack";
-import { ErrorState, SkeletonRows } from "./ui/StateViews";
+import { ErrorState, EmptyState, EmptyAction, SkeletonRows } from "./ui/StateViews";
 import { track, trackOnce } from "../lib/track";
+import { EV } from "../lib/analyticsEvents";
 import DuelVideo from "./DuelVideo";
 import { useDuelVideo } from "../lib/duelVideo";
+import { repsAt } from "../lib/ghost";
+import DailyChallenge from "./DailyChallenge";
+import ReportSheet from "./ReportSheet";
+import { DEMO } from "../lib/demo";
+import FlexCardSheet from "./FlexCardSheet";
+import { arenaCard } from "../lib/flexCard";
 import { useEffect, useMemo, useRef, useState, memo } from "react";
 import {
-  ArrowLeft, Swords, Share2, Copy, Check, Trophy, Loader2, Plus, Minus, Globe, Lock, Users, LogIn, Hand, X, ChevronRight, Flame, Dumbbell, Crown, RotateCcw, Zap, Camera,
+  ArrowLeft, Swords, Share2, Copy, Check, Trophy, Loader2, Plus, Minus, Globe, Lock, Users, LogIn, Hand, X, ChevronRight, Flame, Dumbbell, Crown, RotateCcw, Zap, Camera, Flag,
 } from "lucide-react";
 import { shareContent } from "../lib/nativeBridge";
 import Avatar from "./ui/Avatar";
@@ -25,6 +32,7 @@ import { useMyIdentity } from "../lib/useSocial";
 import { BODY_PARTS, POPULAR, exerciseById, type ArenaExercise, type PlanItem } from "../lib/arenaCatalog";
 import { subscribeLeaderboard, rankFor, useProgress, type LeaderRow } from "../lib/progress";
 import { audio } from "../lib/audio";
+import { useT, type TKey } from "../i18n";
 import { tapFeedback, celebrateFeedback } from "../lib/haptics";
 
 export interface ExerciseDiscipline {
@@ -54,6 +62,7 @@ interface Props {
 function BeastDuelArenaInner({ onBack, onLogWorkout, initialRoomCode, onSignIn }: Props) {
   const me = useMyIdentity();
   const [roomCode, setRoomCode] = useState<string | null>(null);
+  const tr = useT();
   const [tab, setTab] = useState<"play" | "league" | "friends" | "crew" | "ladder">("play");
   const [watchCode, setWatchCode] = useState<string | null>(null);
   const [ladderBy, setLadderBy] = useState<"xp" | "rating">("xp");
@@ -73,6 +82,8 @@ function BeastDuelArenaInner({ onBack, onLogWorkout, initialRoomCode, onSignIn }
   const [error, setError] = useState<string | null>(null);
   const [joinText, setJoinText] = useState("");
   const [open, setOpen] = useState<ArenaRoom[] | null>(null);
+  const [openFailed, setOpenFailed] = useState(false);
+  const [openTry, setOpenTry] = useState(0);
   const [ladder, setLadder] = useState<LeaderRow[] | null>(null);
   const [ladderFailed, setLadderFailed] = useState(false);
   const [ladderTry, setLadderTry] = useState(0);
@@ -98,8 +109,9 @@ function BeastDuelArenaInner({ onBack, onLogWorkout, initialRoomCode, onSignIn }
 
   useEffect(() => {
     if (!me.uid || roomCode) return;
-    return subscribeOpenRooms(me.uid, setOpen, e => { setOpen([]); setError(friendlySocialError(e)); });
-  }, [me.uid, roomCode]);
+    setOpenFailed(false);
+    return subscribeOpenRooms(me.uid, r => { setOpenFailed(false); setOpen(r); }, () => { setOpen([]); setOpenFailed(true); });
+  }, [me.uid, roomCode, openTry]);
 
   useEffect(() => {
     if (tab !== "ladder" || !me.uid) return;
@@ -169,10 +181,10 @@ function BeastDuelArenaInner({ onBack, onLogWorkout, initialRoomCode, onSignIn }
   return (
     <div className="mx-auto w-full max-w-md space-y-4 pb-28 text-ink animate-fade-in">
       <div className="flex items-center justify-between">
-        <button onClick={onBack} aria-label="Back" className="flex h-11 w-11 items-center justify-center rounded-full border border-line bg-carbon text-ink-2 active:scale-95">
+        <button onClick={onBack} aria-label={tr("common.back")} className="flex h-11 w-11 items-center justify-center rounded-full border border-line bg-carbon text-ink-2 active:scale-95">
           <ArrowLeft className="h-5 w-5" />
         </button>
-        <h1 className="text-base font-bold">Live Arena</h1>
+        <h1 className="text-base font-bold">{tr("arena.title")}</h1>
         <div className="flex h-11 min-w-11 items-center justify-center gap-1 rounded-full border border-line bg-carbon px-3 text-xs font-bold">
           <Trophy className="h-3.5 w-3.5 text-volt" /> {me.profile?.arenaWins || 0}
           <span className="mx-0.5 h-3 w-px bg-line" /><Zap className="h-3.5 w-3.5 text-volt" /> {prog.rating}
@@ -186,7 +198,7 @@ function BeastDuelArenaInner({ onBack, onLogWorkout, initialRoomCode, onSignIn }
             onClick={() => { void tapFeedback(); setTab(t); }}
             className={`shrink-0 rounded-xl px-4 py-2.5 text-xs font-bold transition ${tab === t ? "bg-volt text-void" : "border border-line bg-carbon text-ink-2"}`}
           >
-            {t === "play" ? "Play" : t === "league" ? "League" : t === "friends" ? "Friends" : t === "crew" ? "Crew" : "Global"}
+            {tr(`arena.tab.${t === "ladder" ? "global" : t}` as TKey)}
           </button>
         ))}
       </div>
@@ -201,26 +213,27 @@ function BeastDuelArenaInner({ onBack, onLogWorkout, initialRoomCode, onSignIn }
           </button>
         </div>
       ) : tab === "league" ? (
-        <LeagueView meUid={me.uid!} />
+        <LeagueView meUid={me.uid!} onPlayArena={() => setTab("play")} />
       ) : tab === "friends" ? (
         <FriendsView meUid={me.uid!} />
       ) : tab === "crew" ? (
         <CrewView meUid={me.uid!} meName={me.name} />
       ) : tab === "ladder" ? (
         <>
+        <DailyChallenge meUid={me.uid!} />
         <div className="mb-3 grid grid-cols-2 gap-1.5">
           {([["xp", "Most XP"], ["rating", "Arena rating"]] as const).map(([k, l]) => (
             <button key={k} onClick={() => { void tapFeedback(); setLadder(null); setLadderBy(k); }} className={`rounded-xl py-2 text-xs font-semibold ${ladderBy === k ? "bg-graphite text-volt ring-1 ring-volt/40" : "border border-line bg-carbon text-ink-2"}`}>{l}</button>
           ))}
         </div>
-        <LadderView by={ladderBy} rows={ladder} meUid={me.uid} failed={ladderFailed} onRetry={() => { setLadder(null); setLadderFailed(false); setLadderTry(n => n + 1); }} />
+        <LadderView by={ladderBy} rows={ladder} meUid={me.uid} failed={ladderFailed} onPlay={() => setTab("play")} onRetry={() => { setLadder(null); setLadderFailed(false); setLadderTry(n => n + 1); }} />
         </>
       ) : (
         <>
           {stage === "type" && <OneTimeHint id="quickmatch">Quick match pairs you with someone who picked the same exercise. Matches move your rating (RP).</OneTimeHint>}
           {stage === "type" && <QuickMatchCard meUid={me.uid!} onMatched={c => { setRoomCode(c); }} />}
           {stage === "type" && <LiveRoomsCard onWatch={setWatchCode} />}
-          <section className="rounded-2xl border border-line bg-carbon p-4">
+          <section id="arena-create" className="rounded-2xl border border-line bg-carbon p-4">
             {stage === "type" && (
               <>
                 <h2 className="text-sm font-bold">Start a challenge</h2>
@@ -367,10 +380,12 @@ function BeastDuelArenaInner({ onBack, onLogWorkout, initialRoomCode, onSignIn }
 
           <section className="rounded-2xl border border-line bg-carbon p-4">
             <h2 className="text-sm font-bold">Open matches</h2>
-            {open === null ? (
+            {openFailed ? (
+              <div className="mt-2"><ErrorState message="Couldn't load open matches." onRetry={() => { setOpen(null); setOpenTry(n => n + 1); }} /></div>
+            ) : open === null ? (
               <div className="mt-2"><SkeletonRows rows={2} /></div>
             ) : open.length === 0 ? (
-              <p className="py-6 text-center text-xs text-ink-3">Nobody is waiting right now. Create a room and share the code with a friend.</p>
+              <div className="mt-2"><EmptyState icon={<Swords className="h-6 w-6" />} title="Nobody is waiting right now" body="Start a match and share the code with a friend." action={<EmptyAction label="Create a room" onClick={() => document.getElementById("arena-create")?.scrollIntoView({ behavior: "smooth", block: "center" })} />} /></div>
             ) : (
               <ul className="mt-2 space-y-1">
                 {open.map(r => (
@@ -380,7 +395,7 @@ function BeastDuelArenaInner({ onBack, onLogWorkout, initialRoomCode, onSignIn }
                       <span className="block truncate text-sm font-bold">{r.hostName}</span>
                       <span className="block truncate text-xs text-ink-3">{r.exercise} · {r.mode === "time" ? `${r.target}s` : r.plan && r.plan.length > 1 ? `${r.plan.length} exercises` : `first to ${r.target}`}</span>
                     </span>
-                    <button onClick={() => join(r.code)} disabled={busy} className="rounded-full bg-volt px-4 py-2 text-xs font-bold text-void active:scale-95 disabled:opacity-50">Join</button>
+                    <button onClick={() => join(r.code)} disabled={busy} className="rounded-full border border-volt/60 bg-volt/10 px-4 py-2 text-xs font-bold text-volt active:scale-95 disabled:opacity-50">Join</button>
                   </li>
                 ))}
               </ul>
@@ -405,17 +420,13 @@ function StageHeader({ title, onBack }: { title: string; onBack: () => void }) {
 
 const MEDAL = ["#F5C451", "#C0C6D0", "#D08B5B"];
 
-function LadderView({ rows, meUid, failed, onRetry, by = "xp" }: { rows: LeaderRow[] | null; meUid: string | null; failed?: boolean; onRetry?: () => void; by?: "xp" | "rating" }) {
+function LadderView({ rows, meUid, failed, onRetry, onPlay, by = "xp" }: { rows: LeaderRow[] | null; meUid: string | null; failed?: boolean; onRetry?: () => void; onPlay?: () => void; by?: "xp" | "rating" }) {
   const val = (r: LeaderRow) => (by === "rating" ? r.rating : r.xp);
   const unit = by === "rating" ? "RP" : "XP";
   if (failed) return <ErrorState message="Couldn't load the leaderboard." onRetry={onRetry} />;
   if (rows === null) return <SkeletonRows rows={6} />;
   if (rows.length === 0) return (
-    <div className="rounded-2xl border border-line bg-carbon p-8 text-center">
-      <Trophy className="mx-auto h-8 w-8 text-ink-3" />
-      <p className="mt-3 text-sm font-semibold">No one is ranked yet</p>
-      <p className="mx-auto mt-1 max-w-[16rem] text-xs text-ink-3">Finish a workout or play an Arena match to take rank #1.</p>
-    </div>
+    <EmptyState icon={<Trophy className="h-6 w-6" />} title="No one is ranked yet" body="Finish a workout or play an Arena match to take rank #1." action={onPlay ? <EmptyAction label="Play a match" onClick={onPlay} /> : undefined} />
   );
   const top = rows.slice(0, 3);
   const order = top.length === 3 ? [1, 0, 2] : top.map((_, i) => i);
@@ -482,7 +493,12 @@ function RoomScreen({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [rematchBusy, setRematchBusy] = useState(false);
-  const [camCount, setCamCount] = useState(false);
+  const [shareWin, setShareWin] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportMsg, setReportMsg] = useState<string | null>(null);
+  const [camPlan] = useState(cameraCountingPlan);
+  const [camCount, setCamCount] = useState(camPlan.start);
+  const [camBlocked, setCamBlocked] = useState<"device" | "slow" | null>(camPlan.blocked);
 
   const [phase, setPhase] = useState<"idle" | "countdown" | "battle" | "done">("idle");
   const [count, setCount] = useState(3);
@@ -515,14 +531,28 @@ function RoomScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
+  // ghost duel: the opponent's reps come from a recorded timeline, read against the server's start time
+  const [ghostReps, setGhostReps] = useState(0);
+  useEffect(() => { setGhostReps(0); }, [code]);
+  useEffect(() => {
+    if (!room?.ghost || !room.startedAt || room.status !== "live") return;
+    const started = room.startedAt, tl = room.ghostTl, cap = room.mode === "reps" ? room.target : Infinity;
+    const tick = () => setGhostReps(Math.min(cap, repsAt(tl, Date.now() - started)));
+    tick();
+    const id = window.setInterval(tick, 200);
+    return () => clearInterval(id);
+  }, [room?.ghost, room?.status, room?.startedAt, room?.ghostTl.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const role: "host" | "guest" | null = room ? (room.hostUid === player.uid ? "host" : room.guestUid === player.uid ? "guest" : null) : null;
   const opp = room && role ? (role === "host"
-    ? { name: room.guestName, avatar: room.guestAvatar, reps: room.guestReps, done: room.guestDone, present: !!room.guestUid }
+    ? room.ghost
+      ? { name: `${room.guestName || "Ghost"} · ghost`, avatar: null, reps: room.status === "finished" ? room.guestReps : ghostReps, done: room.status === "finished", present: true }
+      : { name: room.guestName, avatar: room.guestAvatar, reps: room.guestReps, done: room.guestDone, present: !!room.guestUid }
     : { name: room.hostName, avatar: room.hostAvatar, reps: room.hostReps, done: room.hostDone, present: true }) : null;
 
   // live video between the two players
   const [videoOn, setVideoOn] = useState(true);
-  const duel = useDuelVideo(code, role, !!room?.guestUid, videoOn && !!role && room !== undefined && room !== null && room.status !== "finished" && room.status !== "cancelled");
+  const duel = useDuelVideo(code, role, !!room?.guestUid, !DEMO && videoOn && !!role && room !== undefined && room !== null && room.status !== "finished" && room.status !== "cancelled");
 
   // room went live -> local countdown then battle
   useEffect(() => {
@@ -576,8 +606,8 @@ function RoomScreen({
   useEffect(() => {
     if (room?.status !== "finished" || recordedRef.current || !role) return;
     recordedRef.current = true;
-    trackOnce("first_arena_match");
-    track("arena_match_finished", { exercises: room.plan?.length || 1 });
+    trackOnce(EV.firstArenaMatch);
+    track(EV.arenaMatchPlayed, { exercises: room.plan?.length || 1, mode: room.mode, quick: !!room.quick });
     const mine = role === "host" ? room.hostReps : room.guestReps;
     const theirs = role === "host" ? room.guestReps : room.hostReps;
     void recordArenaResult(player.uid, mine > theirs);
@@ -587,10 +617,10 @@ function RoomScreen({
 
   // quick-match rooms: the host's device starts the match as soon as both players are in
   useEffect(() => {
-    if (!room?.quick || role !== "host" || room.status !== "ready" || !room.guestUid) return;
+    if (!room?.quick || role !== "host" || room.status !== "ready" || (!room.guestUid && !room.ghost)) return;
     const t = setTimeout(() => { void startRoomMatch(code).catch(e => setError(friendlySocialError(e))); }, 2500);
     return () => clearTimeout(t);
-  }, [room?.quick, room?.status, room?.guestUid, role]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [room?.quick, room?.status, room?.guestUid, room?.ghost, role]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const goRematch = async (existing?: string | null) => {
     if (rematchBusy) return;
@@ -601,7 +631,7 @@ function RoomScreen({
       let host = false;
       if (!target) { const r = await callFn<{ code: string; host: boolean }>("arenaRematch", { code }); target = r.code; host = r.host; }
       if (!host) await joinRoom(target, player);
-      track("arena_rematch");
+      track(EV.arenaRematch);
       exitedRef.current = true;
       onSwitch(target);
     } catch (e) { setError(friendlySocialError(e)); } finally { setRematchBusy(false); }
@@ -614,11 +644,11 @@ function RoomScreen({
     setMyReps(next);
     audio.playBeastClick();
     void tapFeedback();
-    // throttle network writes to ~4/second
+    // throttle network writes to ~2.5/second (each one is a server call plus a read for both players)
     const now = Date.now();
     const push = () => { lastSentRef.current = Date.now(); void reportReps(code, role, myRepsRef.current).catch(() => {}); };
-    if (now - lastSentRef.current > 250) push();
-    else if (!sendTimer.current) sendTimer.current = window.setTimeout(() => { sendTimer.current = null; push(); }, 250);
+    if (now - lastSentRef.current > REPORT_EVERY_MS) push();
+    else if (!sendTimer.current) sendTimer.current = window.setTimeout(() => { sendTimer.current = null; push(); }, REPORT_EVERY_MS);
     if (room.mode === "reps" && next >= room.target) finishMe(next);
   };
 
@@ -634,7 +664,9 @@ function RoomScreen({
   addRepRef.current = addRep;
   const camStatus = usePoseCounter(duel.local, camCount && phase === "battle", motion, () => addRepRef.current());
   // while the camera is counting, taps are ignored (unless the camera failed)
-  const tap = () => { if (camCount && camStatus !== "error") return; addRep(); };
+  const tap = () => { if (camCount && camStatus !== "error" && camStatus !== "slow") return; addRep(); };
+  // too slow on this phone: switch to taps for good (remembered), with a short message on the button
+  useEffect(() => { if (camStatus === "slow") { setCamCount(false); setCamBlocked("slow"); } }, [camStatus]);
 
   const exit = () => { exitedRef.current = true; void leaveRoom(code, player.uid); onExit(); };
   useBackClose(phase !== "battle" && phase !== "countdown", exit); // Back leaves the lobby/result, never a live match by accident
@@ -702,9 +734,31 @@ function RoomScreen({
             <p className="flex items-center justify-center gap-2 rounded-xl bg-graphite py-2.5 text-sm font-bold">
               <Zap className="h-4 w-4 text-volt" /> Rating {after}
               <span className={d > 0 ? "text-volt" : d < 0 ? "text-rose-300" : "text-ink-3"}>{d > 0 ? `+${d}` : d}</span>
+              {room.ghostHalf && <span className="text-[11px] font-medium text-ink-3">half weight vs a ghost</span>}
             </p>
           );
         })()}
+        {room.ghost && room.unrated && (
+          <p className="rounded-xl bg-graphite px-3 py-2.5 text-xs font-medium text-ink-3">
+            {room.ghostKind === "self" ? "Your own best run: no rating change." : room.ghostKind === "pacer" ? "Practice pacer: no rating change." : "Daily ghost limit reached: no rating change."}
+          </p>
+        )}
+        {won && (
+          <button onClick={() => { void tapFeedback(); setShareWin(true); }} className="flex min-h-[50px] w-full items-center justify-center gap-2 rounded-xl border border-volt bg-volt/10 text-sm font-bold text-volt active:scale-[0.98]">
+            <Share2 className="h-4 w-4" /> Share this win
+          </button>
+        )}
+        {shareWin && (
+          <FlexCardSheet
+            data={arenaCard({
+              mine: mineFinal, theirs: theirFinal, exercise: room.exercise,
+              ratingAfter: room.ratingAfter ? (role === "host" ? room.ratingAfter.host : room.ratingAfter.guest) : null,
+              ratingDelta: room.ratingDelta ? (role === "host" ? room.ratingDelta.host : room.ratingDelta.guest) : null,
+            })}
+            shareText={`I just won ${mineFinal}\u2013${theirFinal} at ${room.exercise} in the Apex Pulse Arena.`}
+            onClose={() => setShareWin(false)}
+          />
+        )}
         {room.rematchCode && room.rematchBy !== player.uid ? (
           <button onClick={() => void goRematch(room.rematchCode)} disabled={rematchBusy} className="flex min-h-[50px] w-full items-center justify-center gap-2 rounded-xl border border-volt bg-volt/10 text-sm font-bold text-volt active:scale-[0.98] disabled:opacity-60">
             {rematchBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />} {opp?.name || "Opponent"} wants a rematch. Join
@@ -716,6 +770,20 @@ function RoomScreen({
         ) : null}
         <button onClick={finishAndLog} className="min-h-[50px] w-full rounded-xl bg-volt text-sm font-bold text-void active:scale-[0.98]">Log workout &amp; finish</button>
         <button onClick={exit} className="min-h-[46px] w-full rounded-xl border border-line bg-carbon text-sm font-semibold text-ink-2">Back to Arena</button>
+        {(() => { // report the other player (never offered against a ghost)
+          const oppUid = role === "host" ? room.guestUid : room.hostUid;
+          if (room.ghost || !oppUid) return null;
+          return (
+            <>
+              {reportMsg ? <p className="text-xs text-ink-3">{reportMsg}</p> : (
+                <button onClick={() => { void tapFeedback(); setReportOpen(true); }} className="flex min-h-[44px] w-full items-center justify-center gap-1.5 text-xs font-semibold text-ink-3 active:scale-[0.98]">
+                  <Flag className="h-3.5 w-3.5" /> Report this match
+                </button>
+              )}
+              {reportOpen && <ReportSheet target={{ type: "match", targetId: code, ownerUid: oppUid, ownerName: opp?.name || "this player" }} onClose={() => setReportOpen(false)} onDone={setReportMsg} />}
+            </>
+          );
+        })()}
       </div>
     );
   }
@@ -764,9 +832,9 @@ function RoomScreen({
             </div>
             {duel.local && (
               motion ? (
-                <button onClick={() => { void tapFeedback(); setCamCount(c => !c); }} className={`flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-bold ${camCount ? "bg-volt/15 text-volt ring-1 ring-volt/40" : "border border-line bg-carbon text-ink-2"}`}>
+                <button onClick={() => { void tapFeedback(); if (camBlocked) { allowCameraAnyway(); setCamBlocked(null); setCamCount(true); return; } const next = !camCount; rememberCamChoice(next); setCamCount(next); }} className={`flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-bold ${camCount ? "bg-volt/15 text-volt ring-1 ring-volt/40" : "border border-line bg-carbon text-ink-2"}`}>
                   <Camera className="h-4 w-4" />
-                  {!camCount ? "Count reps with camera" : camStatus === "loading" ? "Starting camera counter…" : camStatus === "error" ? "Camera counting unavailable. Tap instead." : camStatus === "lost" ? "Can't see you. Step back so your body is in frame." : "Camera is counting. Tap to switch back."}
+                  {camBlocked === "slow" ? "Camera counting was too slow on this phone, so taps are on. Try again" : camBlocked === "device" ? "Taps are on for this phone. Try camera counting anyway" : !camCount ? "Count reps with camera" : camStatus === "loading" ? "Starting camera counter…" : camStatus === "error" ? "Camera counting unavailable. Tap instead." : camStatus === "lost" ? "Can't see you. Step back so your body is in frame." : "Camera is counting. Tap to switch back."}
                 </button>
               ) : (
                 <p className="text-center text-[11px] text-ink-3">Camera counting supports push-ups, squats, lunges and sit-ups. Tap for {curName}.</p>
@@ -779,7 +847,7 @@ function RoomScreen({
             >
               <Hand className="h-10 w-10" />
               <span className="text-2xl font-bold">{camCount && camStatus !== "error" ? "CAMERA COUNTING" : "TAP EACH REP"}</span>
-              <span className="text-xs font-semibold opacity-70">Count honestly. Your opponent sees it live.</span>
+              <span className="text-xs font-semibold opacity-70">{room.ghost ? "Count honestly. The ghost runs its recorded pace." : "Count honestly. Your opponent sees it live."}</span>
             </button>
           </>
         ) : (
@@ -793,7 +861,7 @@ function RoomScreen({
   }
 
   /* ----- lobby (waiting / ready) ----- */
-  const ready = room.status === "ready" && !!room.guestUid;
+  const ready = room.status === "ready" && (!!room.guestUid || room.ghost);
   return (
     <div className="mx-auto w-full max-w-md space-y-4 pb-28 text-ink animate-fade-in">
       <div className="flex items-center justify-between">
@@ -818,7 +886,7 @@ function RoomScreen({
 
       <div className="grid grid-cols-2 gap-3">
         <PlayerSlot name={room.hostName} avatar={room.hostAvatar} label="Host" you={role === "host"} />
-        <PlayerSlot name={room.guestName} avatar={room.guestAvatar} label="Challenger" you={role === "guest"} empty={!room.guestUid} />
+        <PlayerSlot name={room.guestName} avatar={room.guestAvatar} label={room.ghost ? "Ghost" : "Challenger"} you={role === "guest"} empty={!room.guestUid && !room.ghost} />
       </div>
 
       <DuelVideo local={duel.local} remote={duel.remote} state={duel.state} error={duel.error} oppName={opp?.name || "Opponent"} />
@@ -871,6 +939,9 @@ function ScoreCard({ label, name, avatar, reps, highlight }: { label: string; na
     </div>
   );
 }
+
+/** How often a player's rep count is sent during a match. */
+const REPORT_EVERY_MS = 400;
 
 const BeastDuelArena = memo(BeastDuelArenaInner);
 export default BeastDuelArena;

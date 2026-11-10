@@ -6,7 +6,7 @@
 import { LocalNotifications } from "@capacitor/local-notifications";
 
 export type NotifMode = "sound" | "silent" | "off";
-export type NotifCategory = "chats" | "groups" | "follows" | "newReels" | "likes" | "comments";
+export type NotifCategory = "chats" | "groups" | "follows" | "newReels" | "likes" | "comments" | "streak" | "challenge" | "rematch" | "crew";
 
 export interface SocialNotifPrefs {
   all: boolean; // master switch
@@ -16,6 +16,11 @@ export interface SocialNotifPrefs {
   newReels: NotifMode;
   likes: NotifMode;
   comments: NotifMode;
+  // game alerts (the server sends at most 1 per day, never 22:00-07:00 your time)
+  streak: NotifMode;
+  challenge: NotifMode;
+  rematch: NotifMode;
+  crew: NotifMode;
 }
 
 export const DEFAULT_SOCIAL_PREFS: SocialNotifPrefs = {
@@ -26,6 +31,10 @@ export const DEFAULT_SOCIAL_PREFS: SocialNotifPrefs = {
   newReels: "silent",
   likes: "silent",
   comments: "sound",
+  streak: "sound",
+  challenge: "sound",
+  rematch: "sound",
+  crew: "sound",
 };
 
 const KEY = "apex_social_notif_prefs";
@@ -50,7 +59,7 @@ export function onSocialPrefsChange(l: () => void) {
 }
 
 let channelsReady = false;
-async function ensureChannels() {
+export async function ensureChannels() {
   if (channelsReady) return;
   channelsReady = true;
   try {

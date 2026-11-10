@@ -1,3 +1,5 @@
+import { seedDemoStorage } from './lib/demo';
+seedDemoStorage(); // screenshot builds only; does nothing in a normal build
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import { MotionConfig } from 'motion/react';

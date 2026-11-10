@@ -253,14 +253,14 @@ function ToolkitSection({ profile, setProfile }: { profile?: UserProfile; setPro
         </div>
 
         <div className="mt-4 flex items-center justify-center gap-6">
-          <button onClick={() => setWaterAndSave(water - 1)} className="rounded-full bg-graphite p-2 text-ink-2 hover:text-ink transition active:scale-95">
+          <button aria-label="Remove a glass of water" onClick={() => setWaterAndSave(water - 1)} className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full bg-graphite text-ink-2 hover:text-ink transition active:scale-95">
             <MinusCircle className="h-6 w-6"/>
           </button>
           <div className="text-center">
             <p className="text-3xl font-numeric font-black text-ink">{water}<span className="text-base text-ink-3">/{waterGoal}</span></p>
             <p className="text-[11px] font-bold text-ink-2">Glasses</p>
           </div>
-          <button onClick={() => setWaterAndSave(water + 1)} className="rounded-full bg-blue-500 p-2 text-white hover:bg-blue-400 transition active:scale-95 shadow-md shadow-blue-500/25">
+          <button aria-label="Add a glass of water" onClick={() => setWaterAndSave(water + 1)} className="inline-flex min-h-[48px] min-w-[48px] items-center justify-center rounded-full bg-blue-500 text-white hover:bg-blue-400 transition active:scale-95 shadow-md shadow-blue-500/25">
             <PlusCircle className="h-6 w-6"/>
           </button>
         </div>
@@ -614,11 +614,11 @@ function CalendarSection({ logs = [] }: { logs?: WorkoutLog[] }) {
   return (
     <div className="rounded-3xl border border-line bg-carbon/80 p-5 shadow-xl backdrop-blur-xl" id="hub-calendar">
       <div className="flex items-center justify-between">
-        <button onClick={() => { tapFeedback(); setMonthOffset(m => m - 1); }} className="rounded-full p-2 bg-graphite hover:bg-graphite text-ink">
+        <button aria-label="Previous month" onClick={() => { tapFeedback(); setMonthOffset(m => m - 1); }} className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-graphite text-ink">
           <ChevronLeft className="h-4 w-4"/>
         </button>
         <h3 className="text-sm font-black text-ink">{monthLabel}</h3>
-        <button onClick={() => { tapFeedback(); setMonthOffset(m => m + 1); }} className="rounded-full p-2 bg-graphite hover:bg-graphite text-ink">
+        <button aria-label="Next month" onClick={() => { tapFeedback(); setMonthOffset(m => m + 1); }} className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-graphite text-ink">
           <ChevronRight className="h-4 w-4"/>
         </button>
       </div>

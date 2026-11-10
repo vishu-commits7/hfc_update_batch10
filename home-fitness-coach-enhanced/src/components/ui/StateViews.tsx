@@ -39,6 +39,38 @@ export function ErrorState({ message, onRetry }: { message?: string; onRetry?: (
   );
 }
 
+/** The one action in an empty state. Outlined so it never competes with the screen's main button. */
+export function EmptyAction({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-volt/60 bg-volt/10 px-5 text-sm font-bold text-volt active:scale-95">
+      {label}
+    </button>
+  );
+}
+
+/** Compact skeleton for comment and message lists inside sheets. */
+export function SkeletonLines({ rows = 4 }: { rows?: number }) {
+  return (
+    <ul className="space-y-4" aria-hidden>
+      {Array.from({ length: rows }).map((_, i) => (
+        <li key={i} className="flex items-start gap-3">
+          <span className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-graphite" />
+          <span className="flex-1 space-y-2"><span className="block h-3 w-1/3 animate-pulse rounded bg-graphite" /><span className="block h-3 w-4/5 animate-pulse rounded bg-graphite" /></span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Three-column tile skeleton for reel grids. */
+export function SkeletonGrid({ count = 6 }: { count?: number }) {
+  return (
+    <div className="grid grid-cols-3 gap-1.5" aria-hidden>
+      {Array.from({ length: count }).map((_, i) => <div key={i} className="aspect-[3/4] animate-pulse rounded-lg bg-graphite" />)}
+    </div>
+  );
+}
+
 export function SkeletonRows({ rows = 5 }: { rows?: number }) {
   return (
     <ul className="space-y-2" aria-hidden>

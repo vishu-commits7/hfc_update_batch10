@@ -1,4 +1,6 @@
 import { shareContent } from "./nativeBridge";
+import { qrMatrix } from "./qr";
+import { playStoreUrl, type ShareSource } from "./shareLink";
 /**
  * The share card.
  *
@@ -20,7 +22,7 @@ import { shareContent } from "./nativeBridge";
  * card is rendered on-device from data the app already has.
  */
 
-export type FlexCardKind = "session" | "streak" | "milestone";
+export type FlexCardKind = "session" | "streak" | "milestone" | "arena";
 export type FlexCardShape = "story" | "square";
 
 export interface FlexCardStat {
@@ -44,12 +46,22 @@ export interface FlexCardData {
   progress?: number;
   /** App name in the footer. */
   brand?: string;
+  /** Which kind of share this is, for the link's referrer. Defaults to the card kind. */
+  source?: ShareSource;
+  /** Printed top right. Only set when the user chose to show their name; never filled in by default. */
+  name?: string;
+}
+
+/** The link in the card's QR code and in the shared message. */
+export function cardLink(data: Pick<FlexCardData, "kind" | "source">): string {
+  return playStoreUrl(data.source ?? data.kind);
 }
 
 const PALETTE: Record<FlexCardKind, { accent: string; glow: string }> = {
   session: { accent: "#38d6ff", glow: "rgba(56, 214, 255, 0.45)" },
   streak: { accent: "#00e5a0", glow: "rgba(0, 229, 160, 0.45)" },
   milestone: { accent: "#ffc94a", glow: "rgba(255, 201, 74, 0.45)" },
+  arena: { accent: "#c8ff3d", glow: "rgba(200, 255, 61, 0.40)" },
 };
 
 const INK = "#f3f6fb";
@@ -181,10 +193,18 @@ export async function renderFlexCard(
   c.fillStyle = accent;
   c.fillText(brand.toUpperCase(), pad, isStory ? 190 : 120);
   setTracking(c, 0);
+  if (data.name) { // opt-in only
+    c.textAlign = "right";
+    const name = data.name.length > 24 ? `${data.name.slice(0, 23)}\u2026` : data.name;
+    c.font = `700 30px ${FONT_STACK}`;
+    c.fillStyle = INK;
+    c.fillText(name, w - pad, isStory ? 190 : 120);
+    c.textAlign = "left";
+  }
 
   /* ---- the ring ---- */
-  const ringCy = isStory ? h * 0.42 : h * 0.44;
-  const ringR = isStory ? 300 : 240;
+  const ringCy = isStory ? h * 0.42 : 400;
+  const ringR = isStory ? 300 : 210;
   const ringCx = w / 2;
 
   c.lineWidth = isStory ? 16 : 14;
@@ -219,7 +239,7 @@ export async function renderFlexCard(
   setTracking(c, 0);
 
   /* ---- hero numeral ---- */
-  const heroPx = fitText(c, data.value, ringR * 1.5, isStory ? 300 : 240);
+  const heroPx = fitText(c, data.value, ringR * 1.5, isStory ? 300 : 200);
   c.save();
   c.shadowColor = glow;
   c.shadowBlur = 70;
@@ -239,15 +259,15 @@ export async function renderFlexCard(
   const titlePx = fitText(c, data.title, w - pad * 2, isStory ? 64 : 52);
   c.fillStyle = INK;
   c.font = `800 ${titlePx}px ${FONT_STACK}`;
-  c.fillText(data.title, ringCx, ringCy + ringR + (isStory ? 150 : 120));
+  c.fillText(data.title, ringCx, ringCy + ringR + (isStory ? 150 : 88));
 
   /* ---- stat tiles ---- */
   const stats = data.stats.slice(0, 3);
   if (stats.length) {
     const gap = 24;
     const tileW = (w - pad * 2 - gap * (stats.length - 1)) / stats.length;
-    const tileH = isStory ? 190 : 160;
-    const tileY = isStory ? h - 430 : h - 300;
+    const tileH = isStory ? 190 : 150;
+    const tileY = isStory ? h - 430 : h - 345; // square: the title sits above the tiles, the QR below them
 
     stats.forEach((s, i) => {
       const x = pad + i * (tileW + gap);
@@ -274,15 +294,36 @@ export async function renderFlexCard(
     });
   }
 
-  /* ---- footer ---- */
-  c.textAlign = "center";
-  c.font = `600 26px ${FONT_STACK}`;
-  c.fillStyle = "rgba(115,127,149,0.85)";
-  c.fillText(
-    `Tracked with ${brand.toLowerCase()}`,
-    w / 2,
-    isStory ? h - 150 : h - 70,
-  );
+  /* ---- footer: app name, where to get it, and a QR code to the Play Store listing ---- */
+  const qrSize = isStory ? 190 : 150;
+  const qrX = w - pad - qrSize;
+  const qrY = isStory ? h - 222 : h - 172;
+  let qrDrawn = false;
+  try {
+    const m = qrMatrix(cardLink(data));
+    const quiet = 4; // the white border a scanner needs, in modules
+    const cell = Math.floor(qrSize / (m.length + quiet * 2));
+    const inner = cell * m.length;
+    const off = Math.floor((qrSize - inner) / 2);
+    c.fillStyle = "#ffffff";
+    roundRect(c, qrX, qrY, qrSize, qrSize, 18);
+    c.fill();
+    c.fillStyle = "#000000";
+    m.forEach((row, y) => row.forEach((dark, x) => { if (dark) c.fillRect(qrX + off + x * cell, qrY + off + y * cell, cell, cell); }));
+    qrDrawn = true;
+  } catch {
+    /* link too long for the code: the card still carries the text line */
+  }
+  c.textAlign = "left";
+  const footY = qrY + qrSize / 2;
+  setTracking(c, 4);
+  c.font = `800 ${isStory ? 30 : 24}px ${FONT_STACK}`;
+  c.fillStyle = INK;
+  c.fillText(brand.toUpperCase(), pad, footY - (isStory ? 8 : 4));
+  setTracking(c, 0);
+  c.font = `600 ${isStory ? 26 : 21}px ${FONT_STACK}`;
+  c.fillStyle = "rgba(115,127,149,0.95)";
+  c.fillText(qrDrawn ? "Free on Google Play. Scan to get the app." : "Free on Google Play: search Apex Pulse", pad, footY + (isStory ? 34 : 28));
 
   return await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
@@ -314,8 +355,10 @@ export async function shareFlexCard(
   blob: Blob,
   filename: string,
   text: string,
+  /** Link sent with the image (the Play Store listing). */
+  link: string = playStoreUrl("app"),
 ): Promise<ShareOutcome> {
-  const result = await shareContent({ title: "Apex Pulse", text, blob, fileName: filename });
+  const result = await shareContent({ title: "Apex Pulse", text, blob, fileName: filename, url: link });
   if (result === "shared") return "shared";
   if (result === "cancelled") return "cancelled";
 
@@ -436,6 +479,7 @@ export function levelCard(opts: {
   else if (opts.trophies > 0) stats.push({ label: "Trophies", value: String(opts.trophies) });
   return {
     kind: "milestone",
+    source: "level",
     eyebrow: opts.headline,
     value: String(opts.level),
     unit: "level",
@@ -443,5 +487,31 @@ export function levelCard(opts: {
     progress: 1,
     brand: opts.brand,
     stats,
+  };
+}
+
+/** An Arena win. The opponent is never named on the card. */
+export function arenaCard(opts: {
+  mine: number;
+  theirs: number;
+  exercise: string;
+  /** Rating after the match and its change, when the match was rated. */
+  ratingAfter?: number | null;
+  ratingDelta?: number | null;
+  brand?: string;
+}): FlexCardData {
+  const rated = typeof opts.ratingAfter === "number" && typeof opts.ratingDelta === "number";
+  const d = opts.ratingDelta ?? 0;
+  return {
+    kind: "arena",
+    eyebrow: "Arena win",
+    value: `${opts.mine}\u2013${opts.theirs}`,
+    unit: "reps",
+    title: opts.exercise,
+    progress: 1,
+    brand: opts.brand,
+    stats: rated
+      ? [{ label: "Rating", value: String(opts.ratingAfter) }, { label: "Change", value: d > 0 ? `+${d}` : String(d) }]
+      : [{ label: "My reps", value: String(opts.mine) }, { label: "Margin", value: `+${opts.mine - opts.theirs}` }],
   };
 }

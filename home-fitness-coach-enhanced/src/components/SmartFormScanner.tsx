@@ -254,7 +254,7 @@ export default function SmartFormScanner({
                     Reps Counted
                   </span>
                   <p className="text-xl font-bold tabular-nums text-[#E1FF00] leading-tight">
-                    {repCount} <span className="text-xs text-zinc-500 font-normal">/ 10</span>
+                    {repCount} <span className="text-xs text-zinc-400 font-normal">/ 10</span>
                   </p>
                 </div>
 

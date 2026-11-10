@@ -41,7 +41,8 @@ export async function unblockUser(target: string) {
   if (me) await deleteDoc(doc(db, "users", me, "blocks", target));
 }
 
-export type ReportReason = "spam" | "harassment" | "nudity" | "violence" | "hate" | "other";
+export type ReportReason = "spam" | "harassment" | "nudity" | "violence" | "hate" | "cheating" | "other";
+export type ReportType = "user" | "reel" | "comment" | "message" | "match" | "post" | "postComment";
 export const REPORT_REASONS: { id: ReportReason; label: string }[] = [
   { id: "spam", label: "Spam or scam" },
   { id: "harassment", label: "Harassment or bullying" },
@@ -50,9 +51,16 @@ export const REPORT_REASONS: { id: ReportReason; label: string }[] = [
   { id: "hate", label: "Hate speech" },
   { id: "other", label: "Something else" },
 ];
+/** Reasons offered when reporting an Arena match. */
+export const MATCH_REASONS: { id: ReportReason; label: string }[] = [
+  { id: "cheating", label: "Cheating or fake reps" },
+  { id: "harassment", label: "Harassment or bullying" },
+  { id: "nudity", label: "Nudity or sexual content on camera" },
+  { id: "other", label: "Something else" },
+];
 
 export function reportContent(p: {
-  type: "user" | "reel" | "comment" | "message";
+  type: ReportType;
   targetId: string;
   ownerUid?: string;
   audience?: "public" | "followers";

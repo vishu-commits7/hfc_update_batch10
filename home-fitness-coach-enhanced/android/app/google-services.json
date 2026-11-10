@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "672829940611",
+    "project_id": "fitness-app-1e5f0",
+    "storage_bucket": "fitness-app-1e5f0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:672829940611:android:043590b65163809fb38cb6",
+        "android_client_info": {
+          "package_name": "com.homefitnesscoach.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "672829940611-30587k99tv4kgjhueka0qgndceb3pc2c.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.homefitnesscoach.app",
+            "certificate_hash": "5449f95f303cfb650ff3c429158d6c9a2f529822"
+          }
+        },
+        {
+          "client_id": "672829940611-stvks1sl9fksbot6bka029fjergapb9p.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDQfzNo2EgbikJ3YQCtj5siVI4_DGDJQqQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "672829940611-stvks1sl9fksbot6bka029fjergapb9p.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

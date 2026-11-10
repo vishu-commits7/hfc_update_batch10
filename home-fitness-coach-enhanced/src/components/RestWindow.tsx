@@ -234,7 +234,7 @@ function RestWindowInner({
           <motion.button
             type="button"
             onClick={() => onAdjustTime(-10)}
-            className="flex h-11 items-center gap-1 rounded-xl bg-white/8 px-4 text-xs font-extrabold text-white/70 border border-line hover:bg-white/14 hover:text-ink transition-colors"
+            className="flex min-h-[44px] items-center gap-1 rounded-xl bg-white/8 px-4 text-xs font-extrabold text-white/70 border border-line hover:bg-white/14 hover:text-ink transition-colors"
             title="Decrease rest by 10 seconds"
           >
             <Minus className="h-3.5 w-3.5" /> 10s
@@ -266,7 +266,7 @@ function RestWindowInner({
           <motion.button
             type="button"
             onClick={() => onAdjustTime(20)}
-            className="flex h-11 items-center gap-1 rounded-xl bg-emerald-500/12 px-4 text-xs font-extrabold text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/22 transition-colors"
+            className="flex min-h-[44px] items-center gap-1 rounded-xl bg-emerald-500/12 px-4 text-xs font-extrabold text-emerald-400 border border-emerald-500/25 hover:bg-emerald-500/22 transition-colors"
             title="Add 20 seconds recovery"
           >
             <Plus className="h-3.5 w-3.5" /> 20s
@@ -286,7 +286,7 @@ function RestWindowInner({
               <span className="text-[11px] font-extrabold uppercase tracking-wider text-cyan-400">
                 Breathing Cadence
               </span>
-              <span className="text-[11px] font-bold text-white/40">({breathCountdown}s)</span>
+              <span className="text-[11px] font-bold text-white/60">({breathCountdown}s)</span>
             </div>
             <p className="text-xs font-bold text-ink truncate mt-0.5">
               {breathPhase === "inhale" && "Inhale deeply through nose"}

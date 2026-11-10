@@ -7,7 +7,7 @@
  *   chats/{uidA_uidB (sorted)}        { members:[a,b], lastMessage, lastSender, updatedAt }
  *   chats/{id}/messages/{auto}        { from, text, createdAt }
  *   reelComments/{reelId}/items/{id}  { uid, name, handle, avatarUrl, text, createdAt, likedBy[], likeCount }
- *   reelLikes/{reelId}/users/{uid}    { createdAt }
+ *   reelLikes/{reelId}/users/{uid}    { createdAt, uid }
  *   rooms/{CODE}                      live arena room (see ArenaRoom)
  *
  * No Firebase Storage is needed for any of this — avatars are small JPEG data
@@ -17,8 +17,10 @@ import type { User } from "firebase/auth";
 import {
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, onSnapshot,
   query, where, orderBy, limit as fsLimit, serverTimestamp, writeBatch, runTransaction,
-  getCountFromServer, arrayUnion, arrayRemove, increment, Timestamp,
+  getCountFromServer, arrayUnion, arrayRemove, increment, Timestamp, limitToLast,
 } from "firebase/firestore";
+import { sharedQuery } from "./sharedQuery";
+import { DEMO, demoSubscribeRoom } from "./demo";
 import { db, auth } from "./firebase";
 import { callFn } from "./functions";
 
@@ -194,6 +196,8 @@ export interface FollowEdges {
   incoming: Map<string, FollowStatus>;
 }
 
+/** Most follow links loaded for one account in each direction. Without a cap, an account with 20,000 followers reads 20,000 documents on every app start. */
+const FOLLOW_EDGE_CAP = 1000;
 const followId = (follower: string, followee: string) => `${follower}_${followee}`;
 
 export function subscribeFollowEdges(me: string, cb: (e: FollowEdges) => void, onError?: (e: unknown) => void) {
@@ -201,7 +205,7 @@ export function subscribeFollowEdges(me: string, cb: (e: FollowEdges) => void, o
   const emit = () => cb({ outgoing: new Map(edges.outgoing), incoming: new Map(edges.incoming) });
 
   const u1 = onSnapshot(
-    query(collection(db, "follows"), where("followerUid", "==", me)),
+    query(collection(db, "follows"), where("followerUid", "==", me), fsLimit(FOLLOW_EDGE_CAP)),
     snap => {
       edges.outgoing = new Map(snap.docs.map(d => [d.data().followeeUid as string, d.data().status as FollowStatus]));
       emit();
@@ -209,7 +213,7 @@ export function subscribeFollowEdges(me: string, cb: (e: FollowEdges) => void, o
     err => onError?.(err),
   );
   const u2 = onSnapshot(
-    query(collection(db, "follows"), where("followeeUid", "==", me)),
+    query(collection(db, "follows"), where("followeeUid", "==", me), fsLimit(FOLLOW_EDGE_CAP)),
     snap => {
       edges.incoming = new Map(snap.docs.map(d => [d.data().followerUid as string, d.data().status as FollowStatus]));
       emit();
@@ -345,9 +349,10 @@ export function subscribeChats(me: string, cb: (c: ChatSummary[]) => void, onErr
   );
 }
 
-export function subscribeMessages(chatId: string, cb: (m: ChatMessage[]) => void, onError?: (e: unknown) => void) {
+/** The newest `max` messages, oldest first. Opening a chat used to read up to 300 every time. */
+export function subscribeMessages(chatId: string, cb: (m: ChatMessage[]) => void, onError?: (e: unknown) => void, max = 50) {
   return onSnapshot(
-    query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "asc"), fsLimit(300)),
+    query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "asc"), limitToLast(max)),
     { includeMetadataChanges: true },
     snap => {
       cb(
@@ -398,9 +403,9 @@ export interface ReelCommentDoc {
   likeCount: number;
 }
 
-export function subscribeReelComments(reelId: string, cb: (c: ReelCommentDoc[]) => void, onError?: (e: unknown) => void) {
+export function subscribeReelComments(reelId: string, cb: (c: ReelCommentDoc[]) => void, onError?: (e: unknown) => void, max = 40) {
   return onSnapshot(
-    query(collection(db, "reelComments", reelId, "items"), orderBy("createdAt", "desc"), fsLimit(150)),
+    query(collection(db, "reelComments", reelId, "items"), orderBy("createdAt", "desc"), fsLimit(max)),
     { includeMetadataChanges: true },
     snap => {
       cb(
@@ -469,7 +474,7 @@ export function recordReelView(reelId: string) {
 
 export async function setReelLike(reelId: string, uid: string, liked: boolean) {
   const ref = doc(db, "reelLikes", reelId, "users", uid);
-  if (liked) await setDoc(ref, { createdAt: serverTimestamp() });
+  if (liked) await setDoc(ref, { createdAt: serverTimestamp(), uid });
   else await deleteDoc(ref);
 }
 
@@ -508,6 +513,14 @@ export interface ArenaRoom {
   /** Elo change after the match, per side (server-written) */
   ratingDelta: { host: number; guest: number } | null;
   ratingAfter: { host: number; guest: number } | null;
+  /** ghost duel: the opponent is a recorded run (anonymous name, guestUid stays null) */
+  ghost: boolean;
+  ghostKind: "peer" | "self" | "pacer" | null;
+  ghostTl: number[];
+  /** rating moved at half weight against this ghost */
+  ghostHalf: boolean;
+  /** no rating change (practice pacer, your own run, or the daily ghost limit) */
+  unrated: boolean;
 }
 
 export interface RoomPlayer { uid: string; name: string; avatarUrl: string | null }
@@ -547,6 +560,11 @@ function roomFrom(code: string, x: Record<string, any>): ArenaRoom {
     rematchBy: x.rematchBy || null,
     ratingDelta: x.ratingDelta && typeof x.ratingDelta === "object" ? { host: Number(x.ratingDelta.host || 0), guest: Number(x.ratingDelta.guest || 0) } : null,
     ratingAfter: x.ratingAfter && typeof x.ratingAfter === "object" ? { host: Number(x.ratingAfter.host || 0), guest: Number(x.ratingAfter.guest || 0) } : null,
+    ghost: x.ghost === true,
+    ghostKind: x.ghostKind === "peer" || x.ghostKind === "self" || x.ghostKind === "pacer" ? x.ghostKind : null,
+    ghostTl: Array.isArray(x.ghostTl) ? x.ghostTl.map((n: unknown) => Number(n) || 0) : [],
+    ghostHalf: x.ghostHalf === true,
+    unrated: x.unrated === true,
   };
 }
 
@@ -631,6 +649,7 @@ export async function forceFinishRoom(code: string) {
 }
 
 export function subscribeRoom(code: string, cb: (r: ArenaRoom | null) => void, onError?: (e: unknown) => void) {
+  if (DEMO) return demoSubscribeRoom(cb);
   return onSnapshot(
     doc(db, "rooms", code),
     snap => cb(snap.exists() ? roomFrom(code, snap.data({ serverTimestamps: "estimate" }) as Record<string, any>) : null),
@@ -639,8 +658,9 @@ export function subscribeRoom(code: string, cb: (r: ArenaRoom | null) => void, o
 }
 
 export function subscribeOpenRooms(myUid: string, cb: (r: ArenaRoom[]) => void, onError?: (e: unknown) => void) {
+  if (DEMO) { queueMicrotask(() => cb([])); return () => {}; }
   return onSnapshot(
-    query(collection(db, "rooms"), where("status", "==", "waiting"), where("visibility", "==", "public"), fsLimit(40)),
+    query(collection(db, "rooms"), where("status", "==", "waiting"), where("visibility", "==", "public"), fsLimit(20)),
     snap => {
       const cutoff = Date.now() - 45 * 60 * 1000;
       cb(
@@ -655,24 +675,39 @@ export function subscribeOpenRooms(myUid: string, cb: (r: ArenaRoom[]) => void, 
 }
 
 /** Public matches in progress that anyone can watch (scores only). */
+/**
+ * Polled, not live. A live room document changes several times a second (every rep), and a listener is billed
+ * one read for each change of each room, for everyone looking at the list. The list only needs "who is playing",
+ * so it is fetched every 20 seconds (10 rooms at most). Opening a room to watch still shows live scores.
+ */
+export const LIVE_ROOMS_POLL_MS = 20_000;
 export function subscribeLiveRooms(cb: (r: ArenaRoom[]) => void, onError?: (e: unknown) => void) {
-  return onSnapshot(
-    query(collection(db, "rooms"), where("status", "==", "live"), where("visibility", "==", "public"), fsLimit(20)),
-    snap => {
+  if (DEMO) { queueMicrotask(() => cb([])); return () => {}; }
+  let stopped = false;
+  const load = async () => {
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return; // nothing to show while the app is in the background
+    try {
+      const snap = await getDocs(query(collection(db, "rooms"), where("status", "==", "live"), where("visibility", "==", "public"), fsLimit(10)));
+      if (stopped) return;
       const cutoff = Date.now() - 15 * 60 * 1000;
       cb(snap.docs
         .map(d => roomFrom(d.id, d.data({ serverTimestamps: "estimate" }) as Record<string, any>))
         .filter(r => (r.startedAt ?? r.createdAt) > cutoff)
         .sort((a, b) => (b.startedAt ?? 0) - (a.startedAt ?? 0)));
-    },
-    err => onError?.(err),
-  );
+    } catch (e) { if (!stopped) onError?.(e); }
+  };
+  void load();
+  const id = setInterval(() => void load(), LIVE_ROOMS_POLL_MS);
+  return () => { stopped = true; clearInterval(id); };
 }
 
 /** Wins are recorded by the server referee; kept as a no-op for older call sites. */
 export async function recordArenaResult(_uid: string, _won: boolean) { /* server-side */ }
 
 export function subscribeArenaLeaderboard(cb: (p: SocialProfile[]) => void, onError?: (e: unknown) => void) {
+  return sharedQuery<SocialProfile[]>("arena-wins", (emit, fail) => rawArenaLeaderboard(emit, fail), cb, onError);
+}
+function rawArenaLeaderboard(cb: (p: SocialProfile[]) => void, onError?: (e: unknown) => void) {
   return onSnapshot(
     query(collection(db, "users"), orderBy("arenaWins", "desc"), fsLimit(25)),
     snap => cb(snap.docs.map(d => normalizeProfile(d.id, d.data() as Record<string, any>)).filter(p => (p.arenaWins || 0) > 0)),

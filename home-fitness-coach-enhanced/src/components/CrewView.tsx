@@ -2,7 +2,7 @@ import OneTimeHint from "./OneTimeHint";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Copy, Check, Crown, Loader2, LogOut, Send, Share2, Target, UserMinus, Users } from "lucide-react";
 import Avatar from "./ui/Avatar";
-import { SkeletonRows } from "./ui/StateViews";
+import { ErrorState, SkeletonRows } from "./ui/StateViews";
 import { shareContent } from "../lib/nativeBridge";
 import {
   crewCreate, crewJoin, crewKick, crewLeave, crewSend, crewSetGoal, currentWeekId, useCrew, useCrewId,
@@ -11,8 +11,8 @@ import { friendlySocialError } from "../lib/social";
 import { tapFeedback } from "../lib/haptics";
 
 export default function CrewView({ meUid, meName }: { meUid: string; meName: string }) {
-  const crewId = useCrewId(meUid);
-  const { crew, members, msgs } = useCrew(crewId);
+  const { id: crewId, failed: idFailed, retry: retryId } = useCrewId(meUid);
+  const { crew, members, msgs, failed: crewFailed, sideFailed, retry: retryCrew } = useCrew(crewId);
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -36,6 +36,7 @@ export default function CrewView({ meUid, meName }: { meUid: string; meName: str
     try { void tapFeedback(); await fn(); } catch (e) { setErr(friendlySocialError(e)); } finally { setBusy(false); }
   };
 
+  if (idFailed || crewFailed) return <ErrorState message="Couldn't load your crew." onRetry={() => { retryId(); retryCrew(); }} />;
   if (crewId === undefined) return <SkeletonRows rows={4} />;
 
   if (crewId && !crew) return <SkeletonRows rows={4} />;
@@ -87,7 +88,7 @@ export default function CrewView({ meUid, meName }: { meUid: string; meName: str
           </div>
         )}
         <div className="mt-3 grid grid-cols-2 gap-2">
-          <button onClick={async () => { try { await navigator.clipboard.writeText(crew.inviteCode); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* ignore */ } }} className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-line bg-graphite text-xs font-bold active:scale-95">
+          <button aria-label={`Copy invite code ${crew.inviteCode}`} onClick={async () => { try { await navigator.clipboard.writeText(crew.inviteCode); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* ignore */ } }} className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-line bg-graphite text-xs font-bold active:scale-95">
             {copied ? <Check className="h-4 w-4 text-volt" /> : <Copy className="h-4 w-4" />} {crew.inviteCode}
           </button>
           <button onClick={() => void shareContent({ title: "Join my crew on Apex Pulse", text: `Join my crew "${crew.name}" on Apex Pulse. Open Arena > Crew and enter the invite code ${crew.inviteCode}.` })} className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-line bg-graphite text-xs font-bold active:scale-95"><Share2 className="h-4 w-4" /> Invite</button>
@@ -113,7 +114,8 @@ export default function CrewView({ meUid, meName }: { meUid: string; meName: str
       <section className="rounded-2xl border border-line bg-carbon p-3">
         <h3 className="px-1 pb-2 text-xs font-bold uppercase tracking-wide text-ink-3">Crew chat</h3>
         <div className="max-h-72 space-y-2 overflow-y-auto px-1">
-          {msgs.length === 0 && <p className="py-6 text-center text-xs text-ink-3">No messages yet. Say hi.</p>}
+          {sideFailed && msgs.length === 0 && <button onClick={retryCrew} className="mx-auto flex min-h-[44px] items-center rounded-xl border border-line px-4 text-xs font-bold text-ink-2">Couldn't load the chat. Try again</button>}
+          {!sideFailed && msgs.length === 0 && <p className="py-6 text-center text-xs text-ink-3">No messages yet. Say hi.</p>}
           {msgs.map(m => (
             <div key={m.id} className={`flex ${m.from === meUid ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${m.from === meUid ? "bg-volt text-void" : "bg-graphite text-ink"}`}>

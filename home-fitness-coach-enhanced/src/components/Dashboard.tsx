@@ -361,7 +361,7 @@ function DashboardInner({
           <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-400">
             Daily Focus
           </span>
-          <span className="text-[11px] font-medium text-zinc-500">Coach Highlights</span>
+          <span className="text-[11px] font-medium text-zinc-400">Coach Highlights</span>
         </div>
         <div className="flex gap-3 overflow-x-auto pb-1 no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
           {MOTIVATION_STORIES.map((st, idx) => (
@@ -478,6 +478,7 @@ function DashboardInner({
               <div className="flex items-center gap-2.5">
                 <MagneticButton
                   size="lg"
+                  variant="outline"
                   tone={goalHit ? "emerald" : "cyan"}
                   block
                   magnet={6}
@@ -698,7 +699,7 @@ function DashboardInner({
                   tapFeedback();
                   if (featured) onSelectWorkout(featured);
                 }}
-                className="flex min-h-[44px] items-center gap-1.5 rounded-xl bg-[#E1FF00] px-4 py-2.5 text-xs font-bold text-black shadow-sm transition-transform active:scale-95 cursor-pointer"
+                className="flex min-h-[44px] items-center gap-1.5 rounded-xl border border-[#E1FF00]/50 bg-[#E1FF00]/10 px-4 py-2.5 text-xs font-bold text-[#E1FF00] transition-transform active:scale-95 cursor-pointer"
               >
                 <Play className="h-3.5 w-3.5 fill-current" />
                 Start Now
@@ -753,6 +754,7 @@ function DashboardInner({
             <div className="mt-4 flex justify-center">
               <MagneticButton
                 size="md"
+                variant="outline"
                 tone="cyan"
                 onClick={() => {
                   tapFeedback();
@@ -804,6 +806,7 @@ function DashboardInner({
               <div className="mt-5 flex items-center gap-3 pt-1">
                 <MagneticButton
                   size="md"
+                  variant="outline"
                   tone="cyan"
                   onClick={() => {
                     tapFeedback();
@@ -811,7 +814,7 @@ function DashboardInner({
                   }}
                 >
                   <Sparkles className="h-3.5 w-3.5" />
-                  Start Session
+                  Build a session
                 </MagneticButton>
                 <button
                   type="button"

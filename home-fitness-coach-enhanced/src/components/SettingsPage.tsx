@@ -15,6 +15,7 @@ import {
 } from "../lib/notifications";
 import NotificationSettings from "./NotificationSettings";
 import { BlockedUsersScreen, ModerationScreen, DeleteAccountDialog } from "./SafetyScreens";
+import { ContentPolicySheet } from "./ContentPolicy";
 import { callFn } from "../lib/functions";
 import { setAccountPublic } from "../lib/social";
 import { useMyIdentity } from "../lib/useSocial";
@@ -24,6 +25,8 @@ import { isHapticsEnabled, setHapticsEnabled, tapFeedback } from "../lib/haptics
 import { WorkoutLog } from "../types";
 import { computeAnalytics, trainedToday } from "../lib/analytics";
 import { planNudge, shouldNudgeToday } from "../lib/smartNudge";
+import { useT, useLang } from "../i18n";
+import LanguageSwitch from "./LanguageSwitch";
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -70,6 +73,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, themeMode, onSetThemeMode, onEditProfile, onResetAllData }: SettingsPageProps) {
+  const t = useT();
+  const [lang] = useLang();
   const { user } = useAuthUser();
   // The tap that opens a modal can also land on the freshly-mounted backdrop
   // (ghost click on touch screens) and close it instantly; ignore that.
@@ -91,6 +96,7 @@ export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, them
   }, [user?.uid]); // eslint-disable-line react-hooks/exhaustive-deps
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
+  const [showPolicy, setShowPolicy] = useState(false);
   const [showNotifSettings, setShowNotifSettings] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [socialPrefs, setSocialPrefs] = useState<SocialNotifPrefs>(() => loadSocialPrefs());
@@ -132,7 +138,7 @@ export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, them
     if (turningOn) {
       const granted = await requestNotificationPermission();
       if (!granted) {
-        setToast("Enable notifications for this app in your phone settings to use reminders.");
+        setToast(t("set.notifsDenied"));
         return;
       }
     }
@@ -184,9 +190,9 @@ export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, them
       await setAccountPublic(user.uid, next);
       await saveUserProfile(user.uid, { public: next });
       if (profile) setProfile({ ...profile, public: next });
-      setToast(next ? "Account is now Public" : "Account is now Private");
+      setToast(next ? t("set.privacyToastPublic") : t("set.privacyToastPrivate"));
     } catch {
-      setToast("Couldn't change privacy. Check your connection.");
+      setToast(t("set.privacyToastFail"));
     }
   };
 
@@ -202,9 +208,9 @@ export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, them
   const shareApp = async () => {
     const result = await shareContent({
       title: "Apex Pulse",
-      text: "I'm training with Apex Pulse — check it out!",
+      text: t("set.shareText"),
     });
-    if (result === "copied") setToast("Copied — paste it anywhere to share!");
+    if (result === "copied") setToast(t("set.shareCopied"));
   };
 
   const handleExportBackup = async () => {
@@ -241,25 +247,25 @@ export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, them
         <button
           onClick={onBack}
           className="group flex h-10 w-10 items-center justify-center rounded-full border border-line bg-graphite text-ink-2 shadow-xs transition-all hover:border-line hover:bg-graphite"
-          title="Back"
+          title={t("common.back")}
         >
           <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
         </button>
         <div>
           <span className="text-[11px] font-extrabold uppercase tracking-widest text-cyan-400">APEX PULSE</span>
-          <h1 className="font-sans text-2xl font-black uppercase tracking-tight text-ink">Settings</h1>
+          <h1 className="font-sans text-2xl font-black uppercase tracking-tight text-ink">{t("set.title")}</h1>
         </div>
       </div>
 
       <div>
-        <Section title="Account">
+        <Section title={t("set.account")}>
           {user ? (
             <>
-              <Row icon={<UserCircle2 className="h-4 w-4" />} label={profile?.displayName || "Your profile"} sub={user.email || undefined} onClick={onOpenCommunity} />
+              <Row icon={<UserCircle2 className="h-4 w-4" />} label={profile?.displayName || t("set.yourProfile")} sub={user.email || undefined} onClick={onOpenCommunity} />
               <Row
                 icon={<Lock className="h-4 w-4" />}
-                label={resetBusy ? "Sending reset link..." : resetSent ? "Reset link sent" : "Reset password"}
-                sub="We'll email you a link"
+                label={resetBusy ? t("set.resetSending") : resetSent ? t("set.resetSent") : t("set.resetPw")}
+                sub={t("set.resetSub")}
                 onClick={resetBusy || resetSent ? undefined : sendReset}
                 right={resetBusy ? <Loader2 className="h-4 w-4 animate-spin text-ink-3" /> : resetSent ? <CheckCircle2 className="h-4 w-4 text-emerald-500" /> : undefined}
               />
@@ -269,14 +275,14 @@ export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, them
                     {acctPublic ? <Globe className="h-4 w-4" /> : <LockIcon className="h-4 w-4" />}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-ink">Account privacy</p>
+                    <p className="text-sm font-bold text-ink">{t("set.privacy")}</p>
                     <p className="mt-0.5 text-xs text-ink-2 leading-snug">
-                      {acctPublic ? "Anyone can follow you instantly and see your reels and posts." : "People must request to follow. Only approved followers see your reels."}
+                      {acctPublic ? t("set.privacyPublic") : t("set.privacyPrivate")}
                     </p>
                   </div>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-1.5 rounded-xl bg-graphite p-1">
-                  {([[true, "Public"], [false, "Private"]] as const).map(([val, label]) => (
+                  {([[true, t("set.public")], [false, t("set.private")]] as const).map(([val, label]) => (
                     <button
                       key={label}
                       onClick={() => void setPrivacy(val)}
@@ -287,29 +293,36 @@ export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, them
                   ))}
                 </div>
               </div>
-              <Row icon={<LogOut className="h-4 w-4" />} label="Log out" onClick={() => logOut()} />
+              <Row icon={<LogOut className="h-4 w-4" />} label={t("set.logout")} onClick={() => logOut()} />
             </>
           ) : (
             <Row
               icon={<UserCircle2 className="h-4 w-4 text-cyan-600" />}
-              label="Log In or Sign Up"
-              sub="1-Tap Google (Gmail) or Email & Password sync"
+              label={t("set.login")}
+              sub={t("set.loginSub")}
               onClick={onOpenAuth || onOpenCommunity}
             />
           )}
         </Section>
 
-        <Section title="App">
-          <Row icon={<Dumbbell className="h-4 w-4" />} label="Fitness profile" sub="Goal, level, equipment" onClick={onEditProfile} />
+        <Section title={t("set.app")}>
+          <div className="flex items-center gap-3 border-b border-line px-4 py-3.5">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-ink">{t("lang.title")}</p>
+              <p className="mt-0.5 text-xs text-ink-3">{t("lang.sub")}</p>
+            </div>
+            <LanguageSwitch />
+          </div>
+          <Row icon={<Dumbbell className="h-4 w-4" />} label={t("set.fitnessProfile")} sub={t("set.fitnessProfileSub")} onClick={onEditProfile} />
           <div className="flex items-center gap-3 border-b border-line px-4 py-3.5">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-graphite text-ink-2">
               {themeMode === "dark" ? <Moon className="h-4 w-4" /> : <SunMedium className="h-4 w-4" />}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold text-ink">Appearance</p>
-              <p className="mt-0.5 text-xs text-ink-3">System follows your phone</p>
+              <p className="text-sm font-bold text-ink">{t("set.appearance")}</p>
+              <p className="mt-0.5 text-xs text-ink-3">{t("set.appearanceSub")}</p>
             </div>
-            <div role="radiogroup" aria-label="Appearance" className="flex shrink-0 rounded-xl bg-graphite p-0.5">
+            <div role="radiogroup" aria-label={t("set.appearance")} className="flex shrink-0 rounded-xl bg-graphite p-0.5">
               {(["system", "light", "dark"] as const).map((m) => (
                 <button
                   key={m}
@@ -319,63 +332,70 @@ export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, them
                   onClick={() => { tapFeedback(); onSetThemeMode(m); }}
                   className={`min-h-[32px] rounded-[10px] px-2.5 text-[11px] font-bold capitalize transition-colors ${themeMode === m ? "bg-carbon text-ink shadow-sm" : "text-ink-3"}`}
                 >
-                  {m}
+                  {t(`set.theme.${m}` as "set.theme.system")}
                 </button>
               ))}
             </div>
           </div>
-          <Row icon={<Share2 className="h-4 w-4" />} label="Share this app" sub="Tell a friend" onClick={shareApp} />
-          <Row icon={<Vibrate className="h-4 w-4" />} label="Haptic feedback" sub="Vibration on taps, likes and milestones" onClick={toggleHaptics} right={<Toggle on={hapticsOn} />} />
+          <Row icon={<Share2 className="h-4 w-4" />} label={t("set.share")} sub={t("set.shareSub")} onClick={shareApp} />
+          <Row icon={<Vibrate className="h-4 w-4" />} label={t("set.haptic")} sub={t("set.hapticSub")} onClick={toggleHaptics} right={<Toggle on={hapticsOn} />} />
         </Section>
 
-        <Section title="Sound & Music">
-          <Row icon={muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />} label="Coach voice & chimes" onClick={toggleMute} right={<Toggle on={!muted} />} />
-          <Row icon={lofiOn ? <Music className="h-4 w-4" /> : <MusicOff className="h-4 w-4" />} label="Lo-fi ambience" sub="Soothing background music" onClick={toggleLofi} right={<Toggle on={lofiOn} />} />
+        <Section title={t("set.soundMusic")}>
+          <Row icon={muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />} label={t("set.coachVoice")} onClick={toggleMute} right={<Toggle on={!muted} />} />
+          <Row icon={lofiOn ? <Music className="h-4 w-4" /> : <MusicOff className="h-4 w-4" />} label={t("set.lofi")} sub={t("set.lofiSub")} onClick={toggleLofi} right={<Toggle on={lofiOn} />} />
         </Section>
 
-        <Section title="Notifications">
+        <Section title={t("set.notifs")}>
           <Row
             icon={socialPrefs.all ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4" />}
-            label="Notifications"
-            sub="Messages, activity and reminders"
+            label={t("set.notifs")}
+            sub={t("set.notifsSub")}
             onClick={() => setShowNotifSettings(true)}
           />
         </Section>
 
         {user && (
-          <Section title="Safety">
-            <Row icon={<Ban className="h-4 w-4" />} label="Blocked users" sub="People you've blocked" onClick={() => setShowBlocked(true)} />
-            {isMod && <Row icon={<ShieldAlert className="h-4 w-4 text-amber-400" />} label="Moderation queue" sub="Review reported reels, comments and users" onClick={() => setShowMod(true)} />}
+          <Section title={t("set.safety")}>
+            <Row icon={<Ban className="h-4 w-4" />} label={t("set.blocked")} sub={t("set.blockedSub")} onClick={() => setShowBlocked(true)} />
+            {isMod && <Row icon={<ShieldAlert className="h-4 w-4 text-amber-400" />} label={t("set.mod")} sub={t("set.modSub")} onClick={() => setShowMod(true)} />}
           </Section>
         )}
 
-        <Section title="Legal & Compliance">
+        <Section title={t("set.legal")}>
           <Row
             icon={<ShieldCheck className="h-4 w-4 text-volt" />}
-            label="Privacy Policy"
-            sub="How your workout and biometric data is stored & protected"
+            label={t("set.privacyPolicy")}
+            sub={t("set.privacyPolicySub")}
             onClick={() => { modalOpenedAt.current = Date.now(); setShowPrivacy(true); }}
           />
           <Row
             icon={<FileText className="h-4 w-4 text-ink-3" />}
-            label="Terms of Service"
-            sub="Usage guidelines & athlete standards"
+            label={t("set.terms")}
+            sub={t("set.termsSub")}
             onClick={() => { modalOpenedAt.current = Date.now(); setShowTerms(true); }}
           />
+          <Row
+            icon={<ShieldCheck className="h-4 w-4 text-ink-3" />}
+            label={t("set.policy")}
+            sub={t("set.policySub")}
+            onClick={() => setShowPolicy(true)}
+          />
+        {lang === "hi" && <p className="px-4 py-2 text-[11px] text-ink-3">{t("set.legalEnglishNote")}</p>}
         </Section>
 
-        <Section title="Data & Account">
-          <Row icon={<Download className="h-4 w-4" />} label="Backup my data" sub="Save everything to a file — keep it somewhere safe" onClick={handleExportBackup} />
-          <Row icon={<Upload className="h-4 w-4" />} label="Restore from backup" sub="Bring back data from a saved backup file" onClick={() => backupFileRef.current?.click()} />
+        <Section title={t("set.data")}>
+          <Row icon={<Download className="h-4 w-4" />} label={t("set.backup")} sub={t("set.backupSub")} onClick={handleExportBackup} />
+          <Row icon={<Upload className="h-4 w-4" />} label={t("set.restore")} sub={t("set.restoreSub")} onClick={() => backupFileRef.current?.click()} />
           <input ref={backupFileRef} type="file" accept="application/json" onChange={handlePickBackupFile} className="hidden" />
           {!confirmClear ? (
-            <Row icon={<Trash2 className="h-4 w-4 text-amber-400" />} label="Reset all training data" sub="Erase local workouts, logs and progress" onClick={() => setConfirmClear(true)} />
+            <Row icon={<Trash2 className="h-4 w-4 text-amber-400" />} label={t("set.resetAll")} sub={t("set.resetAllSub")} onClick={() => setConfirmClear(true)} />
           ) : (
             <div className="px-4 py-3.5 border-t border-line">
-              <p className="mb-3 text-xs font-bold text-ink-2">This permanently erases your saved workouts, logs and progress on this device. Are you sure?</p>
+              <p className="mb-3 text-xs font-bold text-ink-2">{t("set.resetConfirm")}</p>
               <div className="flex gap-2">
-                <button onClick={() => setConfirmClear(false)} className="flex-1 rounded-xl bg-graphite py-2.5 text-xs font-black text-ink-2 hover:bg-graphite cursor-pointer">Cancel</button>
-                <button onClick={() => { onResetAllData(); setConfirmClear(false); setToast("All training data reset."); }} className="flex-1 rounded-xl bg-rose-600 hover:bg-rose-500 py-2.5 text-xs font-black text-white cursor-pointer">Yes, reset</button>
+                <button onClick={() => setConfirmClear(false)} className="flex-1 rounded-xl bg-graphite py-2.5 text-xs font-black text-ink-2 hover:bg-graphite cursor-pointer">{t("common.cancel")}</button>
+                <button onClick={() => { onResetAllData(); setConfirmClear(false); setToast(t("set.resetDone")); }} className="flex-1 rounded-xl bg-rose-600 hover:bg-rose-500 py-2.5 text-xs font-black text-white cursor-pointer">{t("set.resetYes")}</button>
               </div>
             </div>
           )}
@@ -383,8 +403,8 @@ export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, them
           {user && (
             <Row
               icon={<Trash2 className="h-4 w-4 text-rose-500" />}
-              label="Delete account"
-              sub="Permanently delete your profile, reels, chats, follows and cloud data"
+              label={t("set.deleteAccount")}
+              sub={t("set.deleteAccountSub")}
               onClick={() => setConfirmDeleteAccount(true)}
             />
           )}
@@ -400,7 +420,7 @@ export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, them
             void logOut().catch(() => {});
             onResetAllData();
             setConfirmDeleteAccount(false);
-            setToast("Your account and cloud data were deleted.");
+            setToast(t("set.deletedToast"));
             onBack();
           }}
         />
@@ -432,6 +452,7 @@ export default function SettingsPage({ onBack, onOpenCommunity, onOpenAuth, them
           updateNotifPrefs={updateNotifPrefs}
         />
       )}
+      {showPolicy && <ContentPolicySheet onClose={() => setShowPolicy(false)} />}
       {showPrivacy && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" onClick={() => { if (Date.now() - modalOpenedAt.current > 450) setShowPrivacy(false); }}>
           <div className="w-full max-w-md rounded-2xl bg-carbon border border-line p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>

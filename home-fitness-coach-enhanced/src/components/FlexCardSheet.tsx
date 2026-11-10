@@ -3,12 +3,15 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { Check, Download, Share2, X } from "lucide-react";
 import {
+  cardLink,
   renderFlexCard,
   shareFlexCard,
   type FlexCardData,
   type FlexCardShape,
 } from "../lib/flexCard";
 import { successFeedback, tapFeedback } from "../lib/haptics";
+import { getShowNameOnCards, setShowNameOnCards } from "../lib/shareLink";
+import { useMyIdentity } from "../lib/useSocial";
 import { MagneticButton } from "./ui";
 import { dialogVariants, scrimVariants } from "../design/motion";
 
@@ -26,7 +29,7 @@ import { dialogVariants, scrimVariants } from "../design/motion";
  * tab bar at the document root.
  */
 export default function FlexCardSheet({
-  data,
+  data: baseData,
   shareText,
   onClose,
 }: {
@@ -36,6 +39,10 @@ export default function FlexCardSheet({
   onClose: () => void;
 }) {
   const [shape, setShape] = useState<FlexCardShape>("story");
+  // The name is only printed when the user turns this on (remembered on this phone). Off by default.
+  const me = useMyIdentity();
+  const [showName, setShowName] = useState(getShowNameOnCards);
+  const data: FlexCardData = { ...baseData, name: showName && me.name ? me.name : undefined };
   const [preview, setPreview] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<"shared" | "downloaded" | null>(null);
@@ -101,6 +108,7 @@ export default function FlexCardSheet({
         blob,
         `${data.kind}-${Date.now()}.png`,
         shareText,
+        cardLink(data),
       );
       if (outcome !== "cancelled") {
         successFeedback();
@@ -171,6 +179,21 @@ export default function FlexCardSheet({
               </button>
             ))}
           </div>
+
+          {me.name && (
+            <label className="mx-5 mt-3 flex min-h-[44px] cursor-pointer items-center gap-3 rounded-lg2 border border-line px-3 py-2">
+              <input
+                type="checkbox"
+                checked={showName}
+                onChange={(e) => { tapFeedback(); setShowName(e.target.checked); setShowNameOnCards(e.target.checked); }}
+                className="h-5 w-5 accent-[var(--volt)]"
+              />
+              <span className="min-w-0">
+                <span className="block text-[12px] font-bold text-ink">Show my name on the card</span>
+                <span className="block truncate text-[11px] text-ink-4">{showName ? `Prints "${me.name}"` : "Off: the card has no name on it"}</span>
+              </span>
+            </label>
+          )}
 
           {/* Preview — the real PNG, scaled down */}
           {/* Sized by HEIGHT, not width. A 9:16 preview at full sheet
@@ -259,7 +282,8 @@ export default function FlexCardSheet({
 
           <p className="mt-3 px-5 text-center text-[11px] leading-relaxed text-ink-4">
             Opens your phone's share sheet — Instagram, WhatsApp, anywhere.
-            Nothing is uploaded; the image is made on your device.
+            Nothing is uploaded; the image is made on your device. The QR
+            code and link open the app's Google Play page.
           </p>
         </motion.div>
       </motion.div>

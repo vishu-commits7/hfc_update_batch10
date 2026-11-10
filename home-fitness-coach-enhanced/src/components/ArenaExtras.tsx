@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Eye, Loader2, Minus, Plus, Swords, Zap } from "lucide-react";
+import { ArrowLeft, Eye, Ghost, Loader2, Minus, Plus, Swords, Zap } from "lucide-react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { callFn } from "../lib/functions";
 import { POPULAR } from "../lib/arenaCatalog";
 import { friendlySocialError, subscribeLiveRooms, subscribeRoom, type ArenaRoom } from "../lib/social";
 import { tapFeedback } from "../lib/haptics";
+import { GHOST_FALLBACK_S, startGhostMatch, type GhostAsk } from "../lib/ghost";
 import Avatar from "./ui/Avatar";
 
 const SEARCH_LIMIT_S = 60;
@@ -18,6 +19,8 @@ export function QuickMatchCard({ meUid, onMatched }: { meUid: string; onMatched:
   const [elapsed, setElapsed] = useState(0);
   const [msg, setMsg] = useState<string | null>(null);
   const done = useRef(false);
+  const ghostTried = useRef(false);
+  const [ghostBusy, setGhostBusy] = useState(false);
 
   const cancel = (note?: string) => {
     setSearching(false); setElapsed(0);
@@ -43,6 +46,29 @@ export function QuickMatchCard({ meUid, onMatched }: { meUid: string; onMatched:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searching, meUid]);
 
+  // no live opponent after GHOST_FALLBACK_S seconds: race a ghost instead (the server hands back the live room if one just appeared)
+  useEffect(() => {
+    if (!searching || elapsed < GHOST_FALLBACK_S || ghostTried.current || done.current) return;
+    ghostTried.current = true;
+    const ex = POPULAR.find(e => e.id === exId);
+    if (!ex) return;
+    startGhostMatch(ex.id, ex.name, reps, "auto").then(r => {
+      if (done.current) return;
+      done.current = true; setSearching(false); onMatched(r.code);
+    }).catch(() => { /* keep waiting for a live opponent */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [elapsed, searching]);
+
+  const ghostDuel = async (kind: GhostAsk) => {
+    const ex = POPULAR.find(e => e.id === exId);
+    if (!ex || ghostBusy) return;
+    void tapFeedback(); setMsg(null); setGhostBusy(true);
+    try {
+      const r = await startGhostMatch(ex.id, ex.name, reps, kind);
+      done.current = true; onMatched(r.code);
+    } catch (e) { setMsg(friendlySocialError(e)); } finally { setGhostBusy(false); }
+  };
+
   useEffect(() => {
     if (searching && elapsed >= SEARCH_LIMIT_S) cancel("No one is searching for this right now. Try a popular exercise, or create a room and share the code.");
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -54,7 +80,7 @@ export function QuickMatchCard({ meUid, onMatched }: { meUid: string; onMatched:
   const start = async () => {
     const ex = POPULAR.find(e => e.id === exId);
     if (!ex) return;
-    void tapFeedback(); setMsg(null); setElapsed(0); setSearching(true);
+    void tapFeedback(); setMsg(null); setElapsed(0); ghostTried.current = false; setSearching(true);
     try {
       const r = await callFn<{ status: "matched" | "waiting"; code?: string }>("arenaQuickMatch", { exerciseId: ex.id, name: ex.name, reps });
       if (r.status === "matched" && r.code) { done.current = true; setSearching(false); onMatched(r.code); }
@@ -70,6 +96,10 @@ export function QuickMatchCard({ meUid, onMatched }: { meUid: string; onMatched:
           <Loader2 className="mx-auto h-6 w-6 animate-spin text-volt" />
           <p className="mt-3 text-sm font-semibold">Looking for an opponent… {elapsed}s</p>
           <p className="text-xs text-ink-3">{POPULAR.find(e => e.id === exId)?.name} · first to {reps}</p>
+          <p className="mt-2 flex items-center justify-center gap-1 text-[11px] text-ink-3">
+            <Ghost className="h-3.5 w-3.5" />
+            {elapsed < GHOST_FALLBACK_S ? `A ghost joins in ${GHOST_FALLBACK_S - elapsed}s if nobody turns up` : "Bringing in a ghost…"}
+          </p>
           <button onClick={() => cancel()} className="mt-4 rounded-full border border-line px-5 py-2 text-xs font-bold text-ink-2 active:scale-95">Cancel</button>
         </div>
       ) : (
@@ -89,6 +119,14 @@ export function QuickMatchCard({ meUid, onMatched }: { meUid: string; onMatched:
             </div>
           </div>
           <button onClick={start} className="mt-3 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-volt text-sm font-bold text-void active:scale-[0.98]"><Swords className="h-4 w-4" /> Find opponent</button>
+          <div className="mt-3 rounded-xl border border-line bg-graphite p-3">
+            <p className="flex items-center gap-1.5 text-xs font-bold"><Ghost className="h-3.5 w-3.5 text-volt" /> Race a ghost</p>
+            <p className="mt-0.5 text-[11px] text-ink-3">A recorded run, no waiting. Against another player's ghost your rating moves at half weight.</p>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button onClick={() => void ghostDuel("peer")} disabled={ghostBusy} className="min-h-[44px] rounded-xl border border-line bg-carbon text-xs font-bold text-ink active:scale-95 disabled:opacity-50">Player at my level</button>
+              <button onClick={() => void ghostDuel("self")} disabled={ghostBusy} className="min-h-[44px] rounded-xl border border-line bg-carbon text-xs font-bold text-ink active:scale-95 disabled:opacity-50">My best run</button>
+            </div>
+          </div>
         </>
       )}
       {msg && <p className="mt-2 rounded-xl bg-rose-500/10 px-3 py-2 text-center text-xs text-rose-300">{msg}</p>}

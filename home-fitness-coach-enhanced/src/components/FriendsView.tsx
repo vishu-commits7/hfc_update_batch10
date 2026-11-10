@@ -1,15 +1,19 @@
+import { track } from "../lib/track";
+import { EV } from "../lib/analyticsEvents";
 import OneTimeHint from "./OneTimeHint";
 import { useMemo, useState } from "react";
 import { Flame, Loader2, Swords, Trophy, Users } from "lucide-react";
 import Avatar from "./ui/Avatar";
-import { EmptyState, ErrorState, SkeletonRows } from "./ui/StateViews";
+import { EmptyState, EmptyAction, ErrorState, SkeletonRows } from "./ui/StateViews";
 import { useFollowEdges } from "../lib/useSocial";
 import { rankFor } from "../lib/progress";
 import {
   createChallenge, respondChallenge, useChallenges, useFriendsBoard, type Challenge,
 } from "../lib/phase3";
 import { friendlySocialError } from "../lib/social";
+import { goToScreen } from "../lib/navEvents";
 import { tapFeedback } from "../lib/haptics";
+import InviteFriend from "./InviteFriend";
 
 const MEDAL = ["#F5C451", "#C0C6D0", "#D08B5B"];
 
@@ -85,7 +89,7 @@ export default function FriendsView({ meUid }: { meUid: string }) {
   };
   const send = async (uid: string) => {
     setBusy(true); setMsg(null);
-    try { void tapFeedback(); await createChallenge(uid, days); setPicking(null); setMsg("Challenge sent."); } catch (e) { setMsg(friendlySocialError(e)); } finally { setBusy(false); }
+    try { void tapFeedback(); await createChallenge(uid, days); track(EV.challengeSent, { days }); setPicking(null); setMsg("Challenge sent."); } catch (e) { setMsg(friendlySocialError(e)); } finally { setBusy(false); }
   };
 
   if (failed) return <ErrorState message="Couldn't load your friends." onRetry={retry} />;
@@ -93,6 +97,7 @@ export default function FriendsView({ meUid }: { meUid: string }) {
 
   return (
     <div className="space-y-4">
+      <InviteFriend />
       <OneTimeHint id="friends">Tap the swords next to a friend to start a 3 to 7 day challenge. Most workouts wins.</OneTimeHint>
       {(challenges ?? []).length > 0 && (
         <section className="rounded-2xl border border-line bg-carbon p-4">
@@ -104,7 +109,7 @@ export default function FriendsView({ meUid }: { meUid: string }) {
       )}
 
       {friendUids.length === 0 ? (
-        <EmptyState icon={<Users className="h-6 w-6" />} title="No friends yet" body="Follow athletes from Reels > Search. Once a follow is accepted, they show up here and you can challenge them." />
+        <EmptyState icon={<Users className="h-6 w-6" />} title="No friends yet" body="Follow athletes from Reels > Search. Once a follow is accepted, they show up here and you can challenge them." action={<EmptyAction label="Find athletes" onClick={() => goToScreen("reels")} />} />
       ) : (
         <section className="rounded-2xl border border-line bg-carbon p-3">
           <div className="mb-2 grid grid-cols-2 gap-1.5">

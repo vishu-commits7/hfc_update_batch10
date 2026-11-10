@@ -9,11 +9,27 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "photos": "node tools/photo-manifest.mjs"
+    "photos": "node tools/photo-manifest.mjs",
+    "clips": "node tools/clips.mjs",
+    "programs:check": "node tools/check-programs.mjs",
+    "i18n:check": "node tools/check-i18n.mjs",
+    "ghosts:check": "node tools/check-ghosts.mjs",
+    "daily:check": "node tools/check-daily.mjs",
+    "leagues:check": "node tools/check-leagues.mjs",
+    "anticheat:check": "node tools/check-anticheat.mjs",
+    "moderation:check": "node tools/check-moderation.mjs",
+    "invites:check": "node tools/check-invites.mjs",
+    "costs:check": "node tools/check-costs.mjs",
+    "demo:check": "node tools/check-demo.mjs",
+    "review:check": "node tools/check-review.mjs",
+    "paywall:check": "node tools/check-paywall.mjs",
+    "share:check": "node tools/check-share.mjs",
+    "fetch:mediapipe": "node tools/fetch-mediapipe.mjs"
   },
   "dependencies": {
     "@capacitor-community/text-to-speech": "^8.0.2",
     "@capacitor/android": "^8.5.1",
+    "@capacitor/app": "^8.1.2",
     "@capacitor/cli": "^8.5.1",
     "@capacitor/core": "^8.5.1",
     "@capacitor/local-notifications": "^8.3.1",
@@ -30,7 +46,8 @@
     "react-dom": "^19.0.1",
     "recharts": "^3.9.2",
     "three": "^0.185.1",
-    "vite": "^6.2.3"
+    "vite": "^6.2.3",
+    "@capacitor/push-notifications": "^8.0.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

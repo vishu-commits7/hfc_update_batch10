@@ -78,11 +78,17 @@ public class ApexBillingPlugin extends Plugin implements PurchasesUpdatedListene
                         List<ProductDetails.PricingPhase> phases = o.getPricingPhases().getPricingPhaseList();
                         if (phases.isEmpty()) continue;
                         ProductDetails.PricingPhase last = phases.get(phases.size() - 1); // the recurring price
+                        // a free trial is a first phase that costs nothing (e.g. P7D); "" when the offer has none
+                        String trial = "";
+                        if (phases.size() > 1 && phases.get(0).getPriceAmountMicros() == 0) trial = phases.get(0).getBillingPeriod();
                         offers.put(new JSObject()
                             .put("offerToken", o.getOfferToken())
                             .put("basePlanId", o.getBasePlanId())
                             .put("price", last.getFormattedPrice())
-                            .put("period", last.getBillingPeriod()));
+                            .put("period", last.getBillingPeriod())
+                            .put("priceMicros", last.getPriceAmountMicros())
+                            .put("currency", last.getPriceCurrencyCode())
+                            .put("trial", trial));
                     }
                 }
                 call.resolve(new JSObject().put("offers", offers));

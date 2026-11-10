@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Crown, Clock, ChevronUp, ChevronDown } from "lucide-react";
+import { Loader2, Crown, Clock, ChevronUp, ChevronDown, Dumbbell, Swords } from "lucide-react";
 import Avatar from "./ui/Avatar";
 import { ErrorState, SkeletonRows } from "./ui/StateViews";
 import {
   joinLeague, subscribeLeague, msUntilLeagueReset, LEAGUE_NAMES, LEAGUE_COLORS, type LeagueRow,
 } from "../lib/progress";
+import { leagueStatus, leagueZones } from "../lib/league";
+import { goToScreen } from "../lib/navEvents";
+import { tapFeedback } from "../lib/haptics";
 
 function resetText(ms: number) {
   const d = Math.floor(ms / 86_400_000), h = Math.floor((ms % 86_400_000) / 3_600_000);
@@ -12,7 +15,7 @@ function resetText(ms: number) {
 }
 
 /** This week's league group: 30 athletes at your tier, ranked by XP earned since Monday. */
-export default function LeagueView({ meUid, onOpenProfile }: { meUid: string; onOpenProfile?: (uid: string) => void }) {
+export default function LeagueView({ meUid, onOpenProfile, onPlayArena }: { meUid: string; onOpenProfile?: (uid: string) => void; onPlayArena?: () => void }) {
   const [group, setGroup] = useState<{ group: string; tier: number } | null>(null);
   const [rows, setRows] = useState<LeagueRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +43,16 @@ export default function LeagueView({ meUid, onOpenProfile }: { meUid: string; on
   const tier = group.tier, color = LEAGUE_COLORS[tier];
   const myIdx = rows.findIndex(r => r.uid === meUid);
   const size = rows.length;
+  const zones = leagueZones(size);
+  const maxTier = LEAGUE_NAMES.length - 1;
+  const status = leagueStatus(rows.map(r => r.weekXp), myIdx, tier, maxTier);
+  const lastDay = left < 86_400_000;
+  const nextUp = tier < maxTier ? LEAGUE_NAMES[tier + 1] : null;
+  const statusText = !status ? "Earn XP this week to get on the table."
+    : status.zone === "promote" ? `You're in the top ${zones.promote}. ${status.lead > 0 ? `${status.lead.toLocaleString()} XP ahead of #${zones.promote + 1}.` : "Keep earning to hold your place."}`
+    : status.zone === "demote" ? `Demotion zone. ${status.need.toLocaleString()} XP gets you safe.`
+    : status.zone === "top" ? "Top league. Hold your place out of the bottom."
+    : `${status.need.toLocaleString()} XP to reach the top ${zones.promote}${nextUp ? ` and move up to ${nextUp}` : ""}.`;
 
   return (
     <div className="space-y-3">
@@ -49,8 +62,21 @@ export default function LeagueView({ meUid, onOpenProfile }: { meUid: string; on
         <div className="mt-2 flex justify-center gap-1.5">
           {LEAGUE_NAMES.map((n, i) => <span key={n} className="h-1.5 w-8 rounded-full" style={{ background: i <= tier ? LEAGUE_COLORS[i] : "var(--graphite)" }} />)}
         </div>
-        <p className="mt-3 flex items-center justify-center gap-1.5 text-xs text-ink-2"><Clock className="h-3.5 w-3.5" /> Resets in {resetText(left)} · top 10 move up</p>
-        {myIdx >= 0 && <p className="mt-1 text-xs font-semibold text-ink-2">You are #{myIdx + 1} of {size}</p>}
+        <p className={`mt-3 flex items-center justify-center gap-1.5 text-xs font-semibold ${lastDay ? "text-amber-300" : "text-ink-2"}`}><Clock className="h-3.5 w-3.5" /> {lastDay ? "Last day: " : "Ends in "}{resetText(left)} {lastDay ? "left" : ""}</p>
+        <p className="mt-1 text-[11px] text-ink-3">Top {zones.promote} move up{tier > 0 && zones.demote > 0 ? ` · bottom ${zones.demote} move down` : ""} · Monday 00:00 IST</p>
+      </div>
+
+      <div className={`rounded-2xl border p-4 ${status?.zone === "demote" ? "border-rose-400/40 bg-rose-500/5" : status?.zone === "promote" ? "border-emerald-400/40 bg-emerald-500/5" : "border-line bg-carbon"}`}>
+        {myIdx >= 0 && <p className="text-[11px] font-bold uppercase tracking-widest text-ink-3">You are #{myIdx + 1} of {size} · {rows[myIdx].weekXp.toLocaleString()} XP this week</p>}
+        <p className="mt-1 text-sm font-bold">{statusText}</p>
+        <button onClick={() => { void tapFeedback(); goToScreen("dashboard"); }} className="mt-3 flex min-h-[50px] w-full items-center justify-center gap-2 rounded-xl bg-volt text-sm font-bold text-void active:scale-[0.98]">
+          <Dumbbell className="h-4 w-4" /> Start a workout
+        </button>
+        {onPlayArena && (
+          <button onClick={() => { void tapFeedback(); onPlayArena(); }} className="mt-2 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-line bg-graphite text-xs font-bold text-ink-2 active:scale-[0.98]">
+            <Swords className="h-3.5 w-3.5" /> Or play an Arena match for XP
+          </button>
+        )}
       </div>
 
       {rows.length === 0 ? (
@@ -58,12 +84,12 @@ export default function LeagueView({ meUid, onOpenProfile }: { meUid: string; on
       ) : (
         <ul className="rounded-2xl border border-line bg-carbon p-2">
           {rows.map((r, i) => {
-            const promote = i < 10 && r.weekXp > 0;
-            const demote = tier > 0 && size >= 10 && i >= size - 5;
+            const promote = tier < maxTier && i < zones.promote && r.weekXp > 0;
+            const demote = tier > 0 && zones.demote > 0 && i >= size - zones.demote;
             return (
               <li key={r.uid}>
-                {i === 10 && <div className="my-1 flex items-center gap-2 px-2 text-[11px] font-bold uppercase tracking-widest text-emerald-400"><span className="h-px flex-1 bg-emerald-400/30" /><ChevronUp className="h-3 w-3" /> promotion line<span className="h-px flex-1 bg-emerald-400/30" /></div>}
-                {demote && i === size - 5 && size > 10 && <div className="my-1 flex items-center gap-2 px-2 text-[11px] font-bold uppercase tracking-widest text-rose-400"><span className="h-px flex-1 bg-rose-400/30" /><ChevronDown className="h-3 w-3" /> demotion zone<span className="h-px flex-1 bg-rose-400/30" /></div>}
+                {tier < maxTier && i === zones.promote && <div className="my-1 flex items-center gap-2 px-2 text-[11px] font-bold uppercase tracking-widest text-emerald-400"><span className="h-px flex-1 bg-emerald-400/30" /><ChevronUp className="h-3 w-3" /> promotion line (above)<span className="h-px flex-1 bg-emerald-400/30" /></div>}
+                {demote && i === size - zones.demote && <div className="my-1 flex items-center gap-2 px-2 text-[11px] font-bold uppercase tracking-widest text-rose-400"><span className="h-px flex-1 bg-rose-400/30" /><ChevronDown className="h-3 w-3" /> demotion zone<span className="h-px flex-1 bg-rose-400/30" /></div>}
                 <button onClick={() => onOpenProfile?.(r.uid)} className={`flex w-full items-center gap-3 rounded-xl px-2 py-2.5 text-left ${r.uid === meUid ? "bg-volt/10" : ""}`}>
                   <span className={`w-6 text-center text-sm font-bold tabular-nums ${promote ? "text-emerald-400" : "text-ink-3"}`}>{i + 1}</span>
                   <Avatar src={r.avatarUrl} name={r.name} size={38} />
@@ -75,7 +101,7 @@ export default function LeagueView({ meUid, onOpenProfile }: { meUid: string; on
           })}
         </ul>
       )}
-      <p className="px-2 text-center text-[11px] text-ink-3">Earn XP from workouts, Arena matches and quests. Everyone in your group is at the same level of competition.</p>
+      <p className="px-2 text-center text-[11px] text-ink-3">Earn XP from workouts, Arena matches, quests and the daily challenge. Your group is players in your league with a similar Arena rating.</p>
     </div>
   );
 }

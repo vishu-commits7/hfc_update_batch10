@@ -4,8 +4,51 @@ service cloud.firestore {
     function signedIn() {
       return request.auth != null;
     }
+    // Remote switches (for example the sign-in gate). Anyone may read, nobody may write from the app: edit in the console.
+    match /appConfig/{id} {
+      allow read: if true;
+      allow write: if false;
+    }
     function isMe(uid) {
       return request.auth != null && request.auth.uid == uid;
+    }
+    // A like toggle may change ONLY likedBy/likeCount, and only by adding or removing the caller's own uid
+    // (one at a time, count moves by exactly one).
+    function likeOnlyChange() {
+      let d = request.resource.data;
+      let r = resource.data;
+      return d.diff(r).affectedKeys().hasOnly(['likedBy', 'likeCount'])
+        && d.likedBy is list && r.likedBy is list
+        && d.likeCount is int && r.likeCount is int
+        && (
+          (!(request.auth.uid in r.likedBy)
+            && d.likedBy.size() == r.likedBy.size() + 1
+            && d.likedBy.hasAll(r.likedBy)
+            && request.auth.uid in d.likedBy
+            && d.likeCount == r.likeCount + 1)
+          ||
+          ((request.auth.uid in r.likedBy)
+            && d.likedBy.size() == r.likedBy.size() - 1
+            && r.likedBy.hasAll(d.likedBy)
+            && !(request.auth.uid in d.likedBy)
+            && d.likeCount == r.likeCount - 1)
+        );
+    }
+    // Reel fields the client sets must be well-formed. Counters, hidden and trendScore stay server-only.
+    function reelFieldsOk() {
+      let d = request.resource.data;
+      return d.ownerUid == request.auth.uid
+        && d.createdAt == request.time
+        && !d.keys().hasAny(['likeCount', 'commentCount', 'views', 'hidden', 'trendScore'])
+        && (!('type' in d) || d.type in ['video', 'photo'])
+        && (!('tags' in d) || (d.tags is list && d.tags.size() <= 5))
+        && (!('thumb' in d) || (d.thumb is string && d.thumb.size() < 30000
+              && (d.thumb == '' || d.thumb.matches('data:image/jpeg;base64,.*'))))
+        && (!('caption' in d) || (d.caption is string && d.caption.size() <= 300))
+        && (!('mediaPath' in d) || (d.mediaPath is string
+              && d.mediaPath.matches('reels(-private)?/' + request.auth.uid + '/[^/]+')))
+        && (!('mediaUrl' in d) || (d.mediaUrl is string
+              && d.mediaUrl.matches('https://firebasestorage\\.googleapis\\.com/.*')));
     }
     function accepted(a, b) {
       return exists(/databases/$(database)/documents/follows/$(a + '_' + b))
@@ -19,11 +62,35 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if signedIn();
       allow create: if isMe(uid)
-        && !request.resource.data.keys().hasAny(['arenaWins', 'arenaMatches', 'xp', 'level', 'rankId', 'totalWorkouts', 'streakDays', 'totalMinutes', 'followerCount', 'followingCount', 'banned', 'freezes', 'weekXp', 'weekId', 'leagueTier', 'leagueGroup', 'leagueWeek', 'questsDone', 'lastLeagueResult', 'rating', 'ratingPeak', 'crewId', 'challengeWins', 'proUntil', 'proState', 'proProduct', 'lastWorkoutId', 'lastWorkoutDay', 'lastWorkoutAt']);
+        && !request.resource.data.keys().hasAny(['arenaWins', 'arenaMatches', 'xp', 'level', 'rankId', 'totalWorkouts', 'streakDays', 'totalMinutes', 'followerCount', 'followingCount', 'banned', 'freezes', 'weeklyGoal', 'weekDone', 'weekDoneId', 'weekXp', 'weekId', 'leagueTier', 'leagueGroup', 'leagueWeek', 'questsDone', 'lastLeagueResult', 'rating', 'ratingPeak', 'crewId', 'challengeWins', 'proUntil', 'proState', 'proProduct', 'programsDone', 'lastWorkoutId', 'lastWorkoutDay', 'lastWorkoutAt', 'inviteCode', 'invitedBy', 'invitedAt', 'inviteDevice', 'inviteDone', 'inviteJoined', 'inviteRewarded']);
       allow update: if isMe(uid)
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['arenaWins', 'arenaMatches', 'xp', 'level', 'rankId', 'totalWorkouts', 'streakDays', 'totalMinutes', 'lastWorkoutId', 'lastWorkoutDay', 'lastWorkoutAt', 'followerCount', 'followingCount', 'banned', 'freezes', 'weekXp', 'weekId', 'leagueTier', 'leagueGroup', 'leagueWeek', 'questsDone', 'lastLeagueResult', 'rating', 'ratingPeak', 'crewId', 'challengeWins', 'proUntil', 'proState', 'proProduct']);
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['arenaWins', 'arenaMatches', 'xp', 'level', 'rankId', 'totalWorkouts', 'streakDays', 'totalMinutes', 'lastWorkoutId', 'lastWorkoutDay', 'lastWorkoutAt', 'followerCount', 'followingCount', 'banned', 'freezes', 'weeklyGoal', 'weekDone', 'weekDoneId', 'weekXp', 'weekId', 'leagueTier', 'leagueGroup', 'leagueWeek', 'questsDone', 'lastLeagueResult', 'rating', 'ratingPeak', 'crewId', 'challengeWins', 'proUntil', 'proState', 'proProduct', 'programsDone', 'inviteCode', 'invitedBy', 'invitedAt', 'inviteDevice', 'inviteDone', 'inviteJoined', 'inviteRewarded']);
     }
     match /playTokens/{id} {
+      allow read, write: if false;
+    }
+    // Private feedback from the rating prompt: server only (read it in the Firebase console).
+    match /feedback/{id} {
+      allow read, write: if false;
+    }
+    // Invites: codes and the device registry (hashes only) are server only.
+    match /inviteCodes/{code} {
+      allow read, write: if false;
+    }
+    match /devices/{hash} {
+      allow read, write: if false;
+    }
+    // Anti-cheat records: server only.
+    match /cheatFlags/{uid} {
+      allow read, write: if false;
+    }
+    // Daily global challenge board: anyone signed in can read it, only the server writes it.
+    match /dailyBoard/{day}/entries/{uid} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    // Recorded rep timelines for ghost duels: server only (the owner uid must never reach a client).
+    match /ghosts/{id} {
       allow read, write: if false;
     }
     match /matchQueue/{uid} {
@@ -54,6 +121,10 @@ service cloud.firestore {
       allow read: if isMe(uid);
       allow write: if false;
     }
+    match /users/{uid}/program/{id} {
+      allow read: if isMe(uid);
+      allow write: if false;
+    }
     match /users/{uid}/quests/{id} {
       allow read: if isMe(uid);
       allow write: if false;
@@ -77,8 +148,7 @@ service cloud.firestore {
     }
     match /publicReels/{id} {
       allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid
-        && !request.resource.data.keys().hasAny(['likeCount', 'commentCount', 'views', 'hidden', 'trendScore']);
+      allow create: if signedIn() && reelFieldsOk();
       allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
       match /chunks/{n} {
         allow read: if signedIn();
@@ -90,8 +160,7 @@ service cloud.firestore {
       allow read: if signedIn() && (resource.data.ownerUid == request.auth.uid
         || (exists(/databases/$(database)/documents/follows/$(request.auth.uid + '_' + resource.data.ownerUid))
             && get(/databases/$(database)/documents/follows/$(request.auth.uid + '_' + resource.data.ownerUid)).data.status == 'accepted'));
-      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid
-        && !request.resource.data.keys().hasAny(['likeCount', 'commentCount', 'views', 'hidden', 'trendScore']);
+      allow create: if signedIn() && reelFieldsOk();
       allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
       match /chunks/{n} {
         allow read: if signedIn() && (resource.data.ownerUid == request.auth.uid
@@ -153,14 +222,19 @@ service cloud.firestore {
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.text is string
         && request.resource.data.text.size() > 0
-        && request.resource.data.text.size() <= 500;
-      allow update: if signedIn()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likedBy', 'likeCount']);
+        && request.resource.data.text.size() <= 500
+        && request.resource.data.likeCount == 0
+        && request.resource.data.likedBy == [];
+      allow update: if signedIn() && likeOnlyChange();
       allow delete: if signedIn() && resource.data.uid == request.auth.uid;
     }
     match /reelLikes/{reelId}/users/{uid} {
       allow read: if signedIn();
-      allow create, update, delete: if isMe(uid);
+      allow create: if isMe(uid)
+        && request.resource.data.keys().hasOnly(['createdAt', 'uid'])
+        && request.resource.data.uid == uid
+        && request.resource.data.createdAt == request.time;
+      allow delete: if isMe(uid);
     }
     match /rooms/{code} {
       allow read: if signedIn();
@@ -179,10 +253,14 @@ service cloud.firestore {
     }
     match /posts/{postId} {
       allow read: if signedIn();
-      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.likeCount == 0
+        && request.resource.data.likedBy == [];
       allow update: if signedIn() && (
-        resource.data.uid == request.auth.uid
-        || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likedBy', 'likeCount'])
+        (resource.data.uid == request.auth.uid
+          && request.resource.data.uid == resource.data.uid
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['likedBy', 'likeCount', 'hidden']))
+        || likeOnlyChange()
       );
       allow delete: if signedIn() && resource.data.uid == request.auth.uid;
       match /comments/{cid} {

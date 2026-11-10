@@ -2,6 +2,7 @@
  * React hooks over lib/social.ts. Each hook shares ONE Firestore listener per
  * signed-in user (ref-counted) so many components can read "me" cheaply.
  */
+import { DEMO, demoIdentity } from "./demo";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useAuthUser } from "./useAuth";
 import {
@@ -75,6 +76,10 @@ export interface MyIdentity {
 }
 
 export function useMyIdentity(): MyIdentity {
+  // DEMO is fixed for the life of the page, so this branch never changes the order of hooks
+  return DEMO ? demoIdentity : useRealIdentity();
+}
+function useRealIdentity(): MyIdentity {
   const { user, loading } = useAuthUser();
   const [, force] = useState(0);
 

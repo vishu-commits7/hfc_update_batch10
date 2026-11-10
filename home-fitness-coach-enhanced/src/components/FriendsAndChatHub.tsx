@@ -10,6 +10,8 @@ import {
 } from "../lib/social";
 import { setActiveChat } from "../lib/inbox";
 import { useMyIdentity, useFollowEdges } from "../lib/useSocial";
+import { ErrorState, EmptyState, EmptyAction, SkeletonRows, SkeletonLines } from "./ui/StateViews";
+import { goToScreen } from "../lib/navEvents";
 import { useProfiles } from "../lib/useProfiles";
 import { tapFeedback } from "../lib/haptics";
 import { ROOM_MESSAGE_RE } from "../lib/challenge";
@@ -37,6 +39,8 @@ export default function FriendsAndChatHub({ isOpen, onClose, initialChatUid, ini
   const edges = useFollowEdges();
   const [tab, setTab] = useState<"chats" | "requests">("chats");
   const [chats, setChats] = useState<ChatSummary[] | null>(null);
+  const [chatsFailed, setChatsFailed] = useState(false);
+  const [chatsTry, setChatsTry] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [activeUid, setActiveUid] = useState<string | null>(null);
 
@@ -46,12 +50,13 @@ export default function FriendsAndChatHub({ isOpen, onClose, initialChatUid, ini
   useEffect(() => {
     if (!isOpen || !me.uid) return;
     setChats(null);
+    setChatsFailed(false);
     return subscribeChats(
       me.uid,
-      list => setChats(list.filter(c => !c.members.some(m => m !== me.uid && blockedSet.has(m)))),
-      e => { setChats([]); setError(friendlySocialError(e)); },
+      list => { setChatsFailed(false); setChats(list.filter(c => !c.members.some(m => m !== me.uid && blockedSet.has(m)))); },
+      () => { setChats([]); setChatsFailed(true); },
     );
-  }, [isOpen, me.uid, blockedSet]);
+  }, [isOpen, me.uid, blockedSet, chatsTry]);
 
   const requests = useMemo(
     () => [...edges.incoming.entries()].filter(([u, s]) => s === "pending" && !blockedSet.has(u)).map(([u]) => u),
@@ -116,7 +121,7 @@ export default function FriendsAndChatHub({ isOpen, onClose, initialChatUid, ini
                 <p className="rounded-xl border border-line bg-carbon p-4 text-center text-sm text-ink-2">Sign in to message other athletes.</p>
               ) : tab === "requests" ? (
                 requests.length === 0 ? (
-                  <p className="py-14 text-center text-sm text-ink-3">No follow requests right now.</p>
+                  <EmptyState icon={<UserCheck className="h-6 w-6" />} title="No follow requests" body="When someone asks to follow you, it shows up here." action={<EmptyAction label="Find athletes" onClick={() => { onClose(); goToScreen("reels"); }} />} />
                 ) : (
                   <ul className="space-y-1">
                     {requests.map(uid => {
@@ -137,16 +142,14 @@ export default function FriendsAndChatHub({ isOpen, onClose, initialChatUid, ini
                     })}
                   </ul>
                 )
+              ) : chatsFailed ? (
+                <ErrorState message="Couldn't load your chats." onRetry={() => setChatsTry(n => n + 1)} />
               ) : chats === null ? (
-                <div className="flex justify-center py-14"><Loader2 className="h-5 w-5 animate-spin text-ink-3" /></div>
+                <SkeletonRows rows={5} />
               ) : (
                 <>
                   {chats.length === 0 && withoutChat.length === 0 && (
-                    <div className="py-14 text-center">
-                      <MessageCircle className="mx-auto h-8 w-8 text-ink-3" />
-                      <p className="mt-3 text-sm font-semibold text-ink-2">No conversations yet</p>
-                      <p className="mx-auto mt-1 max-w-[16rem] text-xs text-ink-3">Follow an athlete. When they accept, you can message each other here.</p>
-                    </div>
+                    <EmptyState icon={<MessageCircle className="h-6 w-6" />} title="No conversations yet" body="Follow an athlete. When they accept, you can message each other here." action={<EmptyAction label="Find athletes" onClick={() => { onClose(); goToScreen("reels"); }} />} />
                   )}
                   <ul className="space-y-1">
                     {chats.map((c, i) => {
@@ -222,18 +225,23 @@ function Conversation({
   const [messages, setMessages] = useState<ChatMessage[] | null>(null);
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [tryN, setTryN] = useState(0);
   const [sending, setSending] = useState(false);
+  const [msgMax, setMsgMax] = useState(50); // newest 50 first; "Earlier messages" loads more
   const endRef = useRef<HTMLDivElement>(null);
   const chatId = chatIdFor(myUid, otherUid);
 
   useEffect(() => {
     setMessages(null);
+    setLoadFailed(false);
     return subscribeMessages(
       chatId,
-      setMessages,
-      e => { setMessages([]); if ((e as { code?: string })?.code !== "permission-denied") setError(friendlySocialError(e)); },
+      m => { setLoadFailed(false); setMessages(m); },
+      e => { setMessages([]); if ((e as { code?: string })?.code !== "permission-denied") setLoadFailed(true); },
+      msgMax,
     );
-  }, [chatId]);
+  }, [chatId, tryN, msgMax]);
 
   const [receipts, setReceipts] = useState<ChatReceipts>({ deliveredAt: {}, readAt: {} });
   useEffect(() => subscribeChatReceipts(chatId, setReceipts), [chatId]);
@@ -288,19 +296,24 @@ function Conversation({
           </span>
         </button>
         {onChallenge && (
-          <button onClick={() => onChallenge(otherUid)} aria-label="Challenge" className="flex h-11 items-center gap-1.5 rounded-full bg-graphite px-3.5 text-xs font-bold text-ink active:scale-95">
+          <button onClick={() => onChallenge(otherUid)} aria-label="Challenge" className="flex min-h-[44px] items-center gap-1.5 rounded-full bg-graphite px-3.5 text-xs font-bold text-ink active:scale-95">
             <Swords className="h-4 w-4" /> Challenge
           </button>
         )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-        {messages === null ? (
-          <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-ink-3" /></div>
+        {loadFailed ? (
+          <ErrorState message="Couldn't load this conversation." onRetry={() => setTryN(n => n + 1)} />
+        ) : messages === null ? (
+          <SkeletonLines rows={5} />
         ) : messages.length === 0 ? (
-          <p className="py-16 text-center text-sm text-ink-3">{allowed ? "Say hi 👋" : "Messaging unlocks after your follow request is accepted."}</p>
+          <p className="py-16 text-center text-sm text-ink-3">{allowed ? "Say hi 👋 Type below to send the first message." : "Messaging unlocks after your follow request is accepted."}</p>
         ) : (
           <ul className="space-y-1.5">
+            {messages.length >= msgMax && msgMax < 500 && (
+              <button onClick={() => setMsgMax(n => n + 100)} className="mx-auto mb-2 block min-h-[44px] rounded-full border border-line bg-carbon px-4 text-xs font-bold text-ink-2">Earlier messages</button>
+            )}
             {messages.map(m => {
               const mine = m.from === myUid;
               return (

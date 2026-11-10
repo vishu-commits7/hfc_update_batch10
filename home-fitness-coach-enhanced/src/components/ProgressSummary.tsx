@@ -79,7 +79,9 @@ export default function ProgressSummary({ uid }: { uid: string }) {
       {/* arena history */}
       <div className="rounded-2xl border border-line bg-carbon p-4">
         <p className="mb-3 flex items-center gap-1.5 text-sm font-bold"><Swords className="h-4 w-4 text-volt" /> Arena history</p>
-        {p.matches.length === 0 ? (
+        {p.loading ? (
+          <div className="space-y-2" aria-hidden>{[0, 1].map(i => <div key={i} className="h-11 animate-pulse rounded-xl bg-graphite" />)}</div>
+        ) : p.matches.length === 0 ? (
           <p className="text-xs text-ink-2">No matches yet. Challenge someone in the Arena.</p>
         ) : (
           <ul className="space-y-2">

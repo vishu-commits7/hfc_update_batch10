@@ -599,17 +599,17 @@ export default function LiveStreamDuelModal({
               {/* Scientific Telemetry Stats */}
               <div className="border-t border-white/10 pt-3 grid grid-cols-3 gap-2 text-center text-[11px]">
                 <div className="rounded-xl bg-black/40 p-2 border border-white/5">
-                  <span className="text-white/40 block">Pacing</span>
+                  <span className="text-white/60 block">Pacing</span>
                   <span className="font-black text-cyan-300">
                     {((userReps / durationSeconds) * 60).toFixed(0)} rpm
                   </span>
                 </div>
                 <div className="rounded-xl bg-black/40 p-2 border border-white/5">
-                  <span className="text-white/40 block">Depth Accuracy</span>
+                  <span className="text-white/60 block">Depth Accuracy</span>
                   <span className="font-black text-emerald-400">96.8%</span>
                 </div>
                 <div className="rounded-xl bg-black/40 p-2 border border-white/5">
-                  <span className="text-white/40 block">ELO Delta</span>
+                  <span className="text-white/60 block">ELO Delta</span>
                   <span className={`font-black ${userWon ? "text-amber-400" : "text-rose-400"}`}>
                     {userWon ? "+26 ELO" : "-12 ELO"}
                   </span>

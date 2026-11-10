@@ -2,11 +2,13 @@ import { useBackClose } from "../lib/backStack";
 import { useEffect } from "react";
 import { motion } from "motion/react";
 import { useState } from "react";
-import { Sparkles, ChevronUp, Share2, Loader2, Snowflake, CheckCircle2 } from "lucide-react";
+import { Sparkles, ChevronUp, Share2, Loader2, Snowflake, CheckCircle2, Flame } from "lucide-react";
 import OverlayPortal from "./ui/OverlayPortal";
 import TrophyIcon from "./TrophyIcon";
 import { celebrateFeedback } from "../lib/haptics";
-import { levelCard, renderFlexCard, shareFlexCard } from "../lib/flexCard";
+import { cardLink, levelCard, renderFlexCard, shareFlexCard } from "../lib/flexCard";
+import { getShowNameOnCards } from "../lib/shareLink";
+import { useMyIdentity } from "../lib/useSocial";
 import type { RewardResult } from "../lib/progress";
 
 /** Full-screen reward moment: level up, new rank and any trophies just earned. */
@@ -14,18 +16,21 @@ export default function LevelUpOverlay({ reward, onClose }: { reward: RewardResu
   useBackClose(true, onClose);
   useEffect(() => { void celebrateFeedback(); }, []);
   const [sharing, setSharing] = useState(false);
+  const me = useMyIdentity();
   const share = async () => {
     if (sharing) return;
     setSharing(true);
     try {
-      const blob = await renderFlexCard(levelCard({
+      const card = levelCard({
         level: reward.level, rank: reward.rank, xpGained: reward.xpGained, streak: reward.streakDays,
         trophies: reward.newTrophies.length, headline: reward.rankUp ? "Rank up" : reward.levelUp ? "Level up" : "Keep it up",
-      }), "story");
-      await shareFlexCard(blob, "apex-pulse-level.png", `I just hit level ${reward.level} (${reward.rank}) on Apex Pulse!`);
+      });
+      if (getShowNameOnCards() && me.name) card.name = me.name; // only if the user turned it on in the share sheet
+      const blob = await renderFlexCard(card, "story");
+      await shareFlexCard(blob, "apex-pulse-level.png", `I just hit level ${reward.level} (${reward.rank}) on Apex Pulse!`, cardLink(card));
     } catch { /* user cancelled or share unsupported */ } finally { setSharing(false); }
   };
-  const headline = reward.rankUp ? `${reward.rank} rank!` : reward.levelUp ? `Level ${reward.level}!` : reward.newTrophies.length ? "New trophy!" : reward.questsCompleted?.length ? "Quest complete!" : reward.freezeUsed ? "Streak saved!" : "Nice work!";
+  const headline = reward.rankUp ? `${reward.rank} rank!` : reward.levelUp ? `Level ${reward.level}!` : reward.newTrophies.length ? "New trophy!" : reward.questsCompleted?.length ? "Quest complete!" : reward.freezeUsed ? "Streak saved!" : reward.weekGoalHit ? "Weekly goal reached!" : "Nice work!";
 
   return (
     <OverlayPortal>
@@ -69,12 +74,18 @@ export default function LevelUpOverlay({ reward, onClose }: { reward: RewardResu
           {reward.streakDays && reward.streakDays > 1 ? ` · ${reward.streakDays}-day streak` : ""}
         </motion.p>
 
-        {(reward.questsCompleted?.length || reward.freezeUsed || reward.freezeEarned) ? (
+        {reward.inviteReward && (
+          <div className="mt-3 flex items-center gap-2 rounded-xl border border-volt/40 bg-volt/10 px-3 py-2 text-xs font-semibold">
+            <Snowflake className="h-4 w-4 text-sky-300" />Invite reward: {reward.inviteReward.freeze ? "a streak freeze and " : ""}the "{reward.inviteReward.badge}" badge. Your friend got theirs too.
+          </div>
+        )}
+        {(reward.questsCompleted?.length || reward.freezeUsed || reward.freezeEarned || reward.weekGoalHit) ? (
           <div className="mt-6 w-full max-w-sm space-y-2 text-left">
             {reward.questsCompleted?.map(q => (
               <div key={q.title} className="flex items-center gap-2 rounded-xl border border-line bg-carbon px-3 py-2 text-xs font-semibold"><CheckCircle2 className="h-4 w-4 text-emerald-400" />Quest complete: {q.title}<span className="ml-auto text-volt">+{q.xp} XP</span></div>
             ))}
             {reward.freezeUsed && <div className="flex items-center gap-2 rounded-xl border border-line bg-carbon px-3 py-2 text-xs font-semibold"><Snowflake className="h-4 w-4 text-sky-300" />A streak freeze saved your streak</div>}
+            {reward.weekGoalHit && <div className="flex items-center gap-2 rounded-xl border border-line bg-carbon px-3 py-2 text-xs font-semibold"><Flame className="h-4 w-4 text-orange-400" />You hit your weekly workout goal</div>}
             {reward.freezeEarned && <div className="flex items-center gap-2 rounded-xl border border-line bg-carbon px-3 py-2 text-xs font-semibold"><Snowflake className="h-4 w-4 text-sky-300" />You earned a streak freeze</div>}
           </div>
         ) : null}

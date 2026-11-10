@@ -10,8 +10,9 @@
 import {
   collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, query,
   orderBy, limit as fsLimit, serverTimestamp, arrayUnion, arrayRemove,
-  increment, getDocs, where, Timestamp,
+  increment, getDocs, where, Timestamp, limitToLast,
 } from "firebase/firestore";
+import { sharedQuery } from "./sharedQuery";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { db, storage } from "./firebase";
 
@@ -48,6 +49,9 @@ export interface LeaderboardEntry {
  *  so it never needs a manually-created Firestore composite index — the
  *  `public` filter is applied client-side after the top results come back. */
 export function subscribeToLeaderboard(cb: (entries: LeaderboardEntry[]) => void, max = 50, onError?: (e: unknown) => void) {
+  return sharedQuery<LeaderboardEntry[]>(`community-board:${max}`, (emit, fail) => rawLeaderboard(emit, max, fail), cb, onError);
+}
+function rawLeaderboard(cb: (entries: LeaderboardEntry[]) => void, max: number, onError?: (e: unknown) => void) {
   const q = query(collection(db, "users"), orderBy("totalWorkouts", "desc"), fsLimit(max));
   return onSnapshot(q, snap => {
     const entries: LeaderboardEntry[] = snap.docs
@@ -92,7 +96,7 @@ export async function createPost(opts: {
   });
 }
 
-export function subscribeToFeed(cb: (posts: CommunityPost[]) => void, max = 60, onError?: (e: unknown) => void) {
+export function subscribeToFeed(cb: (posts: CommunityPost[]) => void, max = 30, onError?: (e: unknown) => void) {
   const q = query(collection(db, "posts"), orderBy("createdAt", "desc"), fsLimit(max));
   return onSnapshot(
     q,
@@ -117,8 +121,8 @@ export async function toggleLike(postId: string, uid: string, currentlyLiked: bo
   }
 }
 
-export function subscribeToComments(postId: string, cb: (comments: CommunityComment[]) => void) {
-  const q = query(collection(db, "posts", postId, "comments"), orderBy("createdAt", "asc"));
+export function subscribeToComments(postId: string, cb: (comments: CommunityComment[]) => void, onError?: (e: unknown) => void) {
+  const q = query(collection(db, "posts", postId, "comments"), orderBy("createdAt", "asc"), limitToLast(100)); // newest 100
   return onSnapshot(
     q,
     snap => {
@@ -126,6 +130,7 @@ export function subscribeToComments(postId: string, cb: (comments: CommunityComm
     },
     err => {
       console.warn("Firestore subscribeToComments notice (rules/offline):", err);
+      onError?.(err);
     }
   );
 }

@@ -3,8 +3,12 @@
  * crashes are sent to the `logClientError` function, which stores them in the Firestore
  * `clientErrors` collection (Firebase console -> Firestore). Throttled and de-duplicated.
  */
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import { callFn } from "./functions";
+
+// Native Crashlytics bridge (Android only) — see ApexCrashPlugin.java.
+const ApexCrash = registerPlugin<{ record(o: { message: string; stack: string; where: string; version: string }): Promise<void> }>("ApexCrash");
+const isAndroidApp = () => Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
 
 const seen = new Set<string>();
 let sent = 0;
@@ -16,6 +20,8 @@ export function reportError(err: unknown, where = "app") {
     const key = `${where}:${e.message}`.slice(0, 200);
     if (seen.has(key) || sent >= MAX_PER_SESSION) return;
     seen.add(key); sent++;
+    // Crashlytics works offline (it queues reports), so send it before the online check below
+    if (isAndroidApp()) void ApexCrash.record({ message: e.message, stack: e.stack || "", where, version: (import.meta as any).env?.VITE_APP_VERSION || "dev" }).catch(() => {});
     if (typeof navigator !== "undefined" && navigator.onLine === false) return;
     void callFn("logClientError", {
       message: e.message,

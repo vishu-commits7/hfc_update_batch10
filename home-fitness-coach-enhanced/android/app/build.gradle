@@ -1,6 +1,15 @@
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
+// Release signing: put your upload-key details in android/keystore.properties (never commit it; see
+// keystore.properties.example). Without that file the release build is unsigned, and you can still sign it
+// with Android Studio's Build > Generate Signed Bundle / APK wizard.
+def keystorePropsFile = rootProject.file("keystore.properties")
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+
 android {
     namespace = "com.homefitnesscoach.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -8,8 +17,8 @@ android {
         applicationId "com.homefitnesscoach.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "1.0.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -17,8 +26,24 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (keystorePropsFile.exists()) {
+                storeFile rootProject.file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            if (keystorePropsFile.exists()) {
+                signingConfig signingConfigs.release
+            }
+            // Shrinking/obfuscation stays OFF for the first release: it can break plugins in ways only a
+            // release build on a device shows. The keep rules are ready in proguard-rules.pro; to try it,
+            // set minifyEnabled true and shrinkResources true, then test every feature on a phone.
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
@@ -54,6 +79,15 @@ dependencies {
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0"
     // Google Play Billing (Pro subscription) used by ApexBillingPlugin.java
     implementation "com.android.billingclient:billing:8.0.0"
+    // Google Play in-app review (rating prompt)
+    implementation "com.google.android.play:review:2.0.2"
+    // Firebase App Check (Play Integrity in release, debug provider in debug builds) used by ApexAppCheckPlugin.java
+    implementation platform("com.google.firebase:firebase-bom:33.7.0")
+    implementation "com.google.firebase:firebase-appcheck-playintegrity"
+    implementation "com.google.firebase:firebase-appcheck-debug"
+    // Crashlytics (crashes + JS errors via ApexCrashPlugin.java); Analytics gives it crash-free-user stats and breadcrumbs
+    implementation "com.google.firebase:firebase-crashlytics"
+    implementation "com.google.firebase:firebase-analytics"
 }
 
 apply from: 'capacitor.build.gradle'
@@ -62,6 +96,7 @@ try {
     def servicesJSON = file('google-services.json')
     if (servicesJSON.text) {
         apply plugin: 'com.google.gms.google-services'
+        apply plugin: 'com.google.firebase.crashlytics'
     }
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")

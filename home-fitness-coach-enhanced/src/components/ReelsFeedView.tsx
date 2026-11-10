@@ -2,7 +2,7 @@ import OneTimeHint from "./OneTimeHint";
 import { shareContent } from "../lib/nativeBridge";
 import { useState, useEffect, useRef, useMemo, memo, useCallback } from "react";
 import {
-  Heart, Share2, Camera, MessageCircle, Music, Swords, CheckCircle2, Calendar, Eye, Search, Loader2, RotateCcw, Flag,
+  Film, Heart, Share2, Camera, MessageCircle, Music, Swords, CheckCircle2, Calendar, Eye, Search, Loader2, RotateCcw, Flag,
 } from "lucide-react";
 import { MOTIVATION_STORIES } from "./GymBeastMotivationReel";
 import ReelCreatorStudio from "./ReelCreatorStudio";
@@ -21,6 +21,7 @@ import ReportSheet, { type ReportTarget } from "./ReportSheet";
 import { useBlocked } from "../lib/blocks";
 import { subscribeReelFeed, subscribeTrendingReels, loadReelMedia, deleteReel, type SharedReel } from "../lib/reelsStore";
 import { Caption, TagFeed } from "./ReelExtras";
+import { EmptyState, EmptyAction, SkeletonRows } from "./ui/StateViews";
 import { useProfiles } from "../lib/useProfiles";
 import { useMyIdentity, useFollowEdges } from "../lib/useSocial";
 import { challengeUser } from "../lib/challenge";
@@ -215,7 +216,7 @@ const ReelCard = memo(function ReelCard({
         {(creator || (reel.remote && !isMineRemote)) && (
           <button
             onClick={() => { void tapFeedback(); if (reel.remote) onChallengeUser?.(reel.remote.ownerUid); else onChallenge(); }}
-            className="flex items-center gap-1 rounded-full bg-volt px-2.5 py-1 text-[11px] font-bold text-void active:scale-95"
+            className="flex min-h-[32px] items-center gap-1 rounded-full border border-volt/60 bg-volt/10 px-2.5 py-1 text-[11px] font-bold text-volt active:scale-95"
           >
             <Swords className="h-3 w-3" />
             <span>Challenge</span>
@@ -454,8 +455,8 @@ function ReelsFeedViewInner({ onOpenStoryReel, onOpenArena, onSignIn }: ReelsFee
       )}
 
       <div className="space-y-6 pt-1">
-        {feedMode === "trending" && trending === null && <p className="py-10 text-center text-xs text-ink-3">Loading trending…</p>}
-        {feedMode === "trending" && trending !== null && trending.length === 0 && <p className="py-10 text-center text-xs text-ink-3">Nothing is trending yet. Like and comment on reels to get it going.</p>}
+        {feedMode === "trending" && trending === null && <div className="px-1"><SkeletonRows rows={4} /></div>}
+        {feedMode === "trending" && trending !== null && trending.length === 0 && <div className="px-1"><EmptyState icon={<Film className="h-6 w-6" />} title="Nothing is trending yet" body="Like and comment on reels to get it going." action={<EmptyAction label="See latest reels" onClick={() => setFeedMode("latest")} />} /></div>}
         {(feedMode === "trending" ? trending ?? [] : remoteReels).filter(r => !blocked.has(r.ownerUid)).map(r => (
           <ReelCard
             key={r.id}

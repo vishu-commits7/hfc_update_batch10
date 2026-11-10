@@ -80,6 +80,7 @@ const PremiumHub = lazy(() => import("./components/PremiumHub"));
 const BeastDuelArena = lazy(() => import("./components/BeastDuelArena"));
 const AuthScreen = lazy(() => import("./components/AuthScreen"));
 const CloudSyncPage = lazy(() => import("./components/CloudSyncPage"));
+const ProgramsView = lazy(() => import("./components/ProgramsView"));
 const AthleteProfileHub = lazy(() => import("./components/AthleteProfileHub"));
 const ReelsFeedView = lazy(() => import("./components/ReelsFeedView"));
 const GymBeastMotivationReel = lazy(() => import("./components/GymBeastMotivationReel"));
@@ -87,22 +88,31 @@ const ViralFlexStudio = lazy(() => import("./components/ViralFlexStudio"));
 const SmartFormScanner = lazy(() => import("./components/SmartFormScanner"));
 import type { FlexStats } from "./components/ViralFlexStudio";
 import { useAuthUser } from "./lib/useAuth";
-import { useEntitlement } from "./lib/billing";
+import { PAYWALL_MIN_WORKOUTS, paywallUnlocked, useEntitlement } from "./lib/billing";
 import { popBack } from "./lib/backStack";
 import { useMyIdentity, useFollowEdges } from "./lib/useSocial";
 import { challengeUser } from "./lib/challenge";
 import { startNotifier, stopNotifier } from "./lib/inbox";
+import { requestPushAfterFirstWorkout } from "./lib/push";
 import HubCommandCenter from "./components/HubCommandCenter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { App as CapApp } from "@capacitor/app";
 import { apiUrl } from "./lib/apiBase";
 import { track, trackOnce, setAnalyticsUser } from "./lib/track";
+import { EV } from "./lib/analyticsEvents";
+import { getAuthGate } from "./lib/flags";
 import { startBlocks } from "./lib/blocks";
 import { reportWorkout, type RewardResult } from "./lib/progress";
+import { flushReports, onQueuedReward } from "./lib/reportQueue";
 import LevelUpOverlay from "./components/LevelUpOverlay";
 import GoalSetup from "./components/GoalSetup";
 import CoachTour from "./components/CoachTour";
 import { OfflineBanner } from "./components/ui/StateViews";
+import { ModerationGate } from "./components/ContentPolicy";
+import { registerDeviceOnce } from "./lib/invite";
+import { DEMO } from "./lib/demo";
+import { noteFirstOpen, takeReviewTurn, winMomentOf, type WinMoment } from "./lib/review";
+import ReviewPrompt from "./components/ReviewPrompt";
 
 const FRESH_APP_VERSION = "home-fitness-coach-clean-premium-v6";
 
@@ -120,7 +130,8 @@ type View =
   | "beast-duels"
   | "profile-hub"
   | "auth"
-  | "cloud-sync";
+  | "cloud-sync"
+  | "programs";
 
 type NavTarget = Exclude<View, "active-workout">;
 
@@ -198,14 +209,17 @@ export default function App() {
   const isDesktop = useIsDesktop();
   const [, , themeMode, setThemeMode] = useTheme();
   const { user, loading: authLoading } = useAuthUser();
+  const authGate = getAuthGate();
   // One identity for the whole app: photo (on-device copy first), name and handle.
   const me = useMyIdentity();
   const [celebration, setCelebration] = useState<RewardResult | null>(null);
+  const [reviewMoment, setReviewMoment] = useState<WinMoment | null>(null);
+  useEffect(() => { noteFirstOpen(); }, []);
   const [arenaRoomCode, setArenaRoomCode] = useState<string | null>(null);
   const [inboxOpen, setInboxOpen] = useState(false);
   const [inboxProfileUid, setInboxProfileUid] = useState<string | null>(null);
   const followEdges = useFollowEdges();
-  useEffect(() => { if (me.uid) startNotifier(me.uid); else stopNotifier(); startBlocks(me.uid ?? null); setAnalyticsUser(me.uid ?? null); }, [me.uid]);
+  useEffect(() => { if (DEMO) return; if (me.uid) startNotifier(me.uid); else stopNotifier(); startBlocks(me.uid ?? null); setAnalyticsUser(me.uid ?? null); if (me.uid) registerDeviceOnce(me.uid); }, [me.uid]);
   const pendingFollowRequests = [...followEdges.incoming.values()].filter(v => v === "pending").length;
 
   const [currentView, setCurrentView] = useState<View>(() => {
@@ -291,7 +305,7 @@ export default function App() {
           }
           if (selectedWorkout) {
             setSelectedWorkout(null);
-            setCurrentView("dashboard");
+            goBack("dashboard");
             return;
           }
           if (currentView !== "dashboard") {
@@ -308,7 +322,7 @@ export default function App() {
           else if (flexStudioOpen) setFlexStudioOpen(false);
           else if (analyticsOpen) setAnalyticsOpen(false);
           else if (paletteOpen) setPaletteOpen(false);
-          else if (selectedWorkout) setSelectedWorkout(null);
+          else if (selectedWorkout) { setSelectedWorkout(null); goBack("dashboard"); }
           else if (currentView !== "dashboard") goBack("dashboard");
         };
         window.addEventListener("popstate", onPopState);
@@ -434,7 +448,7 @@ export default function App() {
     if (freshReady) localStorage.setItem("kinetic_logs", JSON.stringify(logs));
   }, [logs, freshReady]);
   useEffect(() => {
-    const open = () => setPaywallOpen(true);
+    const open = () => openPaywallRef.current();
     window.addEventListener("apex-open-paywall", open);
     return () => window.removeEventListener("apex-open-paywall", open);
   }, []);
@@ -476,8 +490,15 @@ export default function App() {
   }, []);
 
   /* ------------------------------ actions ----------------------------- */
+  // The paywall is only offered once someone has finished 3 workouts and knows what the app is.
+  const openPaywall = () => {
+    if (paywallUnlocked(logs.length)) setPaywallOpen(true);
+    else notify(`Pro plans appear after ${PAYWALL_MIN_WORKOUTS} finished workouts. ${PAYWALL_MIN_WORKOUTS - logs.length} to go.`);
+  };
+  const openPaywallRef = useRef(openPaywall);
+  openPaywallRef.current = openPaywall;
   const handleSubscriptionToggle = (value: boolean) => {
-    if (value) setPaywallOpen(true);
+    if (value) openPaywall();
     else notify("Manage or cancel your subscription in Google Play > Subscriptions.");
   };
 
@@ -535,6 +556,7 @@ export default function App() {
 
   const handleWorkoutGenerated = (newWorkout: Workout) => {
     setSavedWorkouts((prev) => [newWorkout, ...prev]);
+    if (currentViewRef.current !== "active-workout") viewStackRef.current = [...viewStackRef.current.slice(-15), currentViewRef.current];
     setSelectedWorkout(newWorkout);
     setCurrentView("active-workout");
   };
@@ -571,6 +593,26 @@ export default function App() {
     }
   };
 
+  // Shows the rewards for one workout report (right away, or later when a queued report is finally sent).
+  const showReward = useCallback((r: RewardResult) => {
+    if (r.program?.completed) track(EV.programCompleted);
+    if (r.levelUp) track(EV.levelUp, { level: r.level });
+    if (r.levelUp || r.rankUp || r.newTrophies.length || r.questsCompleted?.length || r.freezeUsed || r.freezeEarned || r.weekGoalHit) setCelebration(r);
+    else if (r.program?.credited) notify(r.program.weekComplete ? `Week ${r.program.week} of your program done! +${r.xpGained} XP` : `Program session ${r.program.done} of ${r.program.total} done. +${r.xpGained} XP`);
+    else if (r.xpGained) notify(`+${r.xpGained} XP`);
+  }, [notify]);
+
+  // Workouts finished offline are sent when signed in and online: at launch, on reconnect, on return to the app.
+  useEffect(() => {
+    if (!me.uid) return;
+    const off = onQueuedReward(showReward);
+    const go = () => { void flushReports(); };
+    go();
+    window.addEventListener("online", go);
+    document.addEventListener("visibilitychange", go);
+    return () => { off(); window.removeEventListener("online", go); document.removeEventListener("visibilitychange", go); };
+  }, [me.uid, showReward]);
+
   const handleLogWorkout = (newLog: WorkoutLog) => {
     setLogs((prev) => {
       const nextLogs = [newLog, ...prev];
@@ -583,18 +625,19 @@ export default function App() {
       });
       return nextLogs;
     });
+    const programRef = selectedWorkout && selectedWorkout.id === newLog.workoutId ? selectedWorkout.program : undefined;
     setCurrentView("dashboard");
     setSelectedWorkout(null);
     setConfettiActive(true);
     notify("Boom! Session logged and locked in. Outstanding effort today, athlete.");
-    trackOnce("first_workout");
-    track("workout_logged", { minutes: newLog.durationMinutes || 0 });
+    trackOnce(EV.firstWorkoutFinished);
+    track(EV.workoutLogged, { minutes: newLog.durationMinutes || 0 });
+    // ask for notification permission once, after a finished workout (never at launch)
+    if (me.uid && !DEMO) { const u = me.uid; window.setTimeout(() => { void requestPushAfterFirstWorkout(u); }, 3000); }
     if (me.uid) {
-      void reportWorkout(newLog).then(r => {
-        if (!r) return;
-        if (r.levelUp) track("level_up", { level: r.level });
-        if (r.levelUp || r.rankUp || r.newTrophies.length || r.questsCompleted?.length || r.freezeUsed || r.freezeEarned) setCelebration(r);
-        else if (r.xpGained) notify(`+${r.xpGained} XP`);
+      void reportWorkout(newLog, programRef).then(r => {
+        if (r) showReward(r);
+        else if (!navigator.onLine) notify("Saved on your phone. Rewards arrive when you're back online.");
       }).catch(() => {});
     }
   };
@@ -624,6 +667,8 @@ export default function App() {
   );
 
   const handleSelectWorkout = useCallback((workout: Workout) => {
+    // remember where the workout was started from so Back returns there
+    if (currentViewRef.current !== "active-workout") viewStackRef.current = [...viewStackRef.current.slice(-15), currentViewRef.current];
     setSelectedWorkout(workout);
     setCurrentView("active-workout");
   }, []);
@@ -639,6 +684,13 @@ export default function App() {
     setCurrentView(view);
     window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
   }, [currentView]);
+
+  // empty states elsewhere in the app can send the user to a main screen (see lib/navEvents.ts)
+  useEffect(() => {
+    const go = (e: Event) => { const v = (e as CustomEvent<NavTarget>).detail; if (v) nav(v); };
+    window.addEventListener("apex-nav", go);
+    return () => window.removeEventListener("apex-nav", go);
+  }, [nav]);
 
   // A chat-challenge room code only applies to that one arena visit.
   useEffect(() => {
@@ -803,6 +855,7 @@ export default function App() {
   }, [nav, savedWorkouts, user]);
 
   const inSession = currentView === "active-workout";
+  useEffect(() => { if (inSession) trackOnce(EV.firstWorkoutStarted); }, [inSession]);
 
   /* ------------------------------ render ------------------------------ */
   return (
@@ -1049,9 +1102,8 @@ export default function App() {
                 inSession
                   ? undefined
                   : {
-                      paddingBottom: ["settings", "community", "auth", "cloud-sync"].includes(currentView)
-                        ? "calc(env(safe-area-inset-bottom, 0px) + 24px)"
-                        : "calc(env(safe-area-inset-bottom, 0px) + 84px)",
+                      // the bottom bar is on every screen, so every screen leaves room for it
+                      paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 84px)",
                     }
               }
             >
@@ -1129,7 +1181,7 @@ export default function App() {
                     <AiGenerator
                       profile={derivedProfile}
                       setProfile={setProfile}
-                      onBack={() => nav("dashboard")}
+                      onBack={() => goBack("dashboard")}
                       onWorkoutGenerated={handleWorkoutGenerated}
                     />
                   )}
@@ -1137,8 +1189,8 @@ export default function App() {
                   {currentView === "exercise-library" && (
                     <ExerciseLibrary
                       onNavigateToLog={(exName) => {
+                        nav("progress-tracker"); // goes through nav so Back returns to the library
                         setPreselectedExerciseForLog(exName);
-                        setCurrentView("progress-tracker");
                       }}
                       favorites={favorites}
                       onToggleFavorite={toggleFavorite}
@@ -1171,7 +1223,7 @@ export default function App() {
                   {currentView === "history-logs" && (
                     <HistoryLogs
                       logs={logs}
-                      onBack={() => nav("dashboard")}
+                      onBack={() => goBack("dashboard")}
                       onClearLogs={handleClearLogs}
                       onDeleteLog={handleDeleteLog}
                     />
@@ -1195,9 +1247,18 @@ export default function App() {
 
                   {currentView === "beast-duels" && (
                     <BeastDuelArena
-                      onBack={() => nav("dashboard")}
+                      onBack={() => goBack("dashboard")}
                       onLogWorkout={handleLogWorkout}
                       initialRoomCode={arenaRoomCode}
+                      onSignIn={() => nav("auth")}
+                    />
+                  )}
+
+                  {currentView === "programs" && (
+                    <ProgramsView
+                      uid={me.uid ?? null}
+                      onStartWorkout={handleSelectWorkout}
+                      onBack={() => goBack("dashboard")}
                       onSignIn={() => nav("auth")}
                     />
                   )}
@@ -1211,8 +1272,8 @@ export default function App() {
 
                   {currentView === "auth" && (
                     <AuthScreen
-                      onBack={() => nav("dashboard")}
-                      onAuthed={() => nav("dashboard")}
+                      onBack={() => goBack("dashboard")}
+                      onAuthed={() => goBack("dashboard")}
                     />
                   )}
 
@@ -1220,8 +1281,8 @@ export default function App() {
                     <ActiveWorkout
                       workout={selectedWorkout}
                       onBack={() => {
-                        setCurrentView("dashboard");
                         setSelectedWorkout(null);
+                        goBack("dashboard");
                       }}
                       onLogWorkout={handleLogWorkout}
                       profile={derivedProfile}
@@ -1290,7 +1351,7 @@ export default function App() {
 
       {/* Premium gate for the AI generator */}
       <AnimatePresence>
-        {currentView === "ai-generator" && !isPremium && (
+        {currentView === "ai-generator" && !isPremium && paywallUnlocked(logs.length) && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1326,7 +1387,7 @@ export default function App() {
                 block
                 className="mt-6 font-black uppercase tracking-wider text-xs shadow-[0_0_20px_rgba(0,229,160,0.35)]"
                 onClick={() => {
-                  setPaywallOpen(true);
+                  openPaywall();
                 }}
               >
                 Unlock Full Coach Access
@@ -1378,19 +1439,22 @@ export default function App() {
       </AnimatePresence>
 
       <OfflineBanner />
+      {!DEMO && <ModerationGate uid={user?.uid} onSignOut={() => { void import("./lib/useAuth").then(m => m.logOut()).catch(() => {}); }} />}
       <Confetti active={confettiActive} />
-      {celebration && <LevelUpOverlay reward={celebration} onClose={() => setCelebration(null)} />}
+      {celebration && <LevelUpOverlay reward={celebration} onClose={() => { const m = winMomentOf(celebration); setCelebration(null); if (takeReviewTurn(m)) setReviewMoment(m); }} />}
+      {reviewMoment && <ReviewPrompt moment={reviewMoment} onClose={() => setReviewMoment(null)} />}
 
       {showOnboarding && <Onboarding onDone={dismissOnboarding} />}
-      {/* Login-first: after the intro slides, an account is required. */}
-      {!showOnboarding && !authLoading && !user && (
+      {/* Sign-in gate. "login-first": an account is required after the intro slides. "after-first-workout": it appears
+          once the first workout is logged (see lib/flags.ts for how to switch). Never during a workout. */}
+      {!DEMO && !showOnboarding && !authLoading && !user && !inSession && (authGate === "login-first" || logs.length > 0) && (
         <div className="fixed inset-0 z-[200] overflow-y-auto bg-slate-950 pt-[env(safe-area-inset-top)]">
           <Suspense fallback={null}>
             <AuthScreen required onBack={() => {}} onAuthed={() => {}} />
           </Suspense>
         </div>
       )}
-      {!showOnboarding && !!user && showGoalSetup && (
+      {!showOnboarding && (!!user || authGate === "after-first-workout") && showGoalSetup && (
         <GoalSetup
           initial={{ goal: profile.goal, fitnessLevel: profile.fitnessLevel, preferredEquipment: profile.preferredEquipment }}
           onDone={finishGoalSetup}

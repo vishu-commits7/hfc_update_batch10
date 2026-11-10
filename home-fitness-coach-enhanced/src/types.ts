@@ -8,6 +8,8 @@ export interface Exercise {
   targetMuscle: string;
   signaturePose?: string;
   videoUrl?: string;
+  /** Set on the added warm-up / cool-down moves (see src/lib/warmup.ts). */
+  phase?: "warmup" | "cooldown";
 }
 
 export interface Workout {
@@ -21,6 +23,10 @@ export interface Workout {
   coachingTips: string[];
   isAiGenerated?: boolean;
   createdAt: string;
+  /** Set when this session belongs to a training program (see src/data/programs.ts). */
+  program?: { id: string; session: number };
+  /** Generated workouts get a warm-up and cool-down added when they are played. */
+  wrap?: boolean;
 }
 
 export interface WorkoutLog {

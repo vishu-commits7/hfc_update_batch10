@@ -206,3 +206,278 @@ Fix: minSdkVersion raised 24 -> 26 in android/variables.gradle (Health Connect r
 
 ## Batch 14 — Login first
 - After the 2 intro slides, signed-out users see a full-screen sign-in/sign-up (Google or email). No Back, no guest button (`AuthScreen required`). GoalSetup and the app start only once signed in. Existing guest (anonymous) sessions keep working. To revert, remove the gate block in App.tsx.
+
+## Batch 15 — App Check on Android (enforcement still OFF)
+- New `ApexAppCheckPlugin.java`: Play Integrity provider in release builds, debug provider in debuggable builds; `getToken()` feeds a `CustomProvider` in `src/lib/firebase.ts`. Web keeps reCAPTCHA v3 (needs `VITE_APPCHECK_SITE_KEY`).
+- `android/app/build.gradle`: firebase-bom 33.7.0 + appcheck-playintegrity + appcheck-debug. Not compiled by me.
+- `ENFORCE_APPCHECK` stays `false` in functions/.env until tokens are confirmed in Console metrics. Play Integrity only passes for installs from Google Play, so sideloaded APKs would be blocked once enforced.
+
+## Batch 16 — Hardening: likes, Arena pairs, reel fields, account deletion
+- (a) `firestore.rules`: post and reel-comment likes can only add or remove the caller's own uid, one at a time, with likeCount moving by exactly 1 (`likeOnlyChange`). Post owners can no longer edit likedBy/likeCount or change `uid`. New posts and comments must start at 0 likes. `reelLikes` create must carry `uid` and `createdAt == request.time`; updates are blocked.
+- (b) `finalize` in functions: same two players get rating/XP from at most 3 matches per IST day (`arenaPairs/{day}_{uidA}_{uidB}`, server-only). Extra matches finish with `unrated: true`.
+- (c) Rules `reelFieldsOk`: createdAt must equal server time; tags max 5; thumb must be a small JPEG data URL; caption max 300; `mediaPath` must be inside the owner's own folder; `mediaUrl` must be a Firebase Storage URL. Triggers re-clean tags/thumb/caption after create. Reel delete cleanup only deletes files under the owner's folder (a forged mediaPath could previously delete another user's file) and also removes the reel's likes and comments.
+- (d) `deleteAccount` removes the user's reel likes (by new `uid` field, plus a scan of existing reels for older likes). New collection-group index override on `users.uid`.
+- Needs deploy of rules, indexes and functions. Rules were not run through the emulator here; test likes, posting a reel, and Arena after deploy.
+
+## Batch 17 — Pose model bundled for offline counting
+- `src/lib/poseCounter.ts` now loads MediaPipe from `/mediapipe` (inside the app) and only falls back to the CDN if those files are missing.
+- Run once on a PC with internet: `npm run fetch:mediapipe` (downloads roughly 20-25 MB (estimate) into `public/mediapipe`, using `tools/fetch-mediapipe.mjs`), then `npm run build` and `npx cap sync android`. The files make the APK/AAB larger by that amount.
+- Not tested on a device. The bundle is saved as `vision_bundle.js` (not .mjs) to avoid a WebView MIME-type problem.
+
+## Batch 18 — Camera counting: device and speed check
+- `poseCounter.ts`: low-end check (under 3 GB RAM or under 4 cores, when the WebView reports them) keeps taps on by default; a speed check watches detection time (two windows of 20 frames averaging over 110 ms) and switches to taps with status `slow`.
+- The choice is remembered in localStorage (`apex_cam_count_v1`): the player's own on/off, and an automatic switch-off. The Arena button reads "Try camera counting anyway" / "Try again", which clears the automatic switch-off.
+- Thresholds are my estimates; not measured on a real low-end phone.
+
+## Batch 19 — Crashlytics
+- Gradle: `firebase-crashlytics-gradle:3.0.2` (root) and `com.google.firebase.crashlytics` plugin applied next to google-services; `firebase-crashlytics` and `firebase-analytics` dependencies (versions from the Firebase BoM). Native crashes are reported by the SDK.
+- `ApexCrashPlugin.java` + `src/lib/errorLog.ts`: JS errors, unhandled rejections and render crashes also go to Crashlytics as non-fatal reports (message, where, version, trimmed stack; no user data). The existing Firestore `clientErrors` logging still runs.
+- Adding Analytics means the Play Data safety form must mention analytics/diagnostics. Not compiled by me; first report appears only after a build that crashes or logs an error is run on a phone.
+
+## Batch 20 — Release build setup
+- `versionCode 2`, `versionName "1.0.1"`. Raise `versionCode` by at least 1 for every new Play upload.
+- `android/app/build.gradle` signs the release build from `android/keystore.properties` (git-ignored; template in `keystore.properties.example`). Without it the AAB is unsigned.
+- Minify/shrink left OFF for the first release (untested on a device). Keep rules prepared in `proguard-rules.pro`.
+- Root `.gitignore` now ignores `*.jks`, `*.keystore`, `keystore.properties`.
+- Not built by me: Gradle and the Android SDK are not available here.
+
+## Batch 21 — Analytics funnel
+- All event names are in `src/lib/analyticsEvents.ts`. `src/lib/track.ts` sends them through the native Firebase SDK on Android (`ApexAnalyticsPlugin.java`) and the web SDK on the website.
+- Funnel events: app_open, signup_complete (method email/google), goal_set (goal, level), first_workout_started, first_workout_finished, return_d1/d7/d30, paywall_seen, arena_match_played (exercises, mode, quick), challenge_sent (days).
+- No personal data: no user id (setAnalyticsUser now does nothing), no names, emails or free text. `first_open` is no longer logged by hand because Firebase collects it itself and reserves the name.
+- Old event names (first_workout, return_day_1/7, paywall_view, goalsetup_complete, arena_match_finished) are replaced, so old and new data will not join up in reports.
+- Funnel steps built in Console: see chat. Events show in DebugView immediately and in reports after about a day.
+
+## Batch 22 — Push notifications
+- New settings screen: Notifications > "Challenges & streaks" with on/off for streak at risk, challenge received, rematch waiting, crew activity (`NotificationSettings.tsx`, prefs in `notifyPrefs.ts`, synced to `users/{uid}.notifPrefs`).
+- Permission is no longer asked at launch. `registerPush` only registers if already allowed; `requestPushAfterFirstWorkout` asks once, 3 s after a finished workout (`push.ts`, `App.tsx`).
+- Server (`notifyLib.ts`): the four engagement types share a cap of 1 push per user per day (`pushState/{uid}`), skip 22:00-07:00 in the user's local time (`tzOffset` synced by the app; unknown = India +330), and never send if the type is off. Blocked pushes are dropped, not delayed.
+- New hourly function `streakAtRiskPush` (`streakPush.ts`); rematch push added in `arena2.ts`; crew pushes use category "crew"; account deletion removes `pushState`.
+- Not tested on a device; Android push channels and FCM delivery unverified.
+
+## Batch 23 — Streak freeze + weekly goal
+- Streak freeze (server, `recordWorkout`): 1 earned each time the streak hits a multiple of 7, max 2 held, used automatically on missed days. Now one freeze per missed day (before, only a single missed day could be covered). If there are not enough freezes the streak restarts and none are spent. New accounts still start with 1 freeze (unchanged).
+- Weekly goal (3, 4 or 5): new callable `setWeeklyGoal` (`functions/src/weekly.ts`). `recordWorkout` counts days with a workout per ISO week (`weekDone`, `weekDoneId`; a second workout the same day does not count) and returns `weekGoalHit` once. Default goal 3.
+- Rules: `weeklyGoal`, `weekDone`, `weekDoneId` added to the server-only keys in `firestore.rules` (create and update), so the app cannot write them.
+- Today card: streak and freeze chips as before, plus a "This week 2/4 workouts" row with dots; tapping it cycles the goal 3, 4, 5 through the server. Loading/error text shown inline. Finishing the goal shows one line on the reward screen.
+- Week boundary follows the phone's calendar day (the same day the streak uses), not India time.
+- Not tested on a device; rules not run in the emulator.
+
+## Batch 24 — Welcome-back card
+- After 3+ days since the last logged workout, the Today card shows one friendly "Welcome back" note and its primary button becomes "Start a 5-minute easy session" (three simple moves, two gentle rounds, `buildEasyWorkout` in `src/lib/plan.ts`). A small "Not now" link dismisses it. No guilt wording; no streak or "missed" text in the card.
+- Never twice for the same break: the break is identified by the day of the last workout before it and stored in localStorage (`ap_welcome_back_for`) the moment the card is first shown. A new workout starts a new break.
+- Display only, no progression written. Works for guests too (uses the local workout log).
+- Limits: clearing app data or reinstalling can show it once more; it is per device. Not tested on a device.
+
+## Batch 25 — Screen audit: one primary action, same bottom bar, back button
+Back button (App.tsx): workouts now remember where they were started (hardware Back and the in-workout Back return there, not always Today); AI generator, History, Arena and Sign-in Back buttons use the real back stack; Exercise Library to Progress log goes through `nav` so Back returns to the library; popstate fallback no longer leaves a blank workout screen.
+Bottom bar: Settings, Community, Sign-in and Cloud sync reserved only 24px under their content, so the bar covered the bottom of them; every screen now reserves room for the bar.
+One primary action: Today screen had 5 filled start buttons (Today card, hero, first-workout card, empty routines, Athlete Spotlight); only the Today card button is filled now. Feed "Challenge", Arena lobby "Join" and the AI key "Save" were also filled and are now outlined or neutral.
+Left as is (on purpose): bar hidden during an active workout; desktop side rail has Academy where the phone bar has Coach; Progress, Premium and Library have no on-screen back arrow (hardware Back works); the Pro gate on the AI Coach covers the bar while shown (everyone is Pro while billing is off).
+Not tested on a device.
+
+## Batch 26 — Accessibility pass (contrast, 130% font scale, TalkBack labels)
+Contrast (WCAG AA 4.5:1, computed from the design tokens): dark theme `ink-4` 3.5 to 4.2 -> 4.8+ (`#8c8c97`); light theme `ink-3` 4.0 -> 5.3+, `ink-4` 2.2 -> 4.5+, accent blue 4.1 -> 5.9, green 2.5 -> 5.5, red 3.8 -> 6.5, gold and orange darkened. Light theme gets darker versions of the bright text colours (sky, emerald, orange, rose, amber) on white cards. `text-white/40` and `/35` -> `/60`; grey `zinc-500` and the AI key placeholder -> `zinc-400`; light-card screens (History, Progress, Photos) `slate-400` -> `slate-500`; Community buttons had white text on the blue button (2.5:1) -> dark text.
+Font scale: the app already caps system font scale at 130% (`MainActivity`). Fixed-height controls that would clip a wrapping label now grow (`min-h`): shared buttons, Onboarding, Rest window, Friends challenge button, workout step badges; the Today card main action no longer cuts its subtitle with "...". Shared button sizes are now 40 to 56 px tall at least.
+TalkBack: added labels to the icon-only buttons found by a scan (mute, show password, strain info, profile avatar, like, send comment, copy invite code, previous step, water +/- and month arrows, remove set); notification switches announce as on/off switches; small targets raised to 44 to 48 px.
+Not changed: unused Workout Builder screen (not reachable in the app); light-card screens still look different from the dark app.
+Checked by code only: nothing was run on a phone. See chat for what to check on a device.
+
+## Batch 27 — Loading, empty and error states for every list
+Shared kit in `src/components/ui/StateViews.tsx` (`SkeletonRows`, `SkeletonLines`, `SkeletonGrid`, `EmptyState`, `EmptyAction`, `ErrorState`). `src/lib/navEvents.ts` lets an empty state send the user to a main screen.
+Fixed: Community feed (error had no retry and showed dev wording; empty had no action), post comments, reel comments, chat list, chat messages, follow requests, people search, Arena open matches, Arena ladder empty, Friends empty, Crew (a failed load was an endless skeleton), trending reels, hashtag feed, profile reels, Pro plans, moderation queue, public profile loading, Arena history loading, daily quests (endless skeleton).
+Already complete before: friends board, league table, ladder error, profile reels error.
+By design without a state: Live now (hidden when empty), reels feed (always has built-in reels), trophies (always shows locked trophies), blocked users (nothing to do), on-device lists need no loading or error.
+Not tested on a device; the error states were only checked by reading the code (no way here to simulate a failed Firestore call).
+
+## Batch 28 — Sign-in screen: Google first, funnel events, switchable gate
+- Sign-in screen: "Beat friends, climb ranks" line above a 64px Google button (the largest control); the email Sign In / Create Account button is now an outlined 48px button so Google is the one primary action.
+- Analytics: `signin_shown` (param `gate`: login-first, after-first-workout or optional), `signin_started` and `signin_completed` (param `method`: google, email, guest). No personal data. A Google sign-in that returns through the browser redirect (web only) is not counted as completed.
+- Gate switch (`src/lib/flags.ts`): Firestore `appConfig/auth` field `gate` = `login-first` (default) or `after-first-workout`; build default via `VITE_AUTH_GATE`. Read once per launch from a cache so the screen never flips mid-session; a fetched change applies on the next launch. Rules: `appConfig/*` is public read, no client writes (deploy rules).
+- In `after-first-workout` mode the intro and goal setup work signed out, and the gate appears once the first workout is logged (never during a workout). That first workout is stored on the phone but not sent to the server, so it earns no XP.
+- Not tested on a device.
+
+## Batch 29 — Exercise demo clip pipeline (Storage, lazy player, offline cache)
+- `src/data/exerciseClips.ts`: one entry per exercise id (52 Academy + 21 that had no clip anywhere). File name contract: `<id>.mp4`, Storage path `exercise-demos/<id>.mp4`, 5-8 s, under 1,000,000 bytes, silent, H.264. Matching is exact (id, name, alias) only.
+- `src/data/exerciseClips.generated.ts`: written by `npm run clips`; an id is only "ready" after its file passes the checks. Until then the bundled clip in `public/videos` keeps playing.
+- `tools/clips.mjs` (`npm run clips`, `-- --migrate` copies existing bundled clips to the new names): checks size, length (reads the mp4 header), H.264, faststart; prints the missing list and the upload command.
+- `src/components/ExerciseClip.tsx`: still image first, lazy (starts near screen, pauses off screen), offline copy, then direct Storage stream, then bundled clip, then retry (48dp). Reduced-motion users get a Play button. Used by `ExerciseThumb` (active workout) and the Academy detail view.
+- `src/lib/clipCache.ts`: Cache Storage, 40 MB cap, least-recently-used eviction, stale-hash purge; next exercise's clip is prefetched in `ActiveWorkout` (skipped offline or with Data Saver).
+- `storage.rules`: `exercise-demos/*` public read, no client write. `storage-cors.json` added (needed only for offline caching).
+- BUG FIXED: `getExerciseVideo` no longer falls back to a fuzzy motion match (it played e.g. the Sumo Squat clip for Wide Push-ups and Bicep Curls for Prone Y Raises).
+- BUG FOUND: Dead Bug has no file in `public/videos` (it never played).
+- Not tested on a device; the cache and CORS path were not exercised.
+
+## Batch 30 — Early-win XP (server only)
+- Review: with the real server formulas a new user already gets Level 2 and the "First Rep" trophy in session 1. The gap was session 3 for people whose first three sessions cross a week boundary: no level-up, no trophy.
+- `functions/src/index.ts` (`recordWorkout`): one-time bonus XP for a user's first three workouts, +90 / +80 / +70 (240 in total), decided by the server-side `totalWorkouts`. Response now includes `earlyBonus`. Level formula, ranks and trophies are unchanged (the app keeps its own copy of the level formula, so changing it would make levels differ between screens).
+- Model (15-min workouts, week split): session 3 went from 735 XP / Level 3 / nothing to 975 XP / Level 4. Shortest sessions (5 min): 606 -> 846 XP, Level 3 -> 4. Sessions to reach Level 5/10/20 at 4 workouts a week: 5/24/107 -> 4/23/106.
+- Known weakness, not new: every workout gives a flat 120 XP, so fake 1-minute workouts can farm XP and this bonus. The anti-cheat prompt (3.5) should cover it.
+- Deploy: `firebase deploy --only functions`. Existing users with 3+ workouts get nothing.
+
+## Batch 31 — Programs (roadmap 2.2)
+
+**What:** 4–8 week training programs with a browse/start screen, per-week progress and a completion trophy.
+
+- Data: `src/data/programs.ts` (Program → weeks → sessions → exercises, ids from the exercise list only). Two sample programs, both `status: "draft"` for a trainer to review: `beginner-foundations` (4 wks × 3) and `fat-loss-no-equipment` (6 wks × 4). Muscle and mobility have no program yet (the filter shows an empty state).
+- Server (`functions/src/programs.ts`, `index.ts`, `progression.ts`): `startProgram` / `stopProgram`; `recordWorkout` credits a program session only if the claimed session equals the server count, one per day, minimum 5 minutes. Finishing sets `completedAt` and awards trophy `program_complete` ("Program Finisher"). No XP bonus for completion.
+- Rules: `users/{uid}/program/{id}` read-own, write false; `programsDone` added to the server-key blocklists.
+- App: `ProgramsView` (lazy, view `programs`), `src/lib/programs.ts`, TodayCard outlined entry row, trophy mirrored in `TROPHY_CATALOG`, events `program_started` / `program_completed`.
+- Adding a program: edit `src/data/programs.ts` AND `PROGRAM_SHAPES` in `functions/src/programs.ts`, then `npm run programs:check`.
+
+**Run:** `npm run programs:check`, `cd functions && npm run build`, `npx tsc --noEmit -p .`
+**Deploy (at the end):** `firebase deploy --only firestore:rules,functions`
+**Not tested:** on a device, rules in the emulator, or a real program run-through.
+
+## Batch 32 — Voice coaching (roadmap 2.3)
+
+- `src/lib/voiceCoach.ts` (new): on/off setting (`ap_voice_coach`, default OFF), `coachSay` (only when on), `coachSayNow` (tap-triggered lines), silent-phone check, audio ducking.
+- Workout screen: a "Voice coaching" switch on the ready screen and a "Coach" button in the active header; the old "Voice" button is now "Sound" (it mutes chimes, music and voice together).
+- Cues: exercise name + set + target at the start of each block; "Halfway there." for blocks of 20 s or more; 3-2-1 in the last 3 seconds of a block and of a rest; "Rest for N seconds. Next: X." at rest start; short finish line. Replay and the hype button still speak when tapped, even with coaching off.
+- Native (`ApexNativePlugin.java`): `audioState()` reports ringer silent/vibrate (coach stays quiet; the switch shows a note); `voiceFocus({on})` requests transient audio focus that lets other apps duck, released after each line.
+- Behaviour change: the old always-on narrator is gone. Everyone, including existing users, starts with coaching off.
+- Rebuild the Android app (`npx cap sync android` then build) for the native part. Web builds speak through the browser and cannot detect silent mode.
+- Not tested on a device: Android code has never been compiled here.
+
+## Batch 33 — Warm-up and cool-down (roadmap 2.4)
+
+- `src/lib/warmup.ts` (new): warm-up = Arm Circles, Standing Knee Raises, Cat-Cow Stretch; cool-down = Standing Chest & Shoulder Stretch, Standing Forward Fold, Child's Pose. 30 s each, one set, 10 s change-over.
+- Added when the workout is played (ActiveWorkout), not saved into the workout. Only workouts with `wrap: true` get them: AI-generated (`AiGenerator`) and plan-built (`buildWorkoutFromPlan`). The 2-minute starter (`GoalSetup`), the easy restart, programs and hand-built workouts are unchanged.
+- One-tap skip: "Skip warm-up" / "Skip cool-down" bar shows during those moves (active and rest screens). The ready screen has a "Warm-up and cool-down" switch (remembered; `ap_warmup_off`).
+- The added moves count as time but not as "exercises completed" in the log. They add about 3 minutes (`totalDurationMinutes` + 3).
+- Not tested on a device. No server change, no deploy.
+
+## Batch 34 — Plan reason and 3-day outlook (roadmap 2.5)
+
+- `functions/src/plan.ts`: the pick logic moved into `decide()` so it can run for today and for simulated days. `reason` is now one short line, e.g. "Upper body is rested, so push day." / "Legs are rested, so leg day."
+- Pro: `planNext` returns the reason plus `upcoming` (next 3 days, assuming today's session is done and each pick is followed; the outlook never steps the level up).
+- Free: `planNext` returns `{ locked: true, reason: <generic line> }`, no personal pick. Today card shows the generic line plus a Pro upsell ("tells you why, and shows your next 3 days").
+- Today card: Pro sees the reason line and a 3-chip row (Tomorrow / weekday / weekday).
+- Deploy: `cd functions && npm run build`, then `firebase deploy --only functions`. Not tested against real accounts; the outlook is a simple projection, not a promise.
+
+## Batch 35 — Offline sessions and a safe report queue (roadmap 2.6)
+
+- **Never paid twice (server):** `recordWorkout` now writes a receipt `users/{uid}/workoutReceipts/{sha1(workoutId)}` inside the same transaction and returns `duplicate: true` if it exists. Before, only the most recent workout id was remembered, so an older queued report retried after a newer one could be paid again. Receipts carry `expireAt` (45 days). Optional: in the Firebase Console add a TTL policy on collection group `workoutReceipts`, field `expireAt`. Clients cannot read or write receipts (no rule = denied).
+- **Queue (app):** `src/lib/reportQueue.ts`. The report is saved on the phone first, then sent one at a time, oldest first. It leaves the queue only when the server answers (credited or duplicate) or refuses it for good (invalid-argument etc.). Retries: at launch/sign-in, when the connection returns, when the app comes back to the front, and after 65 s when the server says "slow down". Reports older than 3 days or beyond 20 are dropped (the server only accepts today ±1 day, so a workout finished more than about 2 days before reconnecting is not rewarded; it stays in the local history).
+- **Rewards:** immediate results show as before; results of reports sent later show through the same celebration/notice. Offline finish shows "Saved on your phone. Rewards arrive when you're back online."
+- **Program offline:** the program record is cached on the phone (`ap_prog_<uid>`), sessions finished offline count at once so the next offline session claims the right number, and the server stays the authority. Program data and exercise names are bundled, so the session itself needs no network. Starting or switching a program still needs a connection (inline error).
+- **Clips:** the whole session's clips are fetched when the workout screen opens (online); the next two program sessions are fetched in the background from the Today card. Clips never fetched fall back to the bundled clip or still image.
+- **Badge:** small "Offline · workout saves on this phone · N waiting to sync" pill in the workout screen (the app-wide amber bar still shows too).
+- **Known limits:** two program sessions finished offline on the same day: the second still earns workout XP but not program credit (one program session per day). Not tested on a device or against real reconnects.
+- **Deploy:** `cd functions && npm run build`, `firebase deploy --only functions`, then `npm run build` and `npx cap sync android`.
+
+## Batch 36 — English + Hindi (roadmap 2.7)
+
+- New `src/i18n/` layer (no library): `en.ts` is the source of truth (280 keys), `hi.ts` holds Hindi (missing key falls back to English), `index.ts` exposes `t()`, `useT()`, `tSplit()`, `useLang()`, `setLang()`.
+- Language is stored on the device (`ap_lang`), default English (no auto-detect). Switch is on onboarding, sign-in and Settings > App.
+- Converted: onboarding, goal setup, sign-in (incl. error messages), Today card, workout screen (ready, phases, active, finished), Arena title and tabs, Settings main page.
+- Not converted (English): Privacy/Terms text, restore/delete-account/notification/blocked/moderation sub-screens, rest window, exercise names and tips, quest titles, plan reasons, league names, spoken voice cues, feeling labels, `wo.voiceNote` (defined, not yet shown).
+- `npm run i18n:check` verifies keys, placeholders, unknown keys, and writes `HINDI_REVIEW.md` (15 lines flagged for a native speaker).
+- No deploy needed. Only `tsc --noEmit` run; nothing tried on a device.
+
+## Batch 37 — Ghost opponents (roadmap 3.1)
+
+- Timelines: `arenaReport` now records when each rep happened (server clock, spread between reports) in `hostTl`/`guestTl` on the room. When a rated first-to-N, single-exercise match finishes, each player's best run for that setup is kept in `ghosts/{uid}_{key}` (server-only; rules deny all client access; owner uid never goes to a client). 60-day `expireAt`; account deletion removes the user's ghosts.
+- Ghost duel (`arenaGhostMatch`): `peer` = recorded player nearest your rating (±200, widening to ±500, then any), skipping you and anyone blocked either way; `self` = your own best run; `auto` = peer, else a practice "Pacer". Opponent name is anonymous ("Swift Falcon"), no avatar. The ghost room is a normal room with `ghost: true` and the timeline; the phone plays it against the server's start time, the server settles the final score (`settleReps`).
+- Rating: against a peer ghost the Elo change is half weight (`GHOST_WEIGHT = 0.5`); XP is half too. Your own run and the Pacer are unrated. Safeguards: at most 8 rated ghost matches per player per day, leaving a live ghost match is a loss, ghost wins do not count on the wins leaderboard or arena-win trophies.
+- Quick match: after 8 s with no live opponent the app asks for a ghost. If a live opponent appeared in the meantime the server returns that room instead. If the ghost call fails the search just keeps waiting.
+- Needs deploy: `firestore:rules`, `firestore:indexes` (new `ghosts` index key+rating; until it is built, peer ghosts are not found and quick match falls back to the Pacer), `functions`.
+- Only first-to-N matches with one exercise make or use ghosts (what quick match offers). `npm run ghosts:check` tests the rules. Not run against the emulator or a device.
+
+## Batch 38 — Daily global challenge (roadmap 3.2)
+
+- Server (`functions/src/daily.ts`, rules in `dailyCore.ts`): one exercise per IST day from a pool of 10, picked from the date (same for everyone, never two days running). 60 seconds, 3 attempts a day, best counts.
+- `dailyChallengeStart` records the start on the server clock; `dailyChallengeSubmit` refuses counts sent before 58 s or after 180 s, and counts above the exercise's rep-rate limit (e.g. push-ups 1.6/s => 99 max). A refused attempt is spent and counted (`rejected`) on `users/{uid}/daily/{day}`.
+- Board: `dailyBoard/{day}/entries/{uid}` (server writes, signed-in users read), ordered by reps then earlier finish. App shows top 10 with "show all" up to 100, and your position. Fewer than 5 reps is not listed.
+- XP: 75, once per day per user (flag on the user's daily doc, inside the same transaction). Banned users are refused.
+- `dailyChallengeSweep` (00:40 IST) deletes boards older than 14 days; account deletion removes the user's entries.
+- UI: `DailyChallenge` card at the top of Arena > Global. Taps only (no camera counting). Text is English only (not in the Hindi dictionary yet). Blocked users are not hidden on this board.
+- Needs deploy: `firestore:rules`, `functions`. No new index. `npm run daily:check` tests the rules. Not run on emulator or device.
+
+## Batch 39 — Weekly leagues finished (roadmap 3.3)
+
+- Rules now live in `functions/src/leagueCore.ts` (mirrored for the screen in `src/lib/league.ts`): groups of up to 30, top 5 promoted, bottom 5 demoted. Was top 10 / bottom 5.
+- Groups by rating: `joinLeague` fills groups per league and Arena-rating band (below 900, 900-1099, 1100-1299, 1300+). Players already grouped this week keep their group.
+- Small groups move fewer places (under 15 players: about a third go up, 3 go down only from 10 players, none below that). No promotion with 0 XP. Bronze cannot go down, Diamond cannot go up.
+- `leagueRollover` (Monday 00:05 IST) uses the shared rules and a fixed tie order (XP, then user id).
+- League screen: time left ("Last day" in amber under 24 h), rule line, a status card ("120 XP to reach the top 5 and move up to Silver" / lead / demotion warning) with the primary button "Start a workout" and a secondary "play an Arena match".
+- No push on promotion/demotion: the rollover runs inside quiet hours, so the existing Today card result is the notice.
+- Needs deploy: `functions` only (no rules or index change). `npm run leagues:check` tests the rules. Not run on emulator or device.
+
+## Batch 40 — Share cards (roadmap 3.4)
+
+- Found already in the working tree when this prompt arrived (files changed 11:13-11:20 IST on 10 Nov by another session, not written in this one). Checked here: `tsc --noEmit` passes with it and `npm run share:check` passes.
+- Cards are drawn on the phone (`src/lib/flexCard.ts`): app name, the result, three stat tiles, a QR code and "Free on Google Play" line. Arena win shows score, rating and rating change (reps and margin when the match was unrated). Level-up and streak cards exist too.
+- Where: "Share this win" on the Arena result, "Share" on the level-up screen, "Share" on the streak/milestone banner on the dashboard.
+- Link (`src/lib/shareLink.ts`): the https Play Store listing with a referrer code per card type (s_ar, s_lv, s_st, s_se, s_mi, s_ap), in the QR and in the shared message. Sharing goes through the native Android share sheet (`ApexNative.share`).
+- Name: off by default. Printed only if the user ticks "Show my name on the card" in the share sheet (saved on the device). The opponent is never named.
+- Nothing to deploy. Scanning the QR and the share sheet need a real phone to confirm.
+
+## Batch 41 — Anti-cheat (roadmap 3.5)
+
+- Per-exercise rep-rate limits (`functions/src/repLimits.ts`, 31 Arena exercises, default 2.5/s, never above 5/s). `arenaReport` cuts a count to the limit (as before, but per exercise and not counting the 3-2-1). A count more than 5 reps over the limit is a strike (once per player per match); that match is unrated and makes no ghost.
+- Daily challenge: a "too fast" refusal is a strike.
+- `cheatFlags/{uid}` (server-only): 3 strikes in 7 days, or 3 different players reporting cheating, sets `flagged`. Flagging never bans by itself.
+- Reports: new type `match` (reason "Cheating or fake reps" and others) from "Report this match" on the Arena result. The server checks the reporter played that match and reads the other player from the room. Reels already had a report button.
+- Admin: Settings > Moderation now has "Flagged accounts" (callables `modListFlagged`, `modReviewFlag`, ADMIN_EMAILS only): clear the flag or ban.
+- Needs deploy: `firestore:rules`, `functions`. `npm run anticheat:check`. Limits are estimates for a trainer to review.
+- What a determined cheater can still do: see the report for this batch (taps are not proof of a rep; a modified app can tap at just under the limit; second accounts; camera counting runs on the phone).
+
+## Batch 42 — Moderation end to end (roadmap 3.6)
+
+- Reports now also cover community posts and post comments (flag button on each; own content has no flag). 3 open reports hide a post until a moderator looks (reels already did this); the author cannot un-hide it (rules). Blocked users' posts and comments are filtered out of the community feed.
+- Admin "Remove" works for reel, reel comment, post (with its photo and comments) and post comment, and closes the other open reports about the same thing.
+- Clear message to the user: removal or ban writes a `moderation` notice to `notifs/{uid}/items`; the app shows it as a banner until "OK" (`ModerationGate` in App). A banned account sees a full-screen "Account disabled" with sign out; a disabled sign-in shows a clear error.
+- Content policy page (`ContentPolicy.tsx`), linked from Settings > Terms section and from the sign-up form. English only; needs a legal read.
+- Test: `npm run moderation:check` runs the real `moderation.ts` functions against an in-memory database (44 checks: report post/reel/comment/post comment/user/match, duplicates, daily limit, auto-hide, block, admin-only, remove, dismiss, ban, owner notices). It does not test the deployed rules or the screens.
+- Needs deploy: `firestore:rules`, `functions`. Chat messages can be reported but not removed by a moderator (unchanged). No support email exists in the app yet; the messages point to the Play Store page.
+
+## Batch 43 — Invite a friend (roadmap 3.7)
+
+- Personal 7-character code per user (`inviteInfo`, stored in `inviteCodes/{CODE}`); card with copy/share and a "have a friend's code?" box in Arena > Friends (`InviteFriend.tsx`).
+- `inviteRedeem`: only for an account with no workout yet, in its first 14 days, once, not your own code, and only with a device id.
+- Reward: inside `recordWorkout`, on the invited account's first workout. Both get +1 streak freeze if they hold fewer than 2, and a badge ("Brought by a Friend" / "Recruiter"). One decision per invited account (`inviteDone`), paid or refused. An inviter is rewarded for at most 10 friends.
+- Same device: the app sends a device id (Android `ANDROID_ID` through a new `ApexNative.deviceId` method; a random id in the browser or an old build); the server keeps only a hash in `devices/{hash}` with every account seen on it. If the invited person's device has ever had another account, nobody is rewarded.
+- All invite fields on the user document are blocked for client writes in the rules; `inviteCodes` and `devices` are server-only.
+- Needs deploy: `firestore:rules`, `functions`, and a new app build (Java change, not compiled here). `npm run invites:check`.
+- Limits: a factory reset or a second phone gets round the device rule; the browser id is cleared with site data. The inviter is not notified by push; they see the count on the card and the new badge. Data safety form: declare "Device or other IDs" (hashed, fraud prevention).
+
+## Batch 44 — Cost control (roadmap 3.8)
+
+- "Live now" list: was a live listener on room documents that change on every rep (one read per change per viewer); now fetched every 20 s, 10 rooms at most, paused in the background.
+- Shared listeners (`src/lib/sharedQuery.ts`): the XP/rating boards, league table, community board and Arena-wins board use one listener each, kept 60 s after the screen closes, so tab-hopping does not re-read 30 to 50 documents. Cleared on sign-out.
+- Limits and paging: chat opens with the newest 50 messages (was 300) with "Earlier messages"; reel comments 40 (was 150) with "Older comments"; post comments newest 100 (was unlimited); community feed 30 (was 60) with "Load more"; open rooms 20 (was 40); daily board 10 live, 100 on request; follow links capped at 1,000 each way (was unlimited).
+- Rep reports at most every 400 ms (was 250 ms).
+- `COSTS.md` has the before/after table and the estimate per daily active user, with guesses marked. `npm run costs:check` fails on any collection query without a limit.
+- Nothing to deploy (app only). An account with more than 1,000 followers or follows will see follow state only for the first 1,000.
+
+## Batch 45 — Store listing, screenshot brief and demo mode (roadmap 4.1, 4.2)
+
+- `launch/4.1-store-listing.md`: titles, short and full description, 5 captions, English and Hindi (Hindi needs native review). Lengths counted by script.
+- Hindi: "reps" is no longer transliterated as रेप्स (reads as an offensive word); the two app strings now use बार and are in the review list.
+- `launch/4.2-screenshots-and-icon.md`: 8 screenshots, 2 icon directions, capture steps.
+- Demo mode (`src/lib/demo.ts`): on only with `VITE_DEMO_MODE=1` at build time, or `?demo=1` on the dev server. Sample identity, progress, plan, quests, league, boards, daily challenge and one scripted Arena match; every server call is answered from the file or refused; no Firebase listeners for those screens. Reels, community, chat, crew, friends and programs are not covered.
+- `npm run demo:check` fails if `.env` still has `VITE_DEMO_MODE=1`. Demo screens were not looked at (the app cannot be run here).
+
+## Batch 46 — Rating prompt and Play declarations (roadmap 4.3, 4.4)
+
+- Rating prompt: after the level-up screen closes for a level-up or a finished program week, never in the first 3 days of an install, at most once per 60 days (`src/lib/review.ts`). The sheet offers "Rate on Google Play" (Play in-app review through a new `ApexNative.requestReview`, Play library added to `build.gradle`), "Send private feedback" (`sendFeedback` function, `feedback` collection, server-only, 5 a day) and "Not now".
+- It does not ask "do you like the app?" first. Google's in-app review rules forbid an opinion question before the rating card, so both choices are offered side by side instead of sending only unhappy users to feedback.
+- Needs deploy: `firestore:rules`, `firestore:indexes` (feedback uid+at), `functions`, new app build (Java and Gradle change, not compiled here). `npm run review:check`.
+- `launch/4.4-play-console-declarations.md`: Data safety answers, Health Connect wording, subscription checklist, and 12 mismatches between the code and what would be declared (privacy text about camera and tracking, no privacy URL, no web deletion page, AD_ID, body measurements in Cloud Sync).
+
+## Batch 47 — Billing test plan and paywall tuning (roadmap 4.5, 4.6)
+
+- `launch/4.5-billing-test.md`: setup, 12 test steps with what to check in Firestore and the logs, a failure table, and 10 checks before `BILLING_ENABLED=true`.
+- Paywall is offered only after 3 finished workouts (`paywallUnlocked`): every entry point goes through one check; before that the AI generator is not locked and the Today card shows no Pro prompt.
+- Paywall sheet: yearly plan first and pre-selected with "Best value · save N%" (worked out from Play's prices, shown only when it is real), per-month price, free-trial line and button when the Play offer has a trial, one "Continue" button, a full-size "Restore purchases" button, and a line that Arena and social are free. All prices come from Google Play in the user's currency; none are written in the app.
+- `ApexBillingPlugin.getProducts` now also returns the trial period, price in micros and currency (Java, not compiled here).
+- Fixes found on the way: "Restore purchases" reported failure whenever billing was not enforced, and a verified subscriber could be shown the plans again; both now go by a verified, unexpired `proUntil`. First perk reworded to what Pro really adds.
+- Needs a new app build. `npm run paywall:check`.
+
+## Batch 48 — Rollout plan and launch review (roadmap 4.8, 4.9)
+
+- `launch/4.8-rollout-plan.md`: step 0 (internal and closed testing), 5% for 3 days, 20% for 4 days, 100%, with gates (crash, ANR, sign-in, first workout, retention, rating, cost), which numbers are Play's limits and which are guesses, and what to do when a gate fails.
+- `launch/4.9-launch-review.md`: tsc and functions build pass, all 13 check scripts pass, standing rules held. Verdict: no-go for production today, go for an internal-testing build. 9 blockers (Android never compiled, nothing run on a device, nothing deployed, no privacy URL, no deletion page, privacy text does not match the code, signing, Play forms, closed-test rule) and 9 should-fix items.
+- 4.7 (listing in two more languages) is waiting for the two languages.
+- No code change in this batch.

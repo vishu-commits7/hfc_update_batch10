@@ -116,7 +116,7 @@ export default function HistoryLogs({ logs, onBack, onClearLogs, onDeleteLog }: 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="rounded-2xl border border-slate-100 bg-white p-5 flex items-center justify-between shadow-xs">
               <div>
-                <span className="text-[11px] uppercase tracking-widest text-slate-400 font-extrabold block">Total Sessions</span>
+                <span className="text-[11px] uppercase tracking-widest text-slate-500 font-extrabold block">Total Sessions</span>
                 <span className="text-3xl font-black text-slate-900 mt-1 block">{totalWorkouts}</span>
               </div>
               <div className="rounded-xl bg-blue-50 p-2.5 text-blue-600">
@@ -126,7 +126,7 @@ export default function HistoryLogs({ logs, onBack, onClearLogs, onDeleteLog }: 
 
             <div className="rounded-2xl border border-slate-100 bg-white p-5 flex items-center justify-between shadow-xs">
               <div>
-                <span className="text-[11px] uppercase tracking-widest text-slate-400 font-extrabold block">Total Effort</span>
+                <span className="text-[11px] uppercase tracking-widest text-slate-500 font-extrabold block">Total Effort</span>
                 <span className="text-3xl font-black text-slate-900 mt-1 block">{totalMinutes} Mins</span>
               </div>
               <div className="rounded-xl bg-blue-50 p-2.5 text-blue-600">
@@ -136,7 +136,7 @@ export default function HistoryLogs({ logs, onBack, onClearLogs, onDeleteLog }: 
 
             <div className="rounded-2xl border border-slate-100 bg-white p-5 flex items-center justify-between shadow-xs">
               <div>
-                <span className="text-[11px] uppercase tracking-widest text-slate-400 font-extrabold block">Est. Calories</span>
+                <span className="text-[11px] uppercase tracking-widest text-slate-500 font-extrabold block">Est. Calories</span>
                 <span className="text-3xl font-black text-blue-600 mt-1 block">{totalCalories} kcal</span>
               </div>
               <div className="rounded-xl bg-blue-50 p-2.5 text-blue-600">
@@ -166,7 +166,7 @@ export default function HistoryLogs({ logs, onBack, onClearLogs, onDeleteLog }: 
                       {feel === "Exhausted" && <BatteryLow className="h-4 w-4 text-rose-500" />}
                     </span>
                     <span className="text-xs font-bold text-slate-800 block">{feel}</span>
-                    <span className="text-xs text-slate-400 block mt-0.5 tabular-nums">{count} ({percentage}%)</span>
+                    <span className="text-xs text-slate-500 block mt-0.5 tabular-nums">{count} ({percentage}%)</span>
                   </div>
                 );
               })}
@@ -175,7 +175,7 @@ export default function HistoryLogs({ logs, onBack, onClearLogs, onDeleteLog }: 
 
           {/* Log List */}
           <div className="space-y-4">
-            <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400">Saved Sessions log ({logs.length})</h2>
+            <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500">Saved Sessions log ({logs.length})</h2>
             
             <div className="space-y-3">
               {logs.map((log) => (
@@ -194,9 +194,9 @@ export default function HistoryLogs({ logs, onBack, onClearLogs, onDeleteLog }: 
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-3 text-xs text-slate-400 flex-wrap">
+                    <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
                       <span className="flex items-center gap-1">
-                        <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                        <Calendar className="h-3.5 w-3.5 text-slate-500" />
                         {new Date(log.completedAt).toLocaleDateString(undefined, { 
                           year: "numeric", 
                           month: "long", 
@@ -207,7 +207,7 @@ export default function HistoryLogs({ logs, onBack, onClearLogs, onDeleteLog }: 
                       </span>
                       <span>•</span>
                       <span className="flex items-center gap-1">
-                        <Clock className="h-3.5 w-3.5 text-slate-400" />
+                        <Clock className="h-3.5 w-3.5 text-slate-500" />
                         {log.durationMinutes} mins
                       </span>
                       <span>•</span>

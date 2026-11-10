@@ -8,14 +8,44 @@ const db = getFirestore();
 /* notifications                                                       */
 /* ------------------------------------------------------------------ */
 
-export type Cat = "chats" | "groups" | "follows" | "newReels" | "likes" | "comments";
+export type Cat = "chats" | "groups" | "follows" | "newReels" | "likes" | "comments" | "streak" | "challenge" | "rematch" | "crew";
+
+/**
+ * "Engagement" pushes (streak at risk, challenges, rematch, crew) share ONE push per user per local day and are
+ * never sent during quiet hours (22:00-07:00 in the user's own time). Chats, follows, likes and so on are not capped.
+ * A push that is blocked is dropped, not delayed.
+ */
+const ENGAGEMENT = new Set<Cat>(["streak", "challenge", "rematch", "crew"]);
+const DAILY_CAP = 1;
+const QUIET_START_HOUR = 22;
+const QUIET_END_HOUR = 7;
+const DEFAULT_OFFSET_MIN = 330; // India, when the phone has not reported its timezone yet
+
+const cleanOffset = (v: unknown) => { const n = Number(v); return Number.isFinite(n) && n >= -720 && n <= 840 ? Math.round(n) : DEFAULT_OFFSET_MIN; };
+const localHour = (offsetMin: number, now = Date.now()) => new Date(now + offsetMin * 60_000).getUTCHours();
+const localDay = (offsetMin: number, now = Date.now()) => new Date(now + offsetMin * 60_000).toISOString().slice(0, 10);
+export const inQuietHours = (offsetMin: number, now = Date.now()) => { const h = localHour(offsetMin, now); return h >= QUIET_START_HOUR || h < QUIET_END_HOUR; };
+
+/** Takes today's single engagement-push slot for this user. false = already used today. */
+async function takeDailySlot(uid: string, offsetMin: number): Promise<boolean> {
+  const ref = db.doc(`pushState/${uid}`);
+  const day = localDay(offsetMin);
+  return db.runTransaction(async tx => {
+    const s = await tx.get(ref);
+    const used = s.exists && s.data()!.day === day ? Number(s.data()!.n || 0) : 0;
+    if (used >= DAILY_CAP) return false;
+    tx.set(ref, { day, n: used + 1, at: FieldValue.serverTimestamp() });
+    return true;
+  });
+}
 export type NType = "like" | "comment" | "follow" | "follow_request" | "follow_accepted" | "new_reel" | "challenge" | "challenge_result";
 const CAT: Record<NType, Cat> = {
   like: "likes", comment: "comments", follow: "follows", follow_request: "follows",
-  follow_accepted: "follows", new_reel: "newReels", challenge: "follows", challenge_result: "follows",
+  follow_accepted: "follows", new_reel: "newReels", challenge: "challenge", challenge_result: "challenge",
 };
 const DEFAULT_MODE: Record<Cat, string> = {
   chats: "sound", groups: "sound", follows: "sound", newReels: "silent", likes: "silent", comments: "sound",
+  streak: "sound", challenge: "sound", rematch: "sound", crew: "sound",
 };
 
 export async function nameOf(uid: string): Promise<string> {
@@ -23,14 +53,19 @@ export async function nameOf(uid: string): Promise<string> {
   return (s.data()?.displayName as string) || "Someone";
 }
 
-export async function push(uid: string, cat: Cat, title: string, body: string, data: Record<string, string> = {}) {
+export async function push(uid: string, cat: Cat, title: string, body: string, data: Record<string, string> = {}): Promise<boolean> {
   const userSnap = await db.doc(`users/${uid}`).get();
   const prefs = (userSnap.data()?.notifPrefs ?? {}) as Record<string, any>;
-  if (prefs.all === false) return;
+  if (prefs.all === false) return false;
   const mode: string = prefs[cat] ?? DEFAULT_MODE[cat];
-  if (mode === "off") return;
+  if (mode === "off") return false;                       // the user turned this type off
   const devices = await db.collection(`users/${uid}/devices`).get();
-  if (devices.empty) return;
+  if (devices.empty) return false;
+  if (ENGAGEMENT.has(cat)) {
+    const offset = cleanOffset(userSnap.data()?.tzOffset);
+    if (inQuietHours(offset)) return false;               // quiet hours
+    if (!(await takeDailySlot(uid, offset))) return false; // one engagement push per day
+  }
   const tokens = devices.docs.map(d => d.id);
   const res = await getMessaging().sendEach(
     tokens.map(token => ({
@@ -51,6 +86,7 @@ export async function push(uid: string, cat: Cat, title: string, body: string, d
     }
   });
   await Promise.all(dead);
+  return true;
 }
 
 function title(type: NType, name: string) {

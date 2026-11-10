@@ -41,7 +41,7 @@ app.use((req, res, next) => {
 });
 var PORT = 3e3;
 function generateApexNeuralWorkout(options) {
-  const { fitnessLevel, goal, duration, targetArea, equipment, healthNotes } = options;
+  const { fitnessLevel, goal, duration, targetArea, equipment, healthNotes: _healthNotes } = options;
   const movementsByRegion = {
     "Upper Body": [
       { name: "Classic Push-ups", description: "Standard shoulder-width press, maintaining rigid core alignment and full scapular retraction on the descent.", targetMuscle: "Pectoralis Major & Triceps Brachii", durationSeconds: 0, reps: fitnessLevel === "Advanced" ? 22 : fitnessLevel === "Intermediate" ? 14 : 8, restSeconds: 25 },
@@ -121,6 +121,83 @@ function generateApexNeuralWorkout(options) {
     isRealGemini: false
   };
 }
+app.get("/api/health", (_req, res) => {
+  return res.json({
+    status: "ok",
+    timestamp: Date.now(),
+    geminiConfigured: !!process.env.GEMINI_API_KEY,
+    mode: process.env.NODE_ENV || "development"
+  });
+});
+app.use("/__/auth", async (req, res) => {
+  try {
+    const targetUrl = `https://fitness-app-1e5f0.firebaseapp.com/__/auth${req.url}`;
+    const headers = {};
+    for (const [k, v] of Object.entries(req.headers)) {
+      if (typeof v === "string") headers[k] = v;
+    }
+    headers["host"] = "fitness-app-1e5f0.firebaseapp.com";
+    const fetchRes = await fetch(targetUrl, {
+      method: req.method,
+      headers,
+      body: ["GET", "HEAD"].includes(req.method) ? void 0 : JSON.stringify(req.body)
+    });
+    res.status(fetchRes.status);
+    fetchRes.headers.forEach((val, key) => {
+      res.setHeader(key, val);
+    });
+    const buffer = await fetchRes.arrayBuffer();
+    return res.send(Buffer.from(buffer));
+  } catch (err) {
+    console.warn("Auth proxy error:", err?.message || err);
+    return res.status(502).json({ error: "Auth proxy error", message: err?.message });
+  }
+});
+app.post("/api/exercises/generate-image", async (req, res) => {
+  const { name, targetMuscle, compartment } = req.body || {};
+  if (!name) {
+    return res.status(400).json({ error: "Exercise name is required" });
+  }
+  const clientKey = (req.headers["x-gemini-key"] || req.body?.geminiApiKey || process.env.GEMINI_API_KEY || "").trim();
+  const hasKey = clientKey.length > 20 && !clientKey.startsWith("MY_");
+  if (hasKey) {
+    try {
+      const genai = new import_genai.GoogleGenAI({
+        apiKey: clientKey,
+        httpOptions: { headers: { "User-Agent": "aistudio-build" } }
+      });
+      const prompt = `Photorealistic cinematic gym photography: an athletic fitness model performing the signature apex pose of ${name} (${targetMuscle || compartment || "Athletic"}) inside a luxury modern gym. Crisp dramatic gym lighting, dark slate and matte steel background, authentic athletic posture, anatomical muscle definition, 8k resolution, photorealistic style.`;
+      const imgResponse = await genai.models.generateImages({
+        model: "imagen-3.0-generate-002",
+        prompt,
+        config: {
+          numberOfImages: 1,
+          aspectRatio: "1:1",
+          outputMimeType: "image/jpeg"
+        }
+      });
+      if (imgResponse?.generatedImages?.[0]?.image?.imageBytes) {
+        return res.json({
+          success: true,
+          imageUrl: `data:image/jpeg;base64,${imgResponse.generatedImages[0].image.imageBytes}`,
+          engine: "imagen-3.0-generate-002",
+          prompt
+        });
+      }
+    } catch (err) {
+      console.warn("Imagen generation error, fallback active:", err?.message || err);
+    }
+  }
+  return res.json({
+    success: true,
+    imageUrl: null,
+    fallback: true,
+    message: "Procedural gym photo archetype assigned"
+  });
+});
+app.get("/api/health", (_req, res) => {
+  return res.json({ ok: true, status: "healthy", timestamp: Date.now() });
+});
 app.post("/api/gemini/validate", async (req, res) => {
   const key = (req.headers["x-gemini-key"] || req.body?.apiKey || "").trim();
   if (!key) {

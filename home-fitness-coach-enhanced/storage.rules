@@ -19,6 +19,12 @@ service firebase.storage {
         && (request.resource.contentType.matches('video/.*') || request.resource.contentType.matches('image/.*'));
       allow delete: if request.auth != null && request.auth.uid == uid;
     }
+    // Exercise demo clips: readable by anyone (also before sign-in), never writable
+    // from the app. Upload from the Firebase Console or gsutil.
+    match /exercise-demos/{file} {
+      allow read: if true;
+      allow write: if false;
+    }
     match /{allPaths=**} {
       allow read, write: if false;
     }

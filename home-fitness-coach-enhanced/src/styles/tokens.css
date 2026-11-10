@@ -50,7 +50,7 @@
   --ink: #f1f2f5;
   --ink-2: #c4c4cc;
   --ink-3: #9a9aa6;
-  --ink-4: #75757f;
+  --ink-4: #8c8c97; /* 4.8:1 on the lightest dark surface (was 3.5:1) */
 
   /* --- Accent Palette ----------------------------------------------
      - Primary Action / Active Telemetry: Volt #7AA2FF & Signal Orange #FF4500
@@ -131,17 +131,17 @@
 
   --ink: #0f172a;
   --ink-2: #334155;
-  --ink-3: #64748b;
-  --ink-4: #94a3b8;
+  --ink-3: #566175; /* AA on every light surface (was 4.0:1 on graphite) */
+  --ink-4: #5f6b80; /* was 2.2:1 */
 
-  --cyan: #0284c7;
+  --cyan: #0369a1; /* was 4.1:1 on white */
   --cyan-dim: #e0f2fe;
-  --emerald: #10b981;
+  --emerald: #047857; /* was 2.5:1 on white */
   --emerald-dim: #ecfdf5;
-  --gold: #f59e0b;
+  --gold: #b45309;
   --gold-dim: #fef3c7;
-  --ember: #ea580c;
-  --crimson: #ef4444;
+  --ember: #c2410c;
+  --crimson: #b91c1c;
 
   --cyan-wash: rgba(2, 132, 199, 0.08);
   --emerald-wash: rgba(16, 185, 129, 0.08);
@@ -221,3 +221,13 @@
   --safe-r: env(safe-area-inset-right, 0px);
   --radius-squircle: 18px;
 }
+
+
+/* Accessibility: the light theme keeps the bright dark-theme text colours (sky-300, emerald-400 ...) on white cards,
+   which fail WCAG AA. On light surfaces these get darker equivalents (4.5:1 or better). */
+.theme-daylight .bg-carbon .text-sky-300, .theme-daylight .bg-carbon .text-sky-400, .theme-daylight .bg-carbon .text-cyan-300, .theme-daylight .bg-carbon .text-cyan-400,
+.theme-daylight .bg-graphite .text-sky-300, .theme-daylight .bg-graphite .text-cyan-400 { color: #0369a1; }
+.theme-daylight .bg-carbon .text-emerald-300, .theme-daylight .bg-carbon .text-emerald-400, .theme-daylight .bg-graphite .text-emerald-400 { color: #047857; }
+.theme-daylight .bg-carbon .text-orange-400, .theme-daylight .bg-graphite .text-orange-400 { color: #c2410c; }
+.theme-daylight .bg-carbon .text-rose-300, .theme-daylight .bg-carbon .text-rose-400, .theme-daylight .bg-graphite .text-rose-300 { color: #be123c; }
+.theme-daylight .bg-carbon .text-amber-300, .theme-daylight .bg-carbon .text-amber-400, .theme-daylight .bg-graphite .text-amber-400 { color: #b45309; }

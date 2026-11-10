@@ -2,6 +2,7 @@
 import "./init";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { push } from "./notifyLib";
 
 const db = getFirestore();
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -35,7 +36,8 @@ export const arenaRematch = onCall(async req => {
   const uid = auth(req);
   const old = String(req.data?.code || "").toUpperCase();
   if (!/^[A-Z2-9]{4,8}$/.test(old)) throw new HttpsError("invalid-argument", "Bad room code.");
-  return db.runTransaction(async tx => {
+  let wake: { uid: string; name: string; code: string } | null = null; // who to push once the rematch room exists
+  const result = await db.runTransaction(async tx => {
     const oref = db.doc(`rooms/${old}`);
     const s = await tx.get(oref);
     if (!s.exists) throw new HttpsError("not-found", "Match not found.");
@@ -50,8 +52,15 @@ export const arenaRematch = onCall(async req => {
       status: "waiting", visibility: "private", rematchOf: old,
     });
     tx.update(oref, { rematchCode: code, rematchBy: uid });
+    const other = r.hostUid === uid ? (r.guestUid as string) : (r.hostUid as string);
+    wake = { uid: other, name: String(me.name || "Your opponent"), code };
     return { code, host: true };
   });
+  if (wake) {
+    const w = wake as { uid: string; name: string; code: string };
+    await push(w.uid, "rematch", `${w.name} wants a rematch`, "Tap to jump back into the Arena.", { type: "rematch", code: w.code }).catch(() => {});
+  }
+  return result;
 });
 
 /** Quick match: pairs you with the oldest waiting player who picked the same exercise and reps. */

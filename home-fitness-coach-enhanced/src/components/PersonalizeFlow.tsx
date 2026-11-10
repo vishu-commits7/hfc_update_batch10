@@ -173,7 +173,7 @@ function NumberStepper({
           transition={{ duration: 0.16 }}
           className="text-7xl font-black tracking-tighter text-white tabular-nums"
         >
-          {value}<span className="ml-1 text-2xl font-bold text-white/40">{suffix}</span>
+          {value}<span className="ml-1 text-2xl font-bold text-white/60">{suffix}</span>
         </motion.div>
       </AnimatePresence>
 
@@ -294,7 +294,7 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
         {/* Top bar: progress + close/skip */}
         <div className="relative z-10 flex items-center gap-3 px-6 pt-6">
           {step !== "choice" && stepIndex > 0 && (
-            <button onClick={() => go(-1)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/70 hover:bg-white/15">
+            <button aria-label="Previous step" onClick={() => go(-1)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/70 hover:bg-white/15">
               <ChevronLeft className="h-4 w-4" />
             </button>
           )}
@@ -319,7 +319,7 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
             </button>
           )}
           {questionPosition >= 0 && (
-            <button onClick={() => go(1)} className="flex shrink-0 items-center gap-1 rounded-full bg-white/5 px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-white/40 hover:text-white/70">
+            <button onClick={() => go(1)} className="flex shrink-0 items-center gap-1 rounded-full bg-white/5 px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-white/60 hover:text-white/70">
               Skip <SkipForward className="h-3 w-3" />
             </button>
           )}
@@ -363,7 +363,7 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
                 <div>
                   <p className="text-center text-[11px] font-black uppercase tracking-[0.2em] text-lime-300">Question {questionPosition + 1} of {questionSteps.length}</p>
                   <h2 className="font-display mt-3 text-center text-2xl font-black text-white">What's your gender?</h2>
-                  <p className="mt-1.5 text-center text-xs text-white/40">Used only to fine-tune calorie & recovery estimates.</p>
+                  <p className="mt-1.5 text-center text-xs text-white/60">Used only to fine-tune calorie & recovery estimates.</p>
                   <div className="mt-8 flex justify-center gap-4">
                     <GenderCard active={gender === "male"} onClick={() => setGender("male")} icon={Mars} label="Male" glow="bg-blue-500/20" ringColors="#60a5fa, #22d3ee, #818cf8, #60a5fa" photo={coachMalePhoto} />
                     <GenderCard active={gender === "other"} onClick={() => setGender("other")} icon={NonBinary} label="Prefer not to say" glow="bg-violet-500/20" ringColors="#a78bfa, #818cf8, #c084fc, #a78bfa" />
@@ -410,7 +410,7 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
                     ) : (
                       <div className="flex flex-col items-center gap-6">
                         <div className="text-7xl font-black tracking-tighter text-white tabular-nums">
-                          {ftIn.ft}<span className="text-3xl text-white/40">'</span>{ftIn.inch}<span className="text-3xl text-white/40">"</span>
+                          {ftIn.ft}<span className="text-3xl text-white/60">'</span>{ftIn.inch}<span className="text-3xl text-white/60">"</span>
                         </div>
                         <input
                           type="range" min={48} max={84} value={Math.round(heightCm / 2.54)}
@@ -461,12 +461,12 @@ export default function PersonalizeFlow({ mode, initial, onComplete, onSkip, onC
 
                   <div className="mt-7 grid grid-cols-2 gap-3">
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-left">
-                      <p className="text-[11px] font-black uppercase tracking-widest text-white/40">Profile</p>
+                      <p className="text-[11px] font-black uppercase tracking-widest text-white/60">Profile</p>
                       <p className="mt-1 text-sm font-bold text-white capitalize">{touched.gender ? gender : "Skipped"} · {touched.age ? `${age}yrs` : "Skipped"}</p>
-                      <p className="text-xs text-white/40">{touched.height ? `${heightCm}cm` : "height skipped"} · {touched.weight ? `${weightKg}kg` : "weight skipped"}</p>
+                      <p className="text-xs text-white/60">{touched.height ? `${heightCm}cm` : "height skipped"} · {touched.weight ? `${weightKg}kg` : "weight skipped"}</p>
                     </div>
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-left">
-                      <p className="text-[11px] font-black uppercase tracking-widest text-white/40">Est. BMI</p>
+                      <p className="text-[11px] font-black uppercase tracking-widest text-white/60">Est. BMI</p>
                       <p className="mt-1 text-2xl font-black text-white">{bmi > 0 ? bmi : "—"}</p>
                       <p className={`text-xs font-bold ${catColorClass}`}>{cat.label}</p>
                     </div>

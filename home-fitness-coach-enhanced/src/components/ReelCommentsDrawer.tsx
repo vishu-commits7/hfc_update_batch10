@@ -10,6 +10,7 @@ import {
   friendlySocialError, type ReelCommentDoc,
 } from "../lib/social";
 import { useMyIdentity } from "../lib/useSocial";
+import { ErrorState, EmptyState, EmptyAction, SkeletonLines } from "./ui/StateViews";
 import { tapFeedback } from "../lib/haptics";
 
 interface ReelCommentsDrawerProps {
@@ -41,21 +42,26 @@ export default function ReelCommentsDrawer({ isOpen, reelId, onClose, onOpenProf
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [tryN, setTryN] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const [max, setMax] = useState(40); // newest 40; "More comments" raises it
 
   useEffect(() => {
     if (!isOpen || !reelId) return;
     setComments(null);
     setError(null);
+    setLoadFailed(false);
     const unsub = subscribeReelComments(
       reelId,
-      list => setComments(list),
-      e => { setComments([]); setError(friendlySocialError(e)); },
+      list => { setLoadFailed(false); setComments(list); },
+      () => { setComments([]); setLoadFailed(true); },
+      max,
     );
     const t = window.setTimeout(() => inputRef.current?.focus(), 350);
     return () => { unsub(); clearTimeout(t); };
-  }, [isOpen, reelId]);
+  }, [isOpen, reelId, tryN, max]);
 
   if (!isOpen) return null;
 
@@ -105,13 +111,12 @@ export default function ReelCommentsDrawer({ isOpen, reelId, onClose, onOpenProf
           </div>
 
           <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-            {comments === null ? (
-              <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-ink-3" /></div>
+            {loadFailed ? (
+              <ErrorState message="Couldn't load the comments." onRetry={() => setTryN(n => n + 1)} />
+            ) : comments === null ? (
+              <SkeletonLines rows={4} />
             ) : comments.length === 0 ? (
-              <div className="py-12 text-center">
-                <p className="text-sm font-semibold text-ink-2">No comments yet</p>
-                <p className="mt-1 text-xs text-ink-3">Be the first to say something.</p>
-              </div>
+              <EmptyState icon={<Send className="h-6 w-6" />} title="No comments yet" body="Be the first to say something." action={<EmptyAction label="Write a comment" onClick={() => inputRef.current?.focus()} />} />
             ) : (
               <ul className="space-y-4">
                 {comments.filter(c => !blocked.has(c.uid)).map(c => {
@@ -147,6 +152,9 @@ export default function ReelCommentsDrawer({ isOpen, reelId, onClose, onOpenProf
                     </li>
                   );
                 })}
+              {comments.length >= max && max < 200 && (
+                  <li><button onClick={() => setMax(n => n + 80)} className="mx-auto block min-h-[44px] rounded-full border border-line bg-carbon px-4 text-xs font-bold text-ink-2">Older comments</button></li>
+                )}
               </ul>
             )}
           </div>

@@ -5,6 +5,7 @@ import Avatar from "./ui/Avatar";
 import { useBlocked, unblockUser } from "../lib/blocks";
 import { useProfiles } from "../lib/useProfiles";
 import { callFn } from "../lib/functions";
+import { ErrorState, EmptyAction, SkeletonRows } from "./ui/StateViews";
 
 function Shell({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
@@ -52,16 +53,63 @@ export function BlockedUsersScreen({ onClose }: { onClose: () => void }) {
   );
 }
 
+interface FlagRow { uid: string; name: string; banned: boolean; rating: number; strikes: number; recentStrikes: number; reporters: number; reason: string; last: string; lastAt: number }
+
+/** Accounts the server flagged for impossible rep counts or repeated cheating reports. Moderators only. */
+function FlaggedAccounts() {
+  const [rows, setRows] = useState<FlagRow[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    setFailed(false); setErr(null);
+    try { setRows((await callFn<{ accounts: FlagRow[] }>("modListFlagged")).accounts); } catch { setRows([]); setFailed(true); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+  const act = async (uid: string, action: "ban" | "clear") => {
+    if (action === "ban" && !window.confirm("Ban this account? It will be disabled.")) return;
+    setBusy(uid);
+    try { await callFn("modReviewFlag", { uid, action }); setRows(r => (r || []).filter(x => x.uid !== uid)); }
+    catch (e: any) { setErr(e?.message || "Action failed."); } finally { setBusy(null); }
+  };
+  if (failed) return <ErrorState message="Couldn't load flagged accounts." onRetry={() => { setRows(null); void load(); }} />;
+  if (rows === null) return <SkeletonRows rows={3} />;
+  if (rows.length === 0) return <div className="rounded-2xl border border-line bg-carbon p-8 text-center"><ShieldAlert className="mx-auto h-8 w-8 text-ink-3" /><p className="mt-3 text-sm font-semibold">No flagged accounts</p><p className="mt-1 text-xs text-ink-3">An account is flagged after 3 refused rep counts in 7 days, or 3 players reporting it for cheating.</p></div>;
+  return (
+    <>
+      {err && <p className="mb-3 rounded-xl bg-rose-500/10 px-3 py-2 text-xs text-rose-300">{err}</p>}
+      <ul className="space-y-3">
+        {rows.map(r => (
+          <li key={r.uid} className="rounded-2xl border border-line bg-carbon p-4">
+            <p className="text-sm font-bold">{r.name} <span className="text-xs font-medium text-ink-3">· rating {r.rating}{r.banned ? " · already banned" : ""}</span></p>
+            <p className="break-all text-[11px] text-ink-3">{r.uid}</p>
+            <p className="mt-1 text-xs text-ink-2">Flagged for {r.reason === "reports" ? "player reports" : "refused rep counts"}: {r.recentStrikes} refused this week ({r.strikes} in total), {r.reporters} cheating report{r.reporters === 1 ? "" : "s"}.</p>
+            {r.last && <p className="mt-1 break-words text-[11px] text-ink-3">Last: {r.last}</p>}
+            <p className="text-[11px] text-ink-3">{r.lastAt ? new Date(r.lastAt).toLocaleString() : ""}</p>
+            <div className="mt-3 flex gap-2">
+              <button disabled={busy === r.uid} onClick={() => act(r.uid, "clear")} className="min-h-[44px] flex-1 rounded-xl border border-line bg-graphite text-xs font-bold disabled:opacity-50">Clear flag</button>
+              <button disabled={busy === r.uid} onClick={() => act(r.uid, "ban")} className="min-h-[44px] flex-1 rounded-xl bg-rose-600 text-xs font-bold text-white disabled:opacity-50">Ban account</button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 interface ReportRow { id: string; type: string; targetId: string; reason: string; details: string; ownerUid: string; audience: string; reporterUid: string; at: number }
 
 export function ModerationScreen({ onClose }: { onClose: () => void }) {
   const [rows, setRows] = useState<ReportRow[] | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [view, setView] = useState<"reports" | "flagged">("reports");
   const load = useCallback(async () => {
     setErr(null);
+    setLoadFailed(false);
     try { setRows((await callFn<{ reports: ReportRow[] }>("modListReports")).reports); }
-    catch (e: any) { setRows([]); setErr(e?.message || "Couldn't load reports."); }
+    catch { setRows([]); setLoadFailed(true); }
   }, []);
   useEffect(() => { void load(); }, [load]);
 
@@ -75,12 +123,20 @@ export function ModerationScreen({ onClose }: { onClose: () => void }) {
 
   return (
     <Shell title="Moderation queue" onClose={onClose}>
+      <div className="mb-3 grid grid-cols-2 gap-1.5">
+        {([["reports", "Reports"], ["flagged", "Flagged accounts"]] as const).map(([k, l]) => (
+          <button key={k} onClick={() => setView(k)} className={`min-h-[44px] rounded-xl text-xs font-bold ${view === k ? "bg-volt text-void" : "border border-line bg-carbon text-ink-2"}`}>{l}</button>
+        ))}
+      </div>
+      {view === "flagged" ? <FlaggedAccounts /> : <>
       <button onClick={() => void load()} className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-volt"><RefreshCw className="h-3.5 w-3.5" /> Refresh</button>
       {err && <p className="mb-3 rounded-xl bg-rose-500/10 px-3 py-2 text-xs text-rose-300">{err}</p>}
-      {rows === null ? (
-        <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-ink-3" /></div>
+      {loadFailed ? (
+        <ErrorState message="Couldn't load the reports." onRetry={() => { setRows(null); void load(); }} />
+      ) : rows === null ? (
+        <SkeletonRows rows={4} />
       ) : rows.length === 0 ? (
-        <div className="rounded-2xl border border-line bg-carbon p-8 text-center"><ShieldAlert className="mx-auto h-8 w-8 text-ink-3" /><p className="mt-3 text-sm font-semibold">No open reports</p></div>
+        <div className="rounded-2xl border border-line bg-carbon p-8 text-center"><ShieldAlert className="mx-auto h-8 w-8 text-ink-3" /><p className="mt-3 text-sm font-semibold">No open reports</p><div className="mt-4"><EmptyAction label="Refresh" onClick={() => void load()} /></div></div>
       ) : (
         <ul className="space-y-3">
           {rows.map(r => (
@@ -99,6 +155,7 @@ export function ModerationScreen({ onClose }: { onClose: () => void }) {
           ))}
         </ul>
       )}
+      </>}
     </Shell>
   );
 }

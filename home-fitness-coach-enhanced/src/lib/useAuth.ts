@@ -5,6 +5,10 @@
  * profile doc is the editable, user-facing part of that identity shown
  * next to their posts/comments in the Community Gallery.
  */
+import { track } from "./track";
+import { t } from "../i18n";
+import { clearSharedQueries } from "./sharedQuery";
+import { EV } from "./analyticsEvents";
 import { useEffect, useSyncExternalStore } from "react";
 import {
   User,
@@ -19,6 +23,7 @@ import {
   signInWithRedirect,
   getRedirectResult,
   signInWithCredential,
+  getAdditionalUserInfo,
   signInAnonymously,
 } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
@@ -50,6 +55,7 @@ async function syncGoogleProfile(user: User) {
   try {
     const existing = await getUserProfile(user.uid);
     if (!existing) {
+      track(EV.signupComplete, { method: "google" });
       await setDoc(doc(db, "users", user.uid), {
         uid: user.uid,
         displayName: user.displayName || user.email?.split("@")[0] || "Apex Athlete",
@@ -154,6 +160,7 @@ export async function signUp(email: string, password: string, displayName: strin
   } catch (e) {
     console.warn("Firestore profile creation notice (rules/offline):", e);
   }
+  track(EV.signupComplete, { method: "email" });
   return cred.user;
 }
 
@@ -206,6 +213,7 @@ export async function logInWithGoogle(): Promise<User | null> {
   try {
     const cred = await signInWithPopup(auth, provider);
     const user = cred.user;
+    if (getAdditionalUserInfo(cred)?.isNewUser) track(EV.signupComplete, { method: "google" });
     await syncGoogleProfile(user);
     return user;
   } catch (popupErr: any) {
@@ -283,6 +291,7 @@ export async function logInAsGuest() {
 }
 
 export async function logOut() {
+  clearSharedQueries(); // cached boards belong to the account that loaded them
   await signOut(auth);
 }
 
@@ -332,25 +341,26 @@ export function friendlyAuthError(err: unknown): string {
     msg.includes("storage-partitioned") ||
     msg.includes("sessionStorage is inaccessible")
   ) {
-    return "Mobile browser security blocked cross-domain Google auth. You can sign in with Email & Password or 1-tap 'Continue as Guest' below!";
+    return t("auth.err.storage");
   }
 
   switch (code) {
-    case "auth/email-already-in-use": return "That email already has an account — please switch to Sign In!";
-    case "auth/invalid-email": return "Please enter a valid email address.";
-    case "auth/weak-password": return "Password should be at least 6 characters.";
+    case "auth/email-already-in-use": return t("auth.err.exists");
+    case "auth/invalid-email": return t("auth.err.invalidEmail");
+    case "auth/weak-password": return t("auth.err.weak");
     case "auth/user-not-found":
     case "auth/wrong-password":
-    case "auth/invalid-credential": return "Incorrect email or password. Please verify and retry.";
-    case "auth/popup-closed-by-user": return "Google sign-in was closed before finishing.";
-    case "auth/popup-blocked": return "Google popup was blocked. In mobile apps/WebViews, please sign in with Email & Password or Instant Guest Access.";
-    case "auth/unauthorized-domain": return "Domain is not authorized in Firebase. In the mobile app, please use Email/Password sign in.";
-    case "auth/cancelled-popup-request": return "Sign-in request was cancelled.";
+    case "auth/invalid-credential": return t("auth.err.wrong");
+    case "auth/popup-closed-by-user": return t("auth.err.closed");
+    case "auth/popup-blocked": return t("auth.err.popup");
+    case "auth/unauthorized-domain": return t("auth.err.domain");
+    case "auth/cancelled-popup-request": return t("auth.err.cancelled");
     case "auth/admin-restricted-operation":
-    case "auth/operation-not-allowed": return "This sign-in method is currently disabled in Firebase Console. Please sign in with Email & Password.";
-    case "auth/too-many-requests": return "Too many attempts — please wait a moment and try again.";
-    case "auth/network-request-failed": return "Network error — check your internet connection and try again.";
-    case "permission-denied": return "Account active! Firestore cloud sync will activate once rules are deployed in Firebase Console.";
-    default: return msg || "Authentication error. Please try again.";
+    case "auth/operation-not-allowed": return t("auth.err.disabled");
+    case "auth/user-disabled": return t("auth.err.banned");
+    case "auth/too-many-requests": return t("auth.err.tooMany");
+    case "auth/network-request-failed": return t("auth.err.network");
+    case "permission-denied": return t("auth.err.permission");
+    default: return msg || t("auth.err.default");
   }
 }

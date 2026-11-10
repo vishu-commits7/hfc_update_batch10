@@ -2,10 +2,10 @@ import { useBackClose } from "../lib/backStack";
 import { useState } from "react";
 import { Flag, Ban, Loader2, X, Check } from "lucide-react";
 import OverlayPortal from "./ui/OverlayPortal";
-import { REPORT_REASONS, reportContent, blockUser, type ReportReason } from "../lib/blocks";
+import { MATCH_REASONS, REPORT_REASONS, reportContent, blockUser, type ReportReason, type ReportType } from "../lib/blocks";
 
 export interface ReportTarget {
-  type: "user" | "reel" | "comment" | "message";
+  type: ReportType;
   targetId: string;
   ownerUid: string;
   ownerName: string;
@@ -19,7 +19,8 @@ export default function ReportSheet({ target, onClose, onDone }: { target: Repor
   const [alsoBlock, setAlsoBlock] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const what = target.type === "user" ? "account" : target.type;
+  const what = target.type === "user" ? "account" : target.type === "postComment" ? "comment" : target.type;
+  const reasons = target.type === "match" ? MATCH_REASONS : REPORT_REASONS;
 
   const submit = async () => {
     if (!reason || busy) return;
@@ -44,7 +45,7 @@ export default function ReportSheet({ target, onClose, onDone }: { target: Repor
           </div>
           <p className="mt-1 text-xs text-ink-3">Why are you reporting this? Reports are private.</p>
           <ul className="mt-3 space-y-1.5">
-            {REPORT_REASONS.map(r => (
+            {reasons.map(r => (
               <li key={r.id}>
                 <button onClick={() => setReason(r.id)} className={`flex w-full items-center justify-between rounded-xl border px-3 py-3 text-left text-sm font-semibold ${reason === r.id ? "border-volt bg-volt/10" : "border-line bg-graphite"}`}>
                   {r.label}{reason === r.id && <Check className="h-4 w-4 text-volt" />}

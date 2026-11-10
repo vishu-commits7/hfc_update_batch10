@@ -1,16 +1,17 @@
 /**
- * Weekly leagues: Bronze -> Silver -> Gold -> Platinum -> Diamond, groups of 30, ranked by XP earned this week.
- * Top 10 promote, bottom 5 demote (groups of 10+), weekly XP resets every Monday 00:00 IST.
+ * Weekly leagues: Bronze -> Silver -> Gold -> Platinum -> Diamond. Groups of up to 30 players of similar Arena
+ * rating (four rating bands inside each league), ranked by XP earned this week. Top 5 go up, bottom 5 go down
+ * (fewer in small groups, see leagueCore.ts). Resolved by leagueRollover every Monday 00:05 IST.
  */
 import "./init";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { weekIdIST } from "./timeutil";
+import { GROUP_SIZE, bandOf, leagueOutcome, rankMembers } from "./leagueCore";
 
 const db = () => getFirestore();
 export const LEAGUES = ["Bronze", "Silver", "Gold", "Platinum", "Diamond"] as const;
-const GROUP_SIZE = 30, PROMOTE = 10, DEMOTE = 5;
 
 /** Puts the caller into this week's league group (idempotent). */
 export const joinLeague = onCall(async req => {
@@ -24,12 +25,13 @@ export const joinLeague = onCall(async req => {
     if (x.public === false) throw new HttpsError("failed-precondition", "Make your account public in Settings to join leagues.");
     if (x.leagueWeek === week && x.leagueGroup) return { group: x.leagueGroup, tier: Number(x.leagueTier || 0) };
     const tier = Math.max(0, Math.min(LEAGUES.length - 1, Number(x.leagueTier || 0)));
-    const cref = db().doc(`leagueCounters/${week}_${tier}`);
+    const band = bandOf(Number(x.rating ?? 1000)); // groups are filled per rating band
+    const cref = db().doc(`leagueCounters/${week}_${tier}_b${band}`);
     const c = await tx.get(cref);
     let n = Number(c.data()?.n || 1), size = Number(c.data()?.size || 0);
     if (size >= GROUP_SIZE) { n += 1; size = 0; }
     tx.set(cref, { n, size: size + 1 });
-    const group = `${week}_${tier}_${n}`;
+    const group = `${week}_${tier}_b${band}_${n}`;
     tx.set(uref, { leagueGroup: group, leagueWeek: week, leagueTier: tier }, { merge: true });
     return { group, tier };
   });
@@ -56,14 +58,12 @@ export const leagueRollover = onSchedule({ schedule: "5 0 * * 1", timeZone: "Asi
   }
 
   const writer = db().bulkWriter();
-  for (const members of groups.values()) {
-    members.sort((a, b) => b.xp - a.xp);
+  for (const unsorted of groups.values()) {
+    const members = rankMembers(unsorted);
     members.forEach((m, i) => {
       const rank = i + 1, size = members.length;
-      let outcome: "promoted" | "demoted" | "stayed" = "stayed";
-      let tier = m.tier;
-      if (rank <= PROMOTE && m.xp > 0 && tier < LEAGUES.length - 1) { tier += 1; outcome = "promoted"; }
-      else if (size >= 10 && rank > size - DEMOTE && tier > 0) { tier -= 1; outcome = "demoted"; }
+      const outcome = leagueOutcome(rank, size, m.xp, m.tier, LEAGUES.length - 1);
+      const tier = m.tier + (outcome === "promoted" ? 1 : outcome === "demoted" ? -1 : 0);
       writer.set(db().doc(`users/${m.id}`), {
         leagueTier: tier, leagueGroup: FieldValue.delete(), leagueWeek: FieldValue.delete(),
         // only reset weekly XP if it still belongs to the finished week (not XP earned after midnight)

@@ -11,6 +11,10 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ApexNativePlugin.class);
         registerPlugin(ApexHealthPlugin.class);
         registerPlugin(ApexBillingPlugin.class);
+        registerPlugin(ApexAppCheckPlugin.class);
+        registerPlugin(ApexCrashPlugin.class);
+        registerPlugin(ApexAnalyticsPlugin.class);
+        ApexAppCheckPlugin.install(this);
         super.onCreate(savedInstanceState);
         // Follow the system font size (Settings > Display > Font size), capped so layouts stay usable.
         float fs = getResources().getConfiguration().fontScale;

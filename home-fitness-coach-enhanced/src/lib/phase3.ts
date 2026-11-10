@@ -97,31 +97,40 @@ export interface CrewMsg { id: string; from: string; name: string; text: string;
 /** The user's crew id lives on users/{uid}.crewId (server-owned). */
 export function useCrewId(meUid: string) {
   const [id, setId] = useState<string | null | undefined>(undefined);
-  useEffect(() => onSnapshot(doc(db, "users", meUid), s => setId((s.data()?.crewId as string) || null), () => setId(null)), [meUid]);
-  return id;
+  const [failed, setFailed] = useState(false);
+  const [tryN, setTryN] = useState(0);
+  useEffect(() => {
+    setFailed(false);
+    return onSnapshot(doc(db, "users", meUid), s => { setFailed(false); setId((s.data()?.crewId as string) || null); }, () => setFailed(true));
+  }, [meUid, tryN]);
+  return { id, failed, retry: () => { setId(undefined); setTryN(n => n + 1); } };
 }
 
 export function useCrew(crewId: string | null | undefined) {
   const [crew, setCrew] = useState<Crew | null>(null);
   const [members, setMembers] = useState<CrewMember[]>([]);
   const [msgs, setMsgs] = useState<CrewMsg[]>([]);
+  const [failed, setFailed] = useState(false);     // the crew itself could not be loaded
+  const [sideFailed, setSideFailed] = useState(false); // members or chat could not be loaded
+  const [tryN, setTryN] = useState(0);
   useEffect(() => {
+    setFailed(false); setSideFailed(false);
     if (!crewId) { setCrew(null); setMembers([]); setMsgs([]); return; }
     const un = [
       onSnapshot(doc(db, "crews", crewId), s => {
         const x = s.data();
         setCrew(x ? { id: s.id, name: x.name, ownerUid: x.ownerUid, memberCount: Number(x.memberCount || 0), weeklyGoal: Number(x.weeklyGoal || 15), weekId: x.weekId || "", weekWorkouts: Number(x.weekWorkouts || 0), inviteCode: x.inviteCode || "" } : null);
-      }, () => setCrew(null)),
+      }, () => setFailed(true)),
       onSnapshot(collection(db, "crews", crewId, "members"), s => setMembers(s.docs.map(d => {
         const x = d.data();
         return { uid: d.id, name: x.name || "Athlete", avatar: x.avatar ?? null, role: x.role === "owner" ? "owner" : "member", weekId: x.weekId || "", weekWorkouts: Number(x.weekWorkouts || 0) } as CrewMember;
-      })), () => {}),
+      })), () => setSideFailed(true)),
       onSnapshot(query(collection(db, "crews", crewId, "messages"), orderBy("at", "desc"), fsLimit(60)), s =>
-        setMsgs(s.docs.map(d => { const x = d.data({ serverTimestamps: "estimate" }); return { id: d.id, from: x.from, name: x.name || "Athlete", text: x.text || "", at: toMs(x.at) } as CrewMsg; }).reverse()), () => {}),
+        setMsgs(s.docs.map(d => { const x = d.data({ serverTimestamps: "estimate" }); return { id: d.id, from: x.from, name: x.name || "Athlete", text: x.text || "", at: toMs(x.at) } as CrewMsg; }).reverse()), () => setSideFailed(true)),
     ];
     return () => un.forEach(u => u());
-  }, [crewId]);
-  return { crew, members, msgs };
+  }, [crewId, tryN]);
+  return { crew, members, msgs, failed, sideFailed, retry: () => setTryN(n => n + 1) };
 }
 
 export const crewCreate = (name: string) => callFn<{ id: string }>("crewCreate", { name });

@@ -25,10 +25,11 @@ export interface MagneticButtonProps
 }
 
 const SIZES: Record<Size, string> = {
-  sm: "h-8 px-3 text-[11px]",
-  md: "h-10 px-4 text-xs",
-  lg: "h-12 px-5 text-sm",
-  xl: "h-14 px-7 text-[15px]",
+  // min-h (not h): at 130% font scale a label that wraps grows the button instead of being clipped; 40px+ tap targets
+  sm: "min-h-10 px-3 py-1 text-[11px]",
+  md: "min-h-11 px-4 py-1.5 text-xs",
+  lg: "min-h-12 px-5 py-2 text-sm",
+  xl: "min-h-14 px-7 py-2 text-[15px]",
 };
 
 const GAPS: Record<Size, string> = {

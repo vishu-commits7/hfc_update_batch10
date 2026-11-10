@@ -18,7 +18,11 @@ import {
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
+import { initializeAppCheck, ReCaptchaV3Provider, CustomProvider } from "firebase/app-check";
+import { Capacitor, registerPlugin } from "@capacitor/core";
+
+// Native Android App Check (Play Integrity / debug provider) — see ApexAppCheckPlugin.java.
+const ApexAppCheck = registerPlugin<{ getToken(): Promise<{ token: string; expireTimeMillis: number }> }>("ApexAppCheck");
 
 const firebaseConfig = {
   apiKey: "AIzaSyAWzHg12CHHF7Vla4-uk1t-c4QXz8CJoXE",
@@ -39,12 +43,24 @@ export const firebaseApp = getApps().length ? getApp() : initializeApp(firebaseC
 // with ENFORCE_APPCHECK=true in functions/.env. See BUGFIX_NOTES Batch 8.
 if (typeof window !== "undefined") {
   const env = (import.meta as any).env || {};
-  if (env.VITE_APPCHECK_SITE_KEY) {
-    try {
+  try {
+    if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
+      // Android app: the token comes from the native Play Integrity (or debug) provider.
+      initializeAppCheck(firebaseApp, {
+        provider: new CustomProvider({
+          getToken: async () => {
+            const r = await ApexAppCheck.getToken();
+            return { token: r.token, expireTimeMillis: r.expireTimeMillis };
+          },
+        }),
+        isTokenAutoRefreshEnabled: true,
+      });
+    } else if (env.VITE_APPCHECK_SITE_KEY) {
+      // Website: reCAPTCHA v3 (optional until a site key is set).
       if (env.VITE_APPCHECK_DEBUG) (self as any).FIREBASE_APPCHECK_DEBUG_TOKEN = env.VITE_APPCHECK_DEBUG === "true" ? true : env.VITE_APPCHECK_DEBUG;
       initializeAppCheck(firebaseApp, { provider: new ReCaptchaV3Provider(env.VITE_APPCHECK_SITE_KEY), isTokenAutoRefreshEnabled: true });
-    } catch (e) { console.warn("App Check init failed", e); }
-  }
+    }
+  } catch (e) { console.warn("App Check init failed", e); }
 }
 
 export const auth = getAuth(firebaseApp);

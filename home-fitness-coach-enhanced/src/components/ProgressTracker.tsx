@@ -404,7 +404,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
                   <div className="h-72 flex flex-col items-center justify-center text-center p-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
                     <Sparkles className="h-8 w-8 text-blue-500/50 animate-pulse mb-2" />
                     <p className="text-xs text-slate-700 font-bold uppercase">Awaiting Progressive Entries</p>
-                    <p className="text-[11px] text-slate-400 mt-1 max-w-xs">
+                    <p className="text-[11px] text-slate-500 mt-1 max-w-xs">
                       We need at least 2 distinct date entries for <strong className="font-bold text-slate-700">{chartExName}</strong> to trace a progression line. Keep training!
                     </p>
                   </div>
@@ -443,13 +443,13 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
                 {/* Stats brief for selected ex */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4 border-t border-slate-100 text-xs text-slate-500">
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <span className="text-[11px] uppercase text-slate-400 font-extrabold block">First Logged Load</span>
+                    <span className="text-[11px] uppercase text-slate-500 font-extrabold block">First Logged Load</span>
                     <span className="text-sm font-black text-slate-800 mt-1 block">
                       {chartData[0]?.maxWeight ?? 0} lbs ({chartData[0]?.maxReps ?? 0} reps)
                     </span>
                   </div>
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <span className="text-[11px] uppercase text-slate-400 font-extrabold block">Personal Record (PR)</span>
+                    <span className="text-[11px] uppercase text-slate-500 font-extrabold block">Personal Record (PR)</span>
                     <span className="text-sm font-black text-blue-600 mt-1 block">
                       {Math.max(...chartData.map(d => d.maxWeight), 0)} lbs
                     </span>
@@ -495,19 +495,19 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
                 {/* Core insights metrics panel */}
                 <div className="md:col-span-5 rounded-[32px] border border-slate-100 bg-white p-6 flex flex-col justify-between shadow-xs">
                   <div>
-                    <span className="text-[11px] uppercase tracking-widest text-slate-400 font-extrabold block">Insights</span>
+                    <span className="text-[11px] uppercase tracking-widest text-slate-500 font-extrabold block">Insights</span>
                     <h3 className="text-lg font-black text-slate-900 uppercase mt-0.5 mb-4">Consolidated Metrics</h3>
                     <div className="space-y-4">
                       <div className="flex justify-between items-center text-xs pb-3 border-b border-slate-100">
-                        <span className="text-slate-400 font-bold">Total Registered Entries</span>
+                        <span className="text-slate-500 font-bold">Total Registered Entries</span>
                         <span className="font-extrabold text-slate-800">{progLogs.length} Sessions</span>
                       </div>
                       <div className="flex justify-between items-center text-xs pb-3 border-b border-slate-100">
-                        <span className="text-slate-400 font-bold">Unique Movements Loaded</span>
+                        <span className="text-slate-500 font-bold">Unique Movements Loaded</span>
                         <span className="font-extrabold text-slate-800">{uniqueLoggedExercises.length} Movements</span>
                       </div>
                       <div className="flex justify-between items-center text-xs">
-                        <span className="text-slate-400 font-bold">Most Active Day</span>
+                        <span className="text-slate-500 font-bold">Most Active Day</span>
                         <span className="font-extrabold text-blue-600 uppercase">Sunday</span>
                       </div>
                     </div>
@@ -544,7 +544,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
             {/* Meta Row: Date & Title */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Workout Date</label>
+                <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Workout Date</label>
                 <input
                   type="date"
                   required
@@ -555,7 +555,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
               </div>
 
               <div className="space-y-2">
-                <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Workout Name / Block</label>
+                <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Workout Name / Block</label>
                 <input
                   type="text"
                   required
@@ -570,7 +570,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
             {/* Dynamic Exercise Logs stack */}
             <div className="space-y-4 pt-4 border-t border-slate-100">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">Exercises & Sets performed</h3>
+                <h3 className="text-xs font-bold uppercase tracking-widest text-slate-500">Exercises & Sets performed</h3>
                 <button
                   type="button"
                   onClick={handleAddFormExercise}
@@ -601,7 +601,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
 
                     {/* Ex Selection */}
                     <div className="w-full sm:max-w-md space-y-2">
-                      <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Select Exercise</label>
+                      <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Select Exercise</label>
                       <select
                         value={ex.exerciseName}
                         onChange={(e) => handleFormExNameChange(exIdx, e.target.value)}
@@ -620,7 +620,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
 
                     {/* Sets headers and rows */}
                     <div className="space-y-2 pt-2 border-t border-slate-200">
-                      <div className="grid grid-cols-12 gap-3 text-[11px] font-extrabold uppercase tracking-wider text-slate-400 px-1">
+                      <div className="grid grid-cols-12 gap-3 text-[11px] font-extrabold uppercase tracking-wider text-slate-500 px-1">
                         <div className="col-span-2">Set</div>
                         <div className="col-span-4">Reps Done</div>
                         <div className="col-span-4">Weight (lbs)</div>
@@ -662,11 +662,11 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
                             </div>
 
                             <div className="col-span-2 flex justify-center">
-                              <button
+                              <button aria-label="Remove this set"
                                 type="button"
                                 disabled={ex.sets.length <= 1}
                                 onClick={() => handleRemoveFormSet(exIdx, setIdx)}
-                                className="p-1.5 rounded-md text-slate-300 hover:text-rose-500 hover:bg-rose-50 disabled:opacity-20 disabled:cursor-not-allowed"
+                                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md text-slate-500 hover:text-rose-500 hover:bg-rose-50 disabled:opacity-20 disabled:cursor-not-allowed"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
@@ -692,7 +692,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
             {/* Feelings & Notes */}
             <div className="space-y-4 pt-4 border-t border-slate-100">
               <div className="space-y-2">
-                <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Session Feel</label>
+                <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Session Feel</label>
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                   {(["Energetic", "Tired", "Satisfied", "Sore", "Exhausted"] as const).map((opt) => (
                     <button
@@ -712,7 +712,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
               </div>
 
               <div className="space-y-2">
-                <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Training Notes (Optional)</label>
+                <label className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Training Notes (Optional)</label>
                 <textarea
                   value={logNotes}
                   onChange={(e) => setLogNotes(e.target.value)}
@@ -739,10 +739,10 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
       {/* --- Tab 3: SESSION HISTORY LIST --- */}
       {activeTab === "history" && (
         <div className="space-y-4 animate-fade-in">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400">Detailed Sessions registry ({progLogs.length})</h2>
+          <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500">Detailed Sessions registry ({progLogs.length})</h2>
           
           {progLogs.length === 0 ? (
-            <div className="p-8 text-center text-slate-400 bg-white border border-slate-100 rounded-2xl shadow-xs">
+            <div className="p-8 text-center text-slate-500 bg-white border border-slate-100 rounded-2xl shadow-xs">
               No sessions tracked yet. Create one above!
             </div>
           ) : (
@@ -774,7 +774,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
                           </span>
                         </div>
                         
-                        <div className="flex items-center gap-2.5 text-xs text-slate-400 font-semibold">
+                        <div className="flex items-center gap-2.5 text-xs text-slate-500 font-semibold">
                           <span>{new Date(log.date).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}</span>
                           <span>•</span>
                           <span>{log.exercises.length} Movements Logged</span>
@@ -793,7 +793,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
                           <Trash2 className="h-4 w-4" />
                         </button>
                         
-                        <div className="text-slate-400">
+                        <div className="text-slate-500">
                           {isExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
                         </div>
                       </div>
@@ -810,7 +810,7 @@ export default function ProgressTracker({ preselectedExercise }: { preselectedEx
                         )}
 
                         <div className="space-y-3">
-                          <h4 className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">Movement Loadouts</h4>
+                          <h4 className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">Movement Loadouts</h4>
                           
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {log.exercises.map((ex, exIdx) => (

@@ -1,4 +1,4 @@
-import { useMemo, memo, useState, useEffect, useRef, useCallback } from "react";
+import { useMemo, memo, useState } from "react";
 import type { FigureGender } from "./HumanFigure";
 import ExerciseAnimation from "./ExerciseAnimation";
 import type { DemoTone } from "../lib/exercisePhotos.generated";
@@ -7,10 +7,10 @@ import { readDemoModel } from "../lib/demoPrefs";
 import { resolveMotion } from "../anim/resolve";
 import type { Accent } from "../design/accents";
 import { accent } from "../design/accents";
-import { getExerciseVideo } from "../lib/exerciseVideos";
+import ExerciseClip from "./ExerciseClip";
+import { resolveClipId, hasClip } from "../data/exerciseClips";
 import { getCustomExerciseSignaturePose } from "../lib/customExercises";
 import { matchPhotoExerciseId } from "../lib/exercisePhotos";
-import { RotateCw } from "lucide-react";
 
 import { getAiGymSignaturePhoto } from "../lib/signaturePoseGenerator";
 
@@ -75,23 +75,15 @@ function ExerciseThumbInner({
   const className = bare ? "absolute inset-0" : ring;
   const a = accent(tone);
 
-  // 1. Look up animation video in the assets folder
-  const videoSrc = useMemo(() => {
+  // 1. Exact clip for this exercise (by id, name or alias; never a look-alike).
+  const clipId = useMemo(() => {
     if (_isBlankPhoto || preferStickman) return null;
-    return getExerciseVideo(name, undefined, match?.motion?.id);
-  }, [name, match?.motion?.id, _isBlankPhoto, preferStickman]);
+    const id = resolveClipId(name);
+    return hasClip(id) ? id : null;
+  }, [name, _isBlankPhoto, preferStickman]);
 
-  // Video decoder lifecycle & memory states
-  const [videoReady, setVideoReady] = useState(false);
-  const [, setIsPosterFading] = useState(false);
-  const [, setIsPosterMounted] = useState(true);
-  const [videoFailed, setVideoFailed] = useState(false);
-  const [reloadKey, setReloadKey] = useState(0);
   const [imgFailed, setImgFailed] = useState(false);
   const [fallbackSrc, setFallbackSrc] = useState<string | null>(null);
-
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const fadeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // The real-human demo photograph for this exercise, in the single chosen
   // skin tone. This is what every card, list row and "next up" tile shows.
@@ -157,88 +149,7 @@ function ExerciseThumbInner({
   // When still is false (during active playback / demo):
   // Play the demo video with lifecycle synchronization!
   const isThumbnail = Boolean(still);
-  const shouldShowVideo = !isThumbnail && !preferStickman && Boolean(videoSrc);
-
-  // Reset lifecycle states whenever media source changes
-  useEffect(() => {
-    if (fadeTimeoutRef.current) {
-      clearTimeout(fadeTimeoutRef.current);
-      fadeTimeoutRef.current = null;
-    }
-    setVideoReady(false);
-    setIsPosterFading(false);
-    setIsPosterMounted(true);
-    setVideoFailed(false);
-  }, [videoSrc, name]);
-
-  // Cleanup pending fade timer on component unmount
-  useEffect(() => {
-    return () => {
-      if (fadeTimeoutRef.current) {
-        clearTimeout(fadeTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  // Sync playback state with pause/play controls
-  useEffect(() => {
-    const el = videoRef.current;
-    if (!el) return;
-    if (paused) {
-      el.pause();
-    } else if (shouldShowVideo && !videoFailed) {
-      const playPromise = el.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(() => {});
-      }
-    }
-  }, [paused, shouldShowVideo, videoFailed, reloadKey]);
-
-  /**
-   * First frame rendered signal:
-   * HTML5 `onPlaying` guarantees the decoder buffer is displaying frames.
-   * Cross-fade over 150ms, then unmount the poster image to release bitmap memory.
-   */
-  const handlePlaying = useCallback(() => {
-    if (videoFailed) return;
-    setVideoReady(true);
-    setIsPosterFading(true);
-
-    if (fadeTimeoutRef.current) {
-      clearTimeout(fadeTimeoutRef.current);
-    }
-    fadeTimeoutRef.current = setTimeout(() => {
-      setIsPosterMounted(false);
-    }, 150);
-  }, [videoFailed]);
-
-  /**
-   * Resilient error recovery:
-   * Keep poster image mounted at 100% opacity, halt video playback, show retry affordance.
-   */
-  const handleVideoError = useCallback(() => {
-    if (fadeTimeoutRef.current) {
-      clearTimeout(fadeTimeoutRef.current);
-      fadeTimeoutRef.current = null;
-    }
-    setVideoFailed(true);
-    setVideoReady(false);
-    setIsPosterFading(false);
-    setIsPosterMounted(true);
-  }, []);
-
-  const handleRetry = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (fadeTimeoutRef.current) {
-      clearTimeout(fadeTimeoutRef.current);
-      fadeTimeoutRef.current = null;
-    }
-    setVideoFailed(false);
-    setVideoReady(false);
-    setIsPosterFading(false);
-    setIsPosterMounted(true);
-    setReloadKey((prev) => prev + 1);
-  }, []);
+  const shouldShowVideo = !isThumbnail && !preferStickman && Boolean(clipId);
 
   const handleImageError = () => {
     const bundledPhoto = getAiGymSignaturePhoto(name, undefined, targetMuscle);
@@ -287,65 +198,8 @@ function ExerciseThumbInner({
   // 2. Active Workout Playback: Synchronized Media Player (Rigid 16:9, Texture/Layer, Crossfade)
   if (shouldShowVideo) {
     const stage = (
-      <div
-        className="relative h-full w-full overflow-hidden bg-black flex items-center justify-center select-none"
-        style={{ aspectRatio: "16 / 9" }}
-      >
-        {/* Layer 1: Underlying Video Stream */}
-        {!videoFailed && (
-          <video
-            ref={videoRef}
-            key={`stream-${videoSrc}-${reloadKey}`}
-            src={videoSrc || undefined}
-            autoPlay
-            loop
-            muted
-            playsInline
-            preload="auto"
-            onPlaying={handlePlaying}
-            onError={handleVideoError}
-            className={`absolute inset-0 h-full w-full object-contain pointer-events-none transition-opacity duration-150 ${
-              videoReady ? "opacity-100" : "opacity-0"
-            }`}
-            style={{ aspectRatio: "16 / 9" }}
-          />
-        )}
-
-        {/* Layer 2: neutral loading state. The demo player shows ONLY the demo
-            video — the human photograph belongs on cards and lists, and
-            showing it here made it flash over the video's first frames. */}
-        {!videoReady && !videoFailed && (
-          <div className="absolute inset-0 z-20 grid place-items-center bg-black pointer-events-none">
-            <span className="h-6 w-6 animate-spin rounded-full border-2 border-white/20 border-t-white/70" />
-          </div>
-        )}
-
-        {/* Failure state: no video available — fall back to the photograph. */}
-        {videoFailed && activeSignaturePose && !imgFailed && (
-          <div className="absolute inset-0 z-10 overflow-hidden pointer-events-none">
-            <img
-              src={activeSignaturePose}
-              alt={name}
-              onError={handleImageError}
-              decoding="async"
-              className="h-full w-full object-cover"
-            />
-          </div>
-        )}
-
-        {/* Layer 3: Discrete Retry Recovery Affordance */}
-        {videoFailed && (
-          <div className="absolute inset-0 z-30 flex items-end justify-end p-3 pointer-events-none">
-            <button
-              type="button"
-              onClick={handleRetry}
-              aria-label={`Retry loading video for ${name}`}
-              className="pointer-events-auto flex items-center justify-center w-9 h-9 rounded-full bg-slate-900/90 hover:bg-slate-800 text-white border border-white/20 shadow-lg backdrop-blur active:scale-95 transition-all"
-            >
-              <RotateCw className="w-4 h-4 stroke-[2.5]" />
-            </button>
-          </div>
-        )}
+      <div className="relative h-full w-full select-none overflow-hidden bg-black" style={{ aspectRatio: "16 / 9" }}>
+        <ExerciseClip clipId={clipId!} name={name} poster={activeSignaturePose} paused={paused} lazy={false} />
       </div>
     );
 

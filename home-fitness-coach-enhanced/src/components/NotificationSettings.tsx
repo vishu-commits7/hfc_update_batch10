@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { ArrowLeft, Bell, BellOff, ChevronRight, Droplets, Flame, Heart, MessageCircle, MessageSquare, UserPlus, Film, Users, AlarmClock } from "lucide-react";
+import { ArrowLeft, Bell, BellOff, ChevronRight, Droplets, Flame, Heart, MessageCircle, MessageSquare, UserPlus, Film, Users, AlarmClock, Swords, Repeat } from "lucide-react";
 import OverlayPortal from "./ui/OverlayPortal";
 import type { SocialNotifPrefs, NotifMode, NotifCategory } from "../lib/notifyPrefs";
 import type { NotificationPrefs } from "../lib/notifications";
 
-type View = "home" | "messages" | "activity" | "reminders";
+type View = "home" | "messages" | "activity" | "game" | "reminders";
 
 interface Props {
   onClose: () => void;
@@ -43,7 +43,7 @@ function NavRow({ icon, title, sub, onClick }: { icon: React.ReactNode; title: s
 
 function ToggleRow({ icon, title, sub, on, onClick }: { icon: React.ReactNode; title: string; sub: string; on: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} className="flex w-full items-center gap-3 border-b border-line px-4 py-3.5 text-left last:border-0">
+    <button role="switch" aria-checked={on} onClick={onClick} className="flex w-full items-center gap-3 border-b border-line px-4 py-3.5 text-left last:border-0">
       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-graphite text-ink-2">{icon}</span>
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-bold text-ink">{title}</span>
@@ -90,8 +90,9 @@ export default function NotificationSettings({ onClose, socialPrefs, setSocial, 
   };
   const reminderCount = [notifPrefs.dailyReminderEnabled, notifPrefs.streakWarningEnabled, notifPrefs.waterReminderEnabled].filter(Boolean).length;
 
-  const titles: Record<View, string> = { home: "Notifications", messages: "Messages", activity: "Activity", reminders: "Reminders" };
+  const titles: Record<View, string> = { home: "Notifications", messages: "Messages", activity: "Activity", game: "Challenges & streaks", reminders: "Reminders" };
   const back = () => (view === "home" ? onClose() : setView("home"));
+  const flip = (key: NotifCategory) => () => setSocial({ [key]: socialPrefs[key] === "off" ? "sound" : "off" } as Partial<SocialNotifPrefs>);
   const mode = (key: NotifCategory) => (m: NotifMode) => setSocial({ [key]: m } as Partial<SocialNotifPrefs>);
 
   return (
@@ -122,6 +123,7 @@ export default function NotificationSettings({ onClose, socialPrefs, setSocial, 
               <Card>
                 <NavRow icon={<MessageSquare className="h-4 w-4" />} title="Messages" sub={`Chats, groups · ${summary(["chats", "groups"])}`} onClick={() => setView("messages")} />
                 <NavRow icon={<Heart className="h-4 w-4" />} title="Activity" sub={`Follows, likes, comments, new reels · ${summary(["follows", "likes", "comments", "newReels"])}`} onClick={() => setView("activity")} />
+                <NavRow icon={<Swords className="h-4 w-4" />} title="Challenges & streaks" sub={`Streak, challenge, rematch, crew · ${summary(["streak", "challenge", "rematch", "crew"])}`} onClick={() => setView("game")} />
                 <NavRow icon={<AlarmClock className="h-4 w-4" />} title="Reminders" sub={`Workout, streak, water · ${reminderCount} on`} onClick={() => setView("reminders")} />
               </Card>
               <p className="px-1 text-[11px] text-ink-3">Alerts arrive while the app is open or running in the background.</p>
@@ -147,6 +149,18 @@ export default function NotificationSettings({ onClose, socialPrefs, setSocial, 
                 <ModeRow icon={<MessageCircle className="h-4 w-4" />} title="Comments" sub="When someone comments on your posts or reels" value={socialPrefs.comments} onChange={mode("comments")} />
               </Card>
               <p className="px-1 text-[11px] text-ink-3">Sound = banner with sound. Mute = shows quietly, no sound. Off = nothing.</p>
+            </>
+          )}
+
+          {view === "game" && (
+            <>
+              <Card>
+                <ToggleRow icon={<Flame className="h-4 w-4" />} title="Streak at risk" sub="A nudge in the evening if your streak ends tonight" on={socialPrefs.streak !== "off"} onClick={flip("streak")} />
+                <ToggleRow icon={<Swords className="h-4 w-4" />} title="Challenge received" sub="When a friend challenges you or answers yours" on={socialPrefs.challenge !== "off"} onClick={flip("challenge")} />
+                <ToggleRow icon={<Repeat className="h-4 w-4" />} title="Rematch waiting" sub="When your Arena opponent asks for a rematch" on={socialPrefs.rematch !== "off"} onClick={flip("rematch")} />
+                <ToggleRow icon={<Users className="h-4 w-4" />} title="Crew activity" sub="When someone posts in your crew chat" on={socialPrefs.crew !== "off"} onClick={flip("crew")} />
+              </Card>
+              <p className="px-1 text-[11px] text-ink-3">You get at most one of these a day, and none between 10 PM and 7 AM.</p>
             </>
           )}
 

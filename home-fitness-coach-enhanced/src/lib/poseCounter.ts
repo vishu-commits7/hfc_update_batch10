@@ -1,7 +1,7 @@
 /**
  * Camera rep counting (pose detection, on-device). Video never leaves the phone for this.
- * MediaPipe is loaded from a CDN the first time it's used, so it adds nothing to the app size
- * and a load failure just falls back to tap counting.
+ * MediaPipe ships inside the app (see below) and loads the first time it's used; any load failure
+ * just falls back to tap counting.
  */
 import { useEffect, useRef, useState } from "react";
 
@@ -15,21 +15,68 @@ export function motionFor(name: string): Motion | null {
   return null;
 }
 
+/**
+ * Files live inside the app (public/mediapipe, copied there by `npm run fetch:mediapipe`) so counting works
+ * offline. If they are missing, the same files are loaded from a CDN as a fallback.
+ */
+const LOCAL = "/mediapipe";
 const CDN = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
-const MODEL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+const CDN_MODEL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+
+/** True when the bundled model file really exists (a missing file can come back as the app's index.html). */
+async function bundledFilesPresent(): Promise<boolean> {
+  try {
+    const r = await fetch(`${LOCAL}/pose_landmarker_lite.task`, { method: "HEAD" });
+    return r.ok && !(r.headers.get("content-type") || "").includes("text/html");
+  } catch { return false; }
+}
+
+/* ---- device check and remembered choice ---- */
+const PREF_KEY = "apex_cam_count_v1";
+type CamPref = { pref?: "camera" | "tap"; autoOff?: "device" | "slow" };
+const readPref = (): CamPref => { try { return JSON.parse(localStorage.getItem(PREF_KEY) || "{}") as CamPref; } catch { return {}; } };
+const writePref = (p: CamPref) => { try { localStorage.setItem(PREF_KEY, JSON.stringify(p)); } catch { /* storage blocked: choice just isn't remembered */ } };
+
+/** Low-end phone: under 3 GB RAM or fewer than 4 CPU cores (when the browser reports them). */
+export function lowEndDevice(): boolean {
+  const n = navigator as Navigator & { deviceMemory?: number };
+  return (typeof n.deviceMemory === "number" && n.deviceMemory < 3) || (typeof n.hardwareConcurrency === "number" && n.hardwareConcurrency < 4);
+}
+
+/** What to do when a match starts: use the camera, or stay on taps (and why). */
+export function cameraCountingPlan(): { start: boolean; blocked: "device" | "slow" | null } {
+  const p = readPref();
+  if (p.autoOff) return { start: false, blocked: p.autoOff };      // it was too slow on this phone before
+  if (lowEndDevice() && p.pref !== "camera") return { start: false, blocked: "device" };
+  return { start: p.pref === "camera", blocked: null };
+}
+/** Remember the player's own on/off choice. */
+export function rememberCamChoice(on: boolean) { writePref({ ...readPref(), pref: on ? "camera" : "tap" }); }
+/** Player chose "try anyway": forget the automatic switch-off. */
+export function allowCameraAnyway() { writePref({ pref: "camera" }); }
+const markTooSlow = () => writePref({ ...readPref(), autoOff: "slow" });
 
 let landmarkerP: Promise<any> | null = null;
 function loadLandmarker(): Promise<any> {
   if (!landmarkerP) {
     landmarkerP = (async () => {
-      const mod: any = await import(/* @vite-ignore */ `${CDN}/vision_bundle.mjs`);
-      const fileset = await mod.FilesetResolver.forVisionTasks(`${CDN}/wasm`);
-      const make = (delegate: "GPU" | "CPU") => mod.PoseLandmarker.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: MODEL, delegate },
-        runningMode: "VIDEO", numPoses: 1,
-        minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5,
-      });
-      try { return await make("GPU"); } catch { return await make("CPU"); }
+      const build = async (local: boolean) => {
+        const base = local ? LOCAL : CDN;
+        // the bundled copy is named .js (not .mjs) so every WebView serves it with a JavaScript MIME type
+        const mod: any = await import(/* @vite-ignore */ `${base}/vision_bundle.${local ? "js" : "mjs"}`);
+        const fileset = await mod.FilesetResolver.forVisionTasks(`${base}/wasm`);
+        const modelAssetPath = local ? `${LOCAL}/pose_landmarker_lite.task` : CDN_MODEL;
+        const make = (delegate: "GPU" | "CPU") => mod.PoseLandmarker.createFromOptions(fileset, {
+          baseOptions: { modelAssetPath, delegate },
+          runningMode: "VIDEO", numPoses: 1,
+          minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+        });
+        try { return await make("GPU"); } catch { return await make("CPU"); }
+      };
+      if (await bundledFilesPresent()) {
+        try { return await build(true); } catch (e) { console.warn("Bundled pose files failed, trying CDN", e); }
+      }
+      return build(false);
     })();
     landmarkerP.catch(() => { landmarkerP = null; });
   }
@@ -76,7 +123,7 @@ export class RepCounter {
   }
 }
 
-export type PoseStatus = "off" | "loading" | "tracking" | "lost" | "error";
+export type PoseStatus = "off" | "loading" | "tracking" | "lost" | "error" | "slow";
 
 /** Runs pose detection on a camera stream and calls onRep for every counted rep. */
 export function usePoseCounter(stream: MediaStream | null, enabled: boolean, motion: Motion | null, onRep: () => void): PoseStatus {
@@ -97,6 +144,9 @@ export function usePoseCounter(stream: MediaStream | null, enabled: boolean, mot
         const [lmk] = await Promise.all([loadLandmarker(), video.play()]);
         if (!alive) return;
         let lastTs = 0, lastVideoT = -1;
+        // speed check: after a short warm-up, average the detection time over windows of 20 frames.
+        // Two slow windows in a row (about 9 fps or worse) means this phone can't keep up, so use taps.
+        let seen = 0, win = 0, winMs = 0, slowWins = 0;
         const loop = () => {
           if (!alive) return;
           raf = requestAnimationFrame(loop);
@@ -104,7 +154,16 @@ export function usePoseCounter(stream: MediaStream | null, enabled: boolean, mot
           if (now - lastTs < 66 || video.readyState < 2 || video.currentTime === lastVideoT) return; // ~15 fps
           lastTs = now; lastVideoT = video.currentTime;
           try {
+            const t0 = performance.now();
             const res = lmk.detectForVideo(video, now);
+            if (++seen > 3) {
+              winMs += performance.now() - t0; win++;
+              if (win >= 20) {
+                slowWins = winMs / win > 110 ? slowWins + 1 : 0;
+                win = 0; winMs = 0;
+                if (slowWins >= 2) { alive = false; markTooSlow(); setStatus("slow"); return; }
+              }
+            }
             const pts = res?.landmarks?.[0] as P[] | undefined;
             if (!pts) { setStatus(s => (s === "lost" ? s : "lost")); return; }
             const out = counter.feed(pts, now);

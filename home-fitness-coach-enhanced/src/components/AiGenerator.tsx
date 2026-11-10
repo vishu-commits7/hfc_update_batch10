@@ -262,6 +262,7 @@ export default function AiGenerator({
           "Hydrate immediately if you experience fatigue.",
         ],
         isAiGenerated: true,
+        wrap: true,
         createdAt: new Date().toISOString(),
       };
 
@@ -407,13 +408,13 @@ export default function AiGenerator({
               value={geminiApiKey}
               onChange={(e) => setGeminiApiKey(e.target.value)}
               placeholder="Paste Google AI Studio API Key (AIzaSy...)"
-              className="flex-1 rounded-xl border border-line bg-void px-3.5 py-2 text-xs text-ink placeholder-zinc-500 focus:border-[#E1FF00] focus:outline-none font-mono"
+              className="flex-1 rounded-xl border border-line bg-void px-3.5 py-2 text-xs text-ink placeholder-zinc-400 focus:border-[#E1FF00] focus:outline-none font-mono"
             />
             <button
               type="button"
               onClick={handleSaveAndTestKey}
               disabled={keyValidating}
-              className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl bg-volt px-4 py-2 text-xs font-bold text-void disabled:opacity-50 transition-colors cursor-pointer"
+              className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-line bg-graphite px-4 py-2 text-xs font-bold text-ink disabled:opacity-50 transition-colors cursor-pointer"
             >
               {keyValidating ? (
                 <RefreshCw className="h-3.5 w-3.5 animate-spin" />

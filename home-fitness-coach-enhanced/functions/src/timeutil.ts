@@ -20,3 +20,8 @@ export function weekIdIST(ms = Date.now()): string {
   const week = Math.ceil(((t.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
   return `${t.getUTCFullYear()}-W${pad(week)}`;
 }
+
+/** ISO week id (Monday to Sunday) of a YYYY-MM-DD calendar day, e.g. 2026-W46. Same numbering as weekIdIST. */
+export function weekIdOfDay(dayKey: string): string {
+  return weekIdIST(Date.parse(`${dayKey}T00:00:00+05:30`));
+}

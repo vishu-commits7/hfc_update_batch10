@@ -3,40 +3,7 @@
  * Builds `src/lib/exercisePhotos.generated.ts` from whatever is sitting in
  * `src/assets/exercises/`.
  *
- * WHY THIS EXISTS
- *
- * The demo photography is the one part of this app that cannot be written
- * in code — it has to be shot. So the job of this script is to make
- * *adding* photography a drag-and-drop operation: drop files into the
- * folder, run `npm run photos`, and the app picks them up. No hand-edited
- * import list, no manifest to keep in sync, no component to touch.
- *
- * FILENAME CONTRACT
- *
- *     <exercise>-<tone>-<frame>.jpg            → male (the existing set)
- *     <exercise>-<gender>-<tone>-<frame>.jpg   → explicit gender
- *
- *   exercise  a slug: pushup, squat, jacks, catcow
- *   gender    male | female        (omitted means male)
- *   tone      black | white
- *   frame     1, 2, 3 …            in movement order, top → bottom
- *             or a named stage     (stand, squat, plank / cow, cat)
- *
- *   pushup-white-2.jpg            → pushup · male · white · frame 2
- *   pushup-female-white-2.jpg     → pushup · female · white · frame 2
- *
- * A set with one frame is treated as an isometric hold and breathes
- * instead of pretending to have a rep cycle.
- *
- * THE SIGNATURE FRAME
- *
- * Every set names one frame as its signature — the single image that
- * identifies the movement at a glance (jacks: legs spread, arms overhead).
- * Lists and grids show that frame and nothing else; only a demo the user
- * has opened actually loops. The default is the LAST frame, because these
- * bursts are shot top → bottom and the bottom is the recognisable end of
- * the range. `SIGNATURE_OVERRIDE` below fixes the ones where that is
- * wrong.
+ * Supports .jpg, .jpeg, .webp, .png
  */
 import { readdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -51,10 +18,6 @@ const STAGE_ORDER = ["stand", "squat", "plank", "cow", "cat"];
 
 /**
  * Sets whose signature is not the last frame.
- *
- * A burpee's last frame is the plank, but the frame that says "burpee" is
- * the stand. Cat-cow is a two-ended stretch with no peak, so it takes the
- * arched end.
  */
 const SIGNATURE_OVERRIDE = {
   burpee: 0,
@@ -67,16 +30,6 @@ const GENDERS = ["male", "female"];
 /**
  * Motion id (src/anim/library.ts) → photo slug, wherever the two spell the
  * same movement differently.
- *
- * This is what lets the photo layer reuse the movement resolver instead of
- * shipping a second one. `resolveMotion("Wide Push-ups")` already returns
- * `pushup`; the app looks that id up here, finds the `pushup` photographs,
- * and shows them. Every AI-invented name the resolver can place therefore
- * gets photography for free, and anything it cannot place falls through to
- * the drawn figure.
- *
- * Only ids that differ need an entry — an id equal to its slug resolves
- * directly.
  */
 const MOTION_TO_SLUG = {
   "bent-row": "bentrow",
@@ -85,8 +38,8 @@ const MOTION_TO_SLUG = {
   "calf-raise": "calf",
   "cat-cow": "catcow",
   "childs-pose": "childspose",
-  cobra: "cobrastretch",
-  crunch: "crunches",
+  "cobra": "cobrastretch",
+  "crunch": "crunches",
   "diamond-pushup": "diamondpushup",
   "donkey-kick": "donkeykick",
   "glute-bridge": "bridge",
@@ -101,7 +54,14 @@ const MOTION_TO_SLUG = {
   "seated-fold": "seatedfold",
   "shoulder-taps": "shouldertaps",
   "side-plank": "sideplank",
-  situp: "situps",
+  "single-leg-deadlift": "singleleg",
+  "single-leg": "singleleg",
+  "deadlift": "singleleg",
+  "situp": "situps",
+  "skater": "skaterhop",
+  "skater-hop": "skaterhop",
+  "skater-hops": "skaterhop",
+  "skaterhop": "skaterhop",
   "spinal-twist": "spinaltwist",
   "step-up": "stepup",
   "sumo-squat": "sumosquat",
@@ -112,7 +72,7 @@ const MOTION_TO_SLUG = {
 /* ------------------------------------------------------------------ */
 
 function parse(file) {
-  const base = file.replace(/\.jpg$/i, "");
+  const base = file.replace(/\.(jpg|jpeg|webp|png)$/i, "");
   const parts = base.split("-");
   if (parts.length < 3) return null;
 
@@ -133,12 +93,10 @@ function frameRank(frame) {
   const n = Number(frame);
   if (Number.isFinite(n)) return n;
   const i = STAGE_ORDER.indexOf(frame);
-  // Named stages sort after numbers only if unknown, so an unrecognised
-  // stage name is loud in the output rather than silently first.
   return i === -1 ? 999 : i;
 }
 
-const files = readdirSync(ASSETS).filter((f) => /\.jpg$/i.test(f));
+const files = readdirSync(ASSETS).filter((f) => /\.(jpg|jpeg|webp|png)$/i.test(f));
 const sets = new Map();
 
 for (const file of files) {
@@ -151,7 +109,16 @@ for (const file of files) {
   const byVariant = sets.get(p.exercise);
   const key = `${p.gender}:${p.tone}`;
   if (!byVariant.has(key)) byVariant.set(key, []);
-  byVariant.get(key).push(p);
+
+  // Deduplicate if both .jpg and .webp exist for the same frame
+  const existingIndex = byVariant.get(key).findIndex((x) => x.frame === p.frame);
+  if (existingIndex >= 0) {
+    if (/\.jpg$/i.test(p.file)) {
+      byVariant.get(key)[existingIndex] = p;
+    }
+  } else {
+    byVariant.get(key).push(p);
+  }
 }
 
 /* ---- emit ---- */
@@ -229,7 +196,7 @@ ${entries.join("\n")}
 };
 
 /** Motion id → photo slug, for the ids the two spell differently. */
-const MOTION_TO_SLUG: Record<string, string> = {
+export const MOTION_TO_SLUG: Record<string, string> = {
 ${Object.entries(MOTION_TO_SLUG)
   .map(([k, v]) => `  ${JSON.stringify(k)}: ${JSON.stringify(v)},`)
   .join("\n")}
@@ -237,7 +204,15 @@ ${Object.entries(MOTION_TO_SLUG)
 
 /** The photo set for a resolved motion id, or null if none was shot. */
 export function photoSetForMotion(motionId: string): PhotoSet | null {
-  return PHOTO_SETS[MOTION_TO_SLUG[motionId] ?? motionId] ?? null;
+  if (!motionId) return null;
+  const slug = MOTION_TO_SLUG[motionId] ?? motionId;
+  if (PHOTO_SETS[slug]) return PHOTO_SETS[slug];
+
+  // Also check without hyphens
+  const compact = slug.replace(/[^a-z0-9]/g, "");
+  if (PHOTO_SETS[compact]) return PHOTO_SETS[compact];
+
+  return null;
 }
 `;
 
@@ -245,12 +220,3 @@ writeFileSync(OUT, out);
 console.log(
   `photo manifest: ${files.length} files · ${sets.size} exercises · ${variantCount} variants → src/lib/exercisePhotos.generated.ts`,
 );
-
-const missing = [...sets]
-  .filter(([, v]) => ![...v.keys()].some((k) => k.startsWith("female:")))
-  .map(([k]) => k);
-if (missing.length) {
-  console.log(
-    `\n  no female photography yet for ${missing.length} exercise(s):\n  ${missing.join(", ")}`,
-  );
-}

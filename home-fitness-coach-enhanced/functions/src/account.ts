@@ -26,6 +26,29 @@ export const deleteAccount = onCall({ timeoutSeconds: 300 }, async req => {
   await getStorage().bucket().deleteFiles({ prefix: `reels/${uid}/` }).catch(() => {});
   await getStorage().bucket().deleteFiles({ prefix: `reels-private/${uid}/` }).catch(() => {});
 
+  // likes this user left on reels (doc id = uid under reelLikes/{reelId}/users)
+  const likeQ = db().collectionGroup("users").where("uid", "==", uid);
+  for (;;) {
+    const snap = await likeQ.limit(300).get();
+    const likes = snap.docs.filter(d => d.ref.parent.parent?.parent.id === "reelLikes");
+    if (!likes.length) break;
+    await Promise.all(likes.map(d => d.ref.delete()));
+    if (likes.length < snap.size) break; // only the profile doc is left in the results
+  }
+  // likes written before the uid field existed: look them up on the reels that still exist
+  for (const col of ["publicReels", "followerReels"]) {
+    let last: FirebaseFirestore.QueryDocumentSnapshot | undefined;
+    for (let page = 0; page < 20; page++) { // up to 6000 reels per collection
+      let q = db().collection(col).orderBy("createdAt", "desc").limit(300);
+      if (last) q = q.startAfter(last);
+      const reels = await q.get();
+      if (reels.empty) break;
+      await Promise.all(reels.docs.map(d => db().doc(`reelLikes/${d.id}/users/${uid}`).delete().catch(() => {})));
+      last = reels.docs[reels.docs.length - 1];
+      if (reels.size < 300) break;
+    }
+  }
+
   // social graph
   await deleteWhere(db().collection("follows").where("followerUid", "==", uid));
   await deleteWhere(db().collection("follows").where("followeeUid", "==", uid));
@@ -39,9 +62,22 @@ export const deleteAccount = onCall({ timeoutSeconds: 300 }, async req => {
   await deleteWhere(db().collectionGroup("comments").where("uid", "==", uid));   // post comments
   await deleteWhere(db().collection("rooms").where("hostUid", "==", uid));
   await deleteWhere(db().collection("rooms").where("guestUid", "==", uid));
+  // daily challenge board entries (boards are kept 14 days)
+  for (let i = 0; i <= 16; i++) {
+    const day = new Date(Date.now() + 5.5 * 3600_000 - i * 86_400_000).toISOString().slice(0, 10);
+    await db().doc(`dailyBoard/${day}/entries/${uid}`).delete().catch(() => {});
+  }
+  await db().doc(`cheatFlags/${uid}`).delete().catch(() => {});
+  await deleteWhere(db().collection("feedback").where("uid", "==", uid));
+  { // invite code (the device record keeps only a hash and stays, so a deleted account cannot be re-invited on the same phone)
+    const code = (await db().doc(`users/${uid}`).get()).data()?.inviteCode;
+    if (code) await db().doc(`inviteCodes/${code}`).delete().catch(() => {});
+  }
+  await deleteWhere(db().collection("ghosts").where("ownerUid", "==", uid)); // recorded runs other players could race
 
   // inbox + profile (+ devices, backups, trophies, matches, blocks subcollections)
   await db().recursiveDelete(db().doc(`notifs/${uid}`));
+  await db().recursiveDelete(db().doc(`pushState/${uid}`));
   await db().recursiveDelete(db().doc(`users/${uid}`));
 
   await getAuth().deleteUser(uid).catch(() => {});
