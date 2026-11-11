@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Builds `src/lib/exercisePhotos.generated.ts` from whatever is sitting in
+ * Builds `src/features/exercises/exercisePhotos.generated.ts` from whatever is sitting in
  * `src/assets/exercises/`.
  *
  * Supports .jpg, .jpeg, .webp, .png
@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ASSETS = join(ROOT, "src/assets/exercises");
-const OUT = join(ROOT, "src/lib/exercisePhotos.generated.ts");
+const OUT = join(ROOT, "src/features/exercises/exercisePhotos.generated.ts");
 
 /** Named stages, in the order the movement actually happens. */
 const STAGE_ORDER = ["stand", "squat", "plank", "cow", "cat"];
@@ -130,7 +130,7 @@ const identFor = (file) => {
   if (!ident.has(file)) {
     const name = `p${n++}`;
     ident.set(file, name);
-    imports.push(`import ${name} from "../assets/exercises/${file}";`);
+    imports.push(`import ${name} from "../../assets/exercises/${file}";`);
   }
   return ident.get(file);
 };
@@ -218,5 +218,5 @@ export function photoSetForMotion(motionId: string): PhotoSet | null {
 
 writeFileSync(OUT, out);
 console.log(
-  `photo manifest: ${files.length} files · ${sets.size} exercises · ${variantCount} variants → src/lib/exercisePhotos.generated.ts`,
+  `photo manifest: ${files.length} files · ${sets.size} exercises · ${variantCount} variants → src/features/exercises/exercisePhotos.generated.ts`,
 );

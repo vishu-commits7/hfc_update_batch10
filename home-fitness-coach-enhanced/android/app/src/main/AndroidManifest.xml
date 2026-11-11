@@ -36,6 +36,22 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="com.homefitnesscoach.app" android:host="oauth" />
             </intent-filter>
+            <!-- Invite links. (1) apexpulse://join?crew=CODE : used by the "Open in the app" button on the landing page.
+                 (2) https://<host>/join?... : opens the app directly once /.well-known/assetlinks.json on that host
+                 lists this app's signing certificate (ANDROID_CERT_SHA256 on the server). Until then Android shows
+                 the landing page in the browser. If the link host changes (VITE_APP_SHARE_URL), change it here too. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="apexpulse" android:host="join" />
+            </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="hfc-update-batch10.onrender.com" android:pathPrefix="/join" />
+            </intent-filter>
             <!-- Health Connect: lets the user see why the app reads steps/calories (required for the permission screen) -->
             <intent-filter>
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />

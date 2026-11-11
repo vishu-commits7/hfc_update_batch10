@@ -158,10 +158,10 @@ ok(notices("alice").length === 0, "the reporter's identity is never sent to anyo
 
 /* ---------- the app side is wired ---------- */
 const read = p => fs.readFileSync(path.join(root, p), "utf8");
-ok(read("src/components/ContentPolicy.tsx").includes('where("type", "==", "moderation")') && read("src/App.tsx").includes("<ModerationGate"), "the app shows moderation messages and the disabled-account screen");
-ok(read("src/components/SettingsPage.tsx").includes("ContentPolicySheet") && read("src/components/AuthScreen.tsx").includes("ContentPolicySheet"), "content policy is linked from Settings and from sign-up");
-ok(read("src/components/CommunityGallery.tsx").includes('type: "post"') && read("src/components/CommunityGallery.tsx").includes('type: "postComment"'), "posts and post comments have a report button");
-ok(read("src/lib/useAuth.ts").includes('"auth/user-disabled"'), "a disabled account gets a clear sign-in message");
+ok(read("src/features/safety/ContentPolicy.tsx").includes('where("type", "==", "moderation")') && read("src/app/App.tsx").includes("<ModerationGate"), "the app shows moderation messages and the disabled-account screen");
+ok(read("src/features/account/SettingsPage.tsx").includes("ContentPolicySheet") && read("src/features/account/AuthScreen.tsx").includes("ContentPolicySheet"), "content policy is linked from Settings and from sign-up");
+ok(read("src/features/social/CommunityGallery.tsx").includes('type: "post"') && read("src/features/social/CommunityGallery.tsx").includes('type: "postComment"'), "posts and post comments have a report button");
+ok(read("src/core/useAuth.ts").includes('"auth/user-disabled"'), "a disabled account gets a clear sign-in message");
 ok(/hasAny\(\['likedBy', 'likeCount', 'hidden'\]\)/.test(read("firestore.rules")), "rules: an author cannot un-hide their own reported post");
 
 console.log(bad ? `\n${bad} check(s) failed.` : "All moderation checks passed.");

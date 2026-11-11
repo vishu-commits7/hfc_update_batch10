@@ -1,4 +1,4 @@
-import { EXERCISE_VIDEOS } from "../lib/exerciseVideos";
+import { EXERCISE_VIDEOS } from "../features/exercises/exerciseVideos";
 import { READY_CLIPS } from "./exerciseClips.generated";
 
 /**

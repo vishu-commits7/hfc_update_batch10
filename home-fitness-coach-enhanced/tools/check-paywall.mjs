@@ -12,7 +12,7 @@ let bad = 0;
 const ok = (x, m) => { if (!x) { bad++; console.log("FAIL " + m); } };
 
 // the pure helpers sit between two markers in billing.ts; run just that part (the rest needs a phone)
-const src = read("src/lib/billing.ts");
+const src = read("src/features/billing/billing.ts");
 const a = src.indexOf("export const PAYWALL_MIN_WORKOUTS"), b = src.indexOf("interface BillingPlugin");
 const js = ts.transpileModule("interface Offer { offerToken: string; basePlanId: string; price: string; period: string; priceMicros?: number; currency?: string; trial?: string }\n" + src.slice(a, b), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
 const m = { exports: {} }; new Function("exports", "module", js)(m.exports, m);
@@ -30,13 +30,13 @@ ok(yearlySaving([M, Y]) === 37, `yearly saving is worked out from Play's own pri
 ok(yearlySaving([M]) === 0 && yearlySaving([M, { ...Y, currency: "USD" }]) === 0 && yearlySaving([M, { ...Y, priceMicros: 3_000_000_000 }]) === 0 && yearlySaving([{ ...M, priceMicros: undefined }, Y]) === 0, "no saving claim when it cannot be proved");
 ok(/125/.test(perMonth(Y)) && perMonth(M) === "" && perMonth({ ...Y, priceMicros: undefined }) === "", "per-month price for the yearly plan, in the user's currency");
 
-const sheet = read("src/components/PaywallSheet.tsx");
+const sheet = read("src/features/billing/PaywallSheet.tsx");
 ok(sheet.includes("Restore purchases") && sheet.includes("min-h-[48px]"), "Restore purchases is a real button");
 ok(sheet.includes("free trial, then ") && sheet.includes("Cancel in Google Play before the trial ends"), "the trial line says what happens after the trial and how to avoid a charge");
 ok(sheet.includes("Renews automatically until cancelled") && sheet.includes("Manage subscription in Google Play"), "renewal and cancellation are stated");
 ok(/Arena, leagues, crews, friends and the daily challenge are free/.test(sheet), "the paywall says Arena and social are free");
 ok(!/[₹$€£]\s?\d/.test(sheet), "no price is written into the app; every price comes from Google Play");
-const app = read("src/App.tsx");
+const app = read("src/app/App.tsx");
 ok(app.includes("if (paywallUnlocked(logs.length)) setPaywallOpen(true);") && (app.match(/setPaywallOpen\(true\)/g) || []).length === 1, "every way into the paywall goes through the 3-workout check");
 ok(app.includes('currentView === "ai-generator" && !isPremium && paywallUnlocked(logs.length)'), "the AI generator is not locked before the paywall can be shown");
 // Arena and social never ask the server whether the user is Pro

@@ -1,0 +1,1 @@
+import{r as o,dY as h}from"./index-DlKDpTy_.js";const s=new Map,r=new Map;function i(n){const[,c]=o.useState(0),f=n.slice().sort().join(",");return o.useEffect(()=>{let a=!0;return n.forEach(e=>{if(s.has(e)||r.has(e))return;const l=h(e).then(t=>{s.set(e,t)}).catch(()=>{}).finally(()=>{r.delete(e),a&&c(t=>t+1)});r.set(e,l)}),()=>{a=!1}},[f]),s}export{i as u};

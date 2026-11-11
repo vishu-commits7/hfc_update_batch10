@@ -24,7 +24,7 @@ const entries = [...dataSrc.matchAll(/^\s*\{ id: "([^"]+)", name: "([^"]+)"(?:, 
   .map((m) => ({ id: m[1], name: m[2], from: m[3] || "" }));
 if (entries.length < 50) { console.error("Could not read the exercise list from src/data/exerciseClips.ts"); process.exit(1); }
 
-const vidSrc = fs.readFileSync(path.join(root, "src/lib/exerciseVideos.ts"), "utf8");
+const vidSrc = fs.readFileSync(path.join(root, "src/features/exercises/exerciseVideos.ts"), "utf8");
 const legacy = Object.fromEntries([...vidSrc.matchAll(/^\s*"([^"]+)":\s*"\/videos\/([^"]+)"/gm)].map((m) => [m[1], m[2]]));
 
 if (args.includes("--migrate")) {

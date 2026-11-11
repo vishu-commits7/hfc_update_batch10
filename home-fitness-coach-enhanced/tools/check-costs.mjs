@@ -2,7 +2,7 @@
 /**
  * npm run costs:check
  * 1) Fails if a Firestore collection query in src/ has no limit (the usual way a bill grows by surprise).
- * 2) Tests the shared-listener cache (src/lib/sharedQuery.ts).
+ * 2) Tests the shared-listener cache (src/core/sharedQuery.ts).
  * Installs nothing.
  */
 import fs from "node:fs";
@@ -47,7 +47,7 @@ console.log(`${found.length} collection reads checked: ${found.filter(q => q.lim
 
 /* ---- 2. shared listener ---- */
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "costs-check-"));
-fs.writeFileSync(path.join(out, "sq.js"), ts.transpileModule(fs.readFileSync(path.join(root, "src/lib/sharedQuery.ts"), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText);
+fs.writeFileSync(path.join(out, "sq.js"), ts.transpileModule(fs.readFileSync(path.join(root, "src/core/sharedQuery.ts"), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText);
 const { sharedQuery, clearSharedQueries } = require(path.join(out, "sq.js"));
 fs.rmSync(out, { recursive: true, force: true });
 const tick = () => new Promise(r => setTimeout(r, 5));
@@ -77,10 +77,10 @@ ok(errs === 1, "errors reach the screen");
 
 /* ---- 3. the changes this batch made are still in place ---- */
 const read = p => fs.readFileSync(path.join(root, p), "utf8");
-const social = read("src/lib/social.ts");
+const social = read("src/features/social/social.ts");
 ok(/subscribeMessages[\s\S]{0,400}limitToLast\(max\)/.test(social) && /max = 50/.test(social), "chat opens with the newest 50 messages, not 300");
 ok(/export function subscribeLiveRooms[\s\S]{0,900}getDocs\(/.test(social) && !/export function subscribeLiveRooms[\s\S]{0,900}onSnapshot\(/.test(social), "the live-rooms list is polled, not a live listener");
-ok(read("src/components/BeastDuelArena.tsx").includes("REPORT_EVERY_MS = 400"), "rep reports are sent every 400 ms");
+ok(read("src/features/arena/BeastDuelArena.tsx").includes("REPORT_EVERY_MS = 400"), "rep reports are sent every 400 ms");
 
 console.log(bad ? `\n${bad} check(s) failed.` : "All cost checks passed.");
 process.exit(bad ? 1 : 0);

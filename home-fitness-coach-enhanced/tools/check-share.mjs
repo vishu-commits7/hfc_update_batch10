@@ -12,8 +12,8 @@ const ts = require(path.join(root, "node_modules/typescript"));
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "share-check-"));
 const load = (rel, name) => { fs.writeFileSync(path.join(out, name), ts.transpileModule(fs.readFileSync(path.join(root, rel), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText); return require(path.join(out, name)); };
 globalThis.localStorage = { _d: {}, getItem(k) { return this._d[k] ?? null; }, setItem(k, v) { this._d[k] = String(v); }, removeItem(k) { delete this._d[k]; } };
-const qr = load("src/lib/qr.ts", "qr.js");
-const link = load("src/lib/shareLink.ts", "shareLink.js");
+const qr = load("src/core/qr.ts", "qr.js");
+const link = load("src/core/shareLink.ts", "shareLink.js");
 fs.rmSync(out, { recursive: true, force: true });
 
 let bad = 0;
@@ -40,10 +40,24 @@ ok(threw, "over-long text is refused, not truncated");
 ok(link.getShowNameOnCards() === false, "name on cards is off by default");
 link.setShowNameOnCards(true); ok(link.getShowNameOnCards() === true, "turning it on is remembered");
 link.setShowNameOnCards(false); ok(link.getShowNameOnCards() === false, "and off again");
-const card = fs.readFileSync(path.join(root, "src/lib/flexCard.ts"), "utf8");
+const card = fs.readFileSync(path.join(root, "src/features/progress/flexCard.ts"), "utf8");
 ok(/if \(data\.name\)/.test(card) && !/name: opts\./.test(card), "card builders never fill in a name themselves");
 const arena = card.slice(card.indexOf("export function arenaCard"));
 ok(!/oppName|opponentName/.test(arena), "the opponent is not named on an Arena card");
+
+// invite links: they must point at the /join landing page (never the web app's front page) and read back correctly
+ok(link.joinLink("crew", "qbsuth") === "https://hfc-update-batch10.onrender.com/join?crew=QBSUTH", "crew link");
+ok(link.joinLink() === "https://hfc-update-batch10.onrender.com/join" && link.joinLink("room", "bad code!") === link.joinLink(), "no or bad code gives the plain landing page");
+link.setLinkBase("https://apexpulse.example/"); ok(link.joinLink("invite", "ABC1234") === "https://apexpulse.example/join?invite=ABC1234", "link host can be changed");
+link.setLinkBase("http://insecure.example"); ok(link.joinLink().startsWith("https://apexpulse.example/"), "non-https host is ignored");
+const pj = u => JSON.stringify(link.parseJoinLink(u));
+ok(pj("https://x.example/join?crew=QBSUTH") === '{"kind":"crew","code":"QBSUTH"}', "reads an https join link");
+ok(pj("apexpulse://join?room=AB12CD") === '{"kind":"room","code":"AB12CD"}', "reads the app-scheme link");
+ok(pj("apexpulse://oauth?crew=QBSUTH") === "null" && pj("https://x.example/join?crew=<script>") === "null" && pj("not a url") === "null", "ignores other links and bad codes");
+const server = fs.readFileSync(path.join(root, "server.ts"), "utf8");
+ok(server.includes('app.get("/join"') && server.includes('"/.well-known/assetlinks.json"') && server.indexOf('app.get("/join"') < server.indexOf('app.get("*"'), "server answers /join and assetlinks before the web app");
+const manifest = fs.readFileSync(path.join(root, "android/app/src/main/AndroidManifest.xml"), "utf8");
+ok(manifest.includes('android:scheme="apexpulse" android:host="join"') && manifest.includes('android:pathPrefix="/join"'), "Android opens join links");
 
 console.log(bad ? `\n${bad} check(s) failed.` : "All share-card checks passed.");
 process.exit(bad ? 1 : 0);

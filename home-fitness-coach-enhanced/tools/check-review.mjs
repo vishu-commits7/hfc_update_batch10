@@ -9,7 +9,7 @@ let bad = 0;
 const ok = (x, m) => { if (!x) { bad++; console.log("FAIL " + m); } };
 
 // the rule is pure, so lift it straight out of the source (the file's imports need a browser)
-const src = read("src/lib/review.ts");
+const src = read("src/features/progress/review.ts");
 const grab = name => { const m = src.match(new RegExp(`export function ${name}\\([\\s\\S]*?\\n}\\n`)); if (!m) throw new Error("missing " + name); return m[0].replace("export ", "").replace(/\(([a-z]+): \{[^)]*\}\)(: [A-Za-z| ]+)?/, "($1)"); };
 const consts = "const MIN_DAYS_SINCE_FIRST_OPEN = 3, MIN_DAYS_BETWEEN_PROMPTS = 60, DAY = 86400000;";
 ok(/MIN_DAYS_SINCE_FIRST_OPEN = 3;/.test(src) && /MIN_DAYS_BETWEEN_PROMPTS = 60;/.test(src), "3 days and 60 days are the values in the code");
@@ -28,9 +28,9 @@ ok(winMomentOf({ program: { credited: true, weekComplete: true } }) === "program
 ok(winMomentOf({ program: { credited: true, weekComplete: false } }) === null && winMomentOf({ program: { credited: false, weekComplete: true } }) === null && winMomentOf({}) === null, "an ordinary session, a trophy or a quest is not");
 
 // wiring
-const app = read("src/App.tsx");
+const app = read("src/app/App.tsx");
 ok(app.includes("if (takeReviewTurn(m)) setReviewMoment(m);") && app.includes("noteFirstOpen()"), "asked only when the level-up screen closes, and the first open is recorded");
-const sheet = read("src/components/ReviewPrompt.tsx");
+const sheet = read("src/features/progress/ReviewPrompt.tsx");
 ok(sheet.includes("Rate on Google Play") && sheet.includes("Send private feedback") && sheet.includes("Not now"), "the sheet offers rating, private feedback and a way out");
 ok(!/do you (like|love|enjoy)|enjoying/i.test(sheet), "no opinion question before the rating card (Google's in-app review rule)");
 ok(read("android/app/build.gradle").includes("com.google.android.play:review") && read("android/app/src/main/java/com/homefitnesscoach/app/ApexNativePlugin.java").includes("public void requestReview("), "Android has the Play review library and the method");

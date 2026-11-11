@@ -12,7 +12,7 @@ const ts = require(path.join(root, "node_modules/typescript"));
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "anticheat-check-"));
 const load = (rel, name) => { fs.writeFileSync(path.join(out, name), ts.transpileModule(fs.readFileSync(path.join(root, rel), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText); return require(path.join(out, name)); };
 const L = load("functions/src/repLimits.ts", "limits.js");
-const cat = load("src/lib/arenaCatalog.ts", "catalog.js");
+const cat = load("src/features/arena/arenaCatalog.ts", "catalog.js");
 fs.rmSync(out, { recursive: true, force: true });
 
 let bad = 0;

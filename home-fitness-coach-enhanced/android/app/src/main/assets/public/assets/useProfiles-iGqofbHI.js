@@ -1,1 +1,0 @@
-import{r as c,cN as h}from"./index-CPkUNcmK.js";const s=new Map,r=new Map;function i(n){const[,o]=c.useState(0),f=n.slice().sort().join(",");return c.useEffect(()=>{let a=!0;return n.forEach(e=>{if(s.has(e)||r.has(e))return;const l=h(e).then(t=>{s.set(e,t)}).catch(()=>{}).finally(()=>{r.delete(e),a&&o(t=>t+1)});r.set(e,l)}),()=>{a=!1}},[f]),s}export{i as u};

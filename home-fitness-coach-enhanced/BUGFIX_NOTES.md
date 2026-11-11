@@ -481,3 +481,38 @@ Not tested on a device; the error states were only checked by reading the code (
 - `launch/4.9-launch-review.md`: tsc and functions build pass, all 13 check scripts pass, standing rules held. Verdict: no-go for production today, go for an internal-testing build. 9 blockers (Android never compiled, nothing run on a device, nothing deployed, no privacy URL, no deletion page, privacy text does not match the code, signing, Play forms, closed-test rule) and 9 should-fix items.
 - 4.7 (listing in two more languages) is waiting for the two languages.
 - No code change in this batch.
+
+## Batch 49 — First phone test fixes (10 Nov video)
+
+- Workout demo: the gym photo no longer shows before the demo clip. While the clip loads the box is a plain light panel with a spinner; the clip's first frame shows as soon as it is decoded, so a paused workout shows the real demo frozen (before, a paused workout kept the photo and a spinner forever). The photo is only used if the clip cannot load at all. (`ExerciseClip.tsx`)
+- Workout header: the "02 / 07" counter no longer wraps onto two lines; on narrow phones the Sound and Coach buttons show icons only so "End" and "Coach" are not cut off. (`ActiveWorkout.tsx`)
+- Feed: liking a sample reel while signed in now sticks (it was sent to the server for a reel that only exists on the phone, then reset to 0 when the card was redrawn). (`ReelsFeedView.tsx`)
+- App only: `npm run build`, `npx cap sync android`, run again. Checked with `tsc --noEmit` only.
+
+## Batch 50 — Structure, speed, invite links, Arena in the centre, reel studio (11 Nov video)
+
+**Structure**
+- `src/components` (75 files) and `src/lib` (70 files) are sorted into `src/app`, `src/core`, `src/shared` and ten `src/features/*` folders. 168 files renamed, imports rewritten by `tools/restructure.py`; old-to-new list in `tools/restructure-map.json`; rules in `ARCHITECTURE.md`. No logic changed by the move. `lib/duelVideo.ts` became `features/arena/useDuelVideo.ts` (it clashed with `DuelVideo.tsx` on Windows).
+- `npm run arch:check`: every relative import exists with exact upper/lower case, and the layers only point one way (app -> features -> shared -> core). Currently 0 problems.
+- Older notes in this file use the old paths; look them up in `tools/restructure-map.json`.
+- Deleting is blocked for me in this folder, so the empty old folders and one stray copy were parked in `_to_delete/`. Delete that folder.
+
+**Speed**
+- Firestore now keeps its data on the phone (`persistentLocalCache`): lists draw from the saved copy at once, then update.
+- Remembered server answers (`core/callCache.ts`): today's plan, daily challenge, league group, invite card show the last answer immediately and refresh behind it. Cleared on sign-out.
+- First bundle is smaller: the workout player, analytics drawer, command palette, personalise flow, level-up screen and tour load on first use; Arena, the player and the other tabs are warmed one at a time from 1.2 s after launch (was 3.5 s, all at once).
+- `index.html`: the Google font no longer blocks the first paint; a static launch screen (logo + bar) shows before any code runs.
+- Bottom bar no longer uses a blur (repainted on every scroll frame).
+- Not measured: none of this was timed on a phone.
+
+**Invite links**
+- Shares used to attach the Render address, which opened the old web app. Now every share links to `/join` on the server: a small page with "Open in the Apex Pulse app", "Get the app on Google Play" and the code. Crew, match-room and friend-invite shares carry the code (`/join?crew=CODE`, `?room=`, `?invite=`).
+- The app opens those links (`core/deepLink.ts`): crew code is filled in on Arena > Crew, friend code on Arena > Friends, a match code joins the room. Kept for a day so it survives sign-in on a new install.
+- Android: `apexpulse://join` (used by the page's button) and an https App Link for the Render host. For the link to open the app directly with no browser page, set `ANDROID_CERT_SHA256` on Render (see below). Until then the landing page shows and the button opens the app.
+- Needs: `git push` (Render must serve `/join`), and a new app build (manifest change, not compiled here).
+
+**Screens**
+- Bottom bar: Arena is the raised centre button; order is Train, Feed, Arena, Coach, Profile.
+- Reel studio: drawn above the bottom bar, full screen on a phone, with a large "Share reel" button at the bottom and Back to close. (It was under the bar because it was drawn inside the animated screen.) The profile's reel viewer had the same layer problem.
+
+Checked with `tsc --noEmit`, the 13 check scripts and `arch:check`. `npm run build` (Vite) cannot be run here: run it first.

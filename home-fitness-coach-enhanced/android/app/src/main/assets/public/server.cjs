@@ -121,6 +121,53 @@ function generateApexNeuralWorkout(options) {
     isRealGemini: false
   };
 }
+var ANDROID_PACKAGE = "com.homefitnesscoach.app";
+var PLAY_URL = `https://play.google.com/store/apps/details?id=${ANDROID_PACKAGE}`;
+app.get("/.well-known/assetlinks.json", (_req, res) => {
+  const prints = (process.env.ANDROID_CERT_SHA256 || "").split(",").map((s) => s.trim().toUpperCase()).filter((s) => /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/.test(s));
+  res.type("application/json").send(JSON.stringify(prints.length ? [{
+    relation: ["delegate_permission/common.handle_all_urls"],
+    target: { namespace: "android_app", package_name: ANDROID_PACKAGE, sha256_cert_fingerprints: prints }
+  }] : []));
+});
+app.get("/join", (req, res) => {
+  const pick = (k) => {
+    const v = String(req.query[k] || "").toUpperCase();
+    return /^[A-Z0-9]{4,8}$/.test(v) ? v : "";
+  };
+  const kind = ["crew", "room", "invite"].find((k) => pick(k)) || null;
+  const code = kind ? pick(kind) : "";
+  const title = kind === "crew" ? "You're invited to a crew" : kind === "room" ? "You're challenged to a match" : kind === "invite" ? "Train with a friend" : "Apex Pulse";
+  const line = kind === "crew" ? "Join the crew and hit a weekly goal together." : kind === "room" ? "A 1v1 rep battle is waiting for you in the Arena." : kind === "invite" ? "Use your friend's code before your first workout and you both get a streak freeze." : "Home workouts, live 1v1 rep battles and leagues.";
+  const q = kind ? `?${kind}=${code}` : "";
+  const intent = `intent://join${q}#Intent;scheme=apexpulse;package=${ANDROID_PACKAGE};S.browser_fallback_url=${encodeURIComponent(PLAY_URL)};end`;
+  res.set("Cache-Control", "public, max-age=300").type("html").send(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${title} \xB7 Apex Pulse</title>
+<meta property="og:title" content="${title} on Apex Pulse"><meta property="og:description" content="${line}">
+<meta property="og:image" content="/app-logo.jpg"><meta name="theme-color" content="#0a0a0c">
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0a0a0c;color:#f3f6fb;font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:24px}
+main{width:100%;max-width:400px;text-align:center}img{width:72px;height:72px;border-radius:18px}
+h1{font-size:26px;line-height:1.2;margin:18px 0 8px}p{color:#a5adbd;margin:0 0 20px}
+.code{display:inline-block;margin:0 0 22px;padding:10px 18px;border:1px solid #2a2f3a;border-radius:14px;background:#12141c;font-weight:800;font-size:22px;letter-spacing:.2em}
+a{display:flex;align-items:center;justify-content:center;min-height:54px;border-radius:16px;font-weight:800;text-decoration:none;margin-top:10px}
+.go{background:#c8ff3d;color:#0a0a0c}.get{border:1px solid #2a2f3a;color:#f3f6fb}.web{color:#8f98a8;font-weight:600;font-size:14px;min-height:44px}
+small{display:block;margin-top:18px;color:#737f95}
+</style></head><body><main>
+<img src="/app-logo.jpg" alt="">
+<h1>${title}</h1><p>${line}</p>
+${code ? `<div class="code" aria-label="Code ${code.split("").join(" ")}">${code}</div>` : ""}
+<a class="go" id="open" href="${intent}">Open in the Apex Pulse app</a>
+<a class="get" href="${PLAY_URL}">Get the app on Google Play</a>
+<a class="web" href="/${q}">Continue in the browser instead</a>
+${code ? `<small>If the app opens without the code, enter ${code} in Arena.</small>` : ""}
+</main>
+<script>
+// "Open in the app" only works on Android. Elsewhere it becomes the Play Store link.
+if(!/Android/i.test(navigator.userAgent)){var a=document.getElementById("open");a.href=${JSON.stringify(PLAY_URL)};a.textContent="Apex Pulse is on Android";}
+</script></body></html>`);
+});
 app.get("/api/health", (_req, res) => {
   return res.json({
     status: "ok",

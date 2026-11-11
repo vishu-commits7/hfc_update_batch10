@@ -18,7 +18,7 @@ const out = fs.mkdtempSync(path.join(os.tmpdir(), "ghosts-check-"));
 const compile = (rel) => ts.transpileModule(fs.readFileSync(path.join(root, rel), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
 fs.writeFileSync(path.join(out, "core.js"), compile("functions/src/ghostCore.ts"));
 const core = require(path.join(out, "core.js"));
-const clientRepsAt = compile("src/lib/ghost.ts").includes("lo = mid + 1") && fs.readFileSync(path.join(root, "src/lib/ghost.ts"), "utf8").includes("tl[mid] <= ms");
+const clientRepsAt = compile("src/features/arena/ghost.ts").includes("lo = mid + 1") && fs.readFileSync(path.join(root, "src/features/arena/ghost.ts"), "utf8").includes("tl[mid] <= ms");
 fs.rmSync(out, { recursive: true, force: true });
 
 let bad = 0;

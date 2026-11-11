@@ -15,7 +15,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const ts = require(path.join(root, "node_modules/typescript"));
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "programs-check-"));
-for (const rel of ["data/programs.ts", "data/exerciseClips.ts", "data/exerciseClips.generated.ts", "lib/exerciseVideos.ts"]) {
+for (const rel of ["data/programs.ts", "data/exerciseClips.ts", "data/exerciseClips.generated.ts", "features/exercises/exerciseVideos.ts"]) {
   const src = fs.readFileSync(path.join(root, "src", rel), "utf8");
   const js = ts.transpileModule(src, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
   const dest = path.join(out, rel.replace(/\.ts$/, ".js"));

@@ -24,6 +24,7 @@
     "review:check": "node tools/check-review.mjs",
     "paywall:check": "node tools/check-paywall.mjs",
     "share:check": "node tools/check-share.mjs",
+    "arch:check": "node tools/check-arch.mjs",
     "fetch:mediapipe": "node tools/fetch-mediapipe.mjs"
   },
   "dependencies": {

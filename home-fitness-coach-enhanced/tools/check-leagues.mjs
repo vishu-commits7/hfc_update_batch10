@@ -12,7 +12,7 @@ const ts = require(path.join(root, "node_modules/typescript"));
 const out = fs.mkdtempSync(path.join(os.tmpdir(), "leagues-check-"));
 const load = (rel, name) => { fs.writeFileSync(path.join(out, name), ts.transpileModule(fs.readFileSync(path.join(root, rel), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText); return require(path.join(out, name)); };
 const srv = load("functions/src/leagueCore.ts", "srv.js");
-const app = load("src/lib/league.ts", "app.js");
+const app = load("src/features/arena/league.ts", "app.js");
 fs.rmSync(out, { recursive: true, force: true });
 
 let bad = 0;
@@ -64,7 +64,7 @@ ok(app.leagueStatus(Array(30).fill(0), 0, 0, MAX).zone === "safe", "0 XP at the 
 // wiring
 const lg = fs.readFileSync(path.join(root, "functions/src/leagues.ts"), "utf8");
 ok(lg.includes("leagueOutcome(") && lg.includes("bandOf(") && /schedule: "5 0 \* \* 1", timeZone: "Asia\/Kolkata"/.test(lg), "rollover uses the shared rules and runs Monday 00:05 IST");
-const view = fs.readFileSync(path.join(root, "src/components/LeagueView.tsx"), "utf8");
+const view = fs.readFileSync(path.join(root, "src/features/arena/LeagueView.tsx"), "utf8");
 ok(!/top 10|i < 10|size - 5/.test(view), "screen no longer uses the old top-10 rule");
 
 console.log(bad ? `\n${bad} check(s) failed.` : "All league checks passed.");
