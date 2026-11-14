@@ -110,7 +110,7 @@ function freshRoom(): ArenaRoom {
     code: DEMO_ROOM, hostUid: DEMO_UID, hostName: DEMO_NAME, hostAvatar: null, guestUid: "d0", guestName: "Meera", guestAvatar: null,
     exercise: "Classic Push-ups", plan: [{ id: "pushups", name: "Classic Push-ups", reps: 20 }], mode: "reps", target: 20, status: "ready", visibility: "private",
     createdAt: Date.now(), startedAt: null, hostReps: 0, guestReps: 0, hostDone: false, guestDone: false, quick: true, rematchCode: null, rematchBy: null,
-    ratingDelta: null, ratingAfter: null, ghost: false, ghostKind: null, ghostTl: [], ghostHalf: false, unrated: false,
+    ratingDelta: null, ratingAfter: null, ghost: false, ghostKind: null, ghostTl: [], ghostHalf: false, unrated: false, unratedReason: null, verified: null,
   };
 }
 const pushRoom = (patch: Partial<ArenaRoom>) => { room = { ...room, ...patch }; roomSubs.forEach(cb => cb(room)); };

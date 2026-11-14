@@ -112,11 +112,12 @@ async function makeThumb(blob: Blob, type: "video" | "photo"): Promise<string> {
     const w = el instanceof HTMLVideoElement ? el.videoWidth : el.naturalWidth;
     const h = el instanceof HTMLVideoElement ? el.videoHeight : el.naturalHeight;
     if (!w || !h) return "";
-    const scale = 160 / Math.max(w, h);
+    const scale = 240 / Math.max(w, h); // sharper still for the feed while the video loads (was 160 px)
     const c = document.createElement("canvas");
     c.width = Math.max(1, Math.round(w * scale)); c.height = Math.max(1, Math.round(h * scale));
     c.getContext("2d")?.drawImage(el, 0, 0, c.width, c.height);
-    const data = c.toDataURL("image/jpeg", 0.6);
+    let data = c.toDataURL("image/jpeg", 0.6);
+    if (data.length >= 30_000) data = c.toDataURL("image/jpeg", 0.4); // the rules cap the thumbnail size
     return data.length < 30_000 ? data : "";
   } catch { return ""; } finally { URL.revokeObjectURL(url); }
 }

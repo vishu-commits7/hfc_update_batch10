@@ -9,6 +9,8 @@ import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { applyProgress, readProgress } from "./progression";
 import { dayKeyIST } from "./timeutil";
+import { REQUIRE_CAMERA } from "./init";
+import { roomFamily, sideVerified, type EvStats } from "./repVerify";
 import {
   GHOST_DAILY_RATED, GHOST_WEIGHT, MIN_GHOST_REPS, anonName, eloDelta, ghostKey, isGhostable, makePacer, repsAt, runScore, settleReps,
   type GhostKind,
@@ -60,13 +62,21 @@ export async function finalizeGhost(
   const won = out.winner === "host", draw = out.winner === null;
   const kind = (r.ghostKind || "pacer") as GhostKind;
   const rated = Number(capSnap.data()?.n || 0) < GHOST_DAILY_RATED && !r.hostStruck; // an impossible rep count makes the match unrated
+  // rating (not XP) also needs the player's own reps to be camera-verified, exactly as in a live match
+  const family = roomFamily(r as any);
+  const camOk = !REQUIRE_CAMERA || (!!family && sideVerified(
+    Number((extra.hostReps as number | undefined) ?? r.hostReps ?? 0), Number((extra.hostVer as number | undefined) ?? r.hostVer ?? 0),
+    ((extra.hostEvS as EvStats | undefined) ?? r.hostEvS ?? [0, 0, 0, 0, 0]) as EvStats));
   const rating = Number(hostP.user.rating ?? 1000), ghostRating = Number(r.ghostRating ?? 1000);
-  const delta = rated && kind === "peer" ? eloDelta(rating, ghostRating, won ? 1 : draw ? 0.5 : 0, Number(hostP.user.arenaMatches || 0), GHOST_WEIGHT) : 0;
+  const delta = rated && camOk && kind === "peer" ? eloDelta(rating, ghostRating, won ? 1 : draw ? 0.5 : 0, Number(hostP.user.arenaMatches || 0), GHOST_WEIGHT) : 0;
   const xpGain = rated ? (won ? 30 : draw ? 18 : 10) : 0; // half of a live match
   tx.update(ref, {
     ...extra, hostReps: out.hostReps, guestReps: out.guestReps, status: "finished", hostDone: true, guestDone: true,
-    winnerUid: won ? uid : null, statsApplied: true, ghostHalf: kind === "peer" && rated,
-    ...(rated && kind === "peer" ? { ratingDelta: { host: delta, guest: 0 }, ratingAfter: { host: rating + delta, guest: ghostRating } } : { unrated: true }),
+    winnerUid: won ? uid : null, statsApplied: true, ghostHalf: kind === "peer" && rated && camOk,
+    verified: { host: REQUIRE_CAMERA ? camOk : false, guest: false }, camRequired: REQUIRE_CAMERA,
+    ...(rated && camOk && kind === "peer"
+      ? { ratingDelta: { host: delta, guest: 0 }, ratingAfter: { host: rating + delta, guest: ghostRating } }
+      : { unrated: true, unratedReason: kind !== "peer" ? "practice" : !rated ? "limit" : !family ? "taps-only-exercise" : "winner-not-verified" }),
   });
   tx.set(capRef, { n: Number(capSnap.data()?.n || 0) + 1, day, a: uid, b: "ghost" }, { merge: true });
   let prog: ReturnType<typeof applyProgress> | null = null;
@@ -74,7 +84,7 @@ export async function finalizeGhost(
     // Ghost wins stay off the wins leaderboard and the arena-win trophies (arenaWin: false); the match still counts as played.
     prog = applyProgress(tx, uid, hostP, {
       xp: xpGain, arenaWin: false, arenaMatch: true,
-      extra: kind === "peer" ? { rating: rating + delta, ratingPeak: Math.max(Number(hostP.user.ratingPeak || 1000), rating + delta) } : undefined,
+      extra: kind === "peer" && camOk ? { rating: rating + delta, ratingPeak: Math.max(Number(hostP.user.ratingPeak || 1000), rating + delta) } : undefined,
     });
   }
   tx.set(db.doc(`users/${uid}/matches/${ref.id}`), {
@@ -83,7 +93,7 @@ export async function finalizeGhost(
     result: won ? "win" : draw ? "draw" : "loss", xpGained: xpGain, ratingDelta: delta, ratingAfter: rating + delta,
     levelUp: prog?.levelUp ?? false, rankUp: prog?.rankUp ?? false, newTrophies: prog?.newTrophies.map(t => t.id) ?? [],
   });
-  if (rated && !opt.forfeit && isGhostable(r as any)) {
+  if (rated && camOk && !opt.forfeit && isGhostable(r as any)) { // only real, camera-checked runs become ghosts
     saveGhost(tx, mineSnap, { uid, keyHash, exercise: String(r.exercise || ""), target: Number(r.target), rating: rating + delta, tl: hostTl, reps: out.hostReps, finMs: out.hostFinMs });
   }
 }

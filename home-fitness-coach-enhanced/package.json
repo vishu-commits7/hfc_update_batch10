@@ -25,6 +25,8 @@
     "paywall:check": "node tools/check-paywall.mjs",
     "share:check": "node tools/check-share.mjs",
     "arch:check": "node tools/check-arch.mjs",
+    "reps:check": "node tools/check-reps.mjs",
+    "chat:check": "node tools/check-chat.mjs",
     "fetch:mediapipe": "node tools/fetch-mediapipe.mjs"
   },
   "dependencies": {

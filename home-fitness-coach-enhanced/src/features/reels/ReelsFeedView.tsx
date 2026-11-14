@@ -2,7 +2,7 @@ import OneTimeHint from "../../shared/OneTimeHint";
 import { shareContent } from "../../core/nativeBridge";
 import { useState, useEffect, useRef, useMemo, memo, useCallback } from "react";
 import {
-  Film, Heart, Share2, Camera, MessageCircle, Music, Swords, CheckCircle2, Calendar, Eye, Search, Loader2, RotateCcw, Flag,
+  Film, Heart, Share2, Camera, MessageCircle, Music, Swords, CheckCircle2, Calendar, Eye, Search, Loader2, RotateCcw, Flag, Volume2, VolumeX,
 } from "lucide-react";
 import { MOTIVATION_STORIES } from "./GymBeastMotivationReel";
 import ReelCreatorStudio from "./ReelCreatorStudio";
@@ -36,7 +36,19 @@ interface ReelsFeedViewProps {
 /* 1x1 transparent image: stops Android WebView from drawing its grey "play" glyph over a loading <video>. */
 const BLANK_POSTER = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
-function ReelVideo({ src, loader }: { src?: string; loader?: () => Promise<string> }) {
+/** Sound on or off for the whole feed, like Instagram: one tap on any reel switches it for every reel. */
+let feedSound = false;
+const soundSubs = new Set<(on: boolean) => void>();
+function setFeedSound(on: boolean) { feedSound = on; soundSubs.forEach(f => f(on)); }
+function useFeedSound(): [boolean, (on: boolean) => void] {
+  const [on, setOn] = useState(feedSound);
+  useEffect(() => { soundSubs.add(setOn); return () => { soundSubs.delete(setOn); }; }, []);
+  return [on, setFeedSound];
+}
+
+function ReelVideo({ src, loader, thumb }: { src?: string; loader?: () => Promise<string>; thumb?: string }) {
+  const [sound, setSound] = useFeedSound();
+  const [flash, setFlash] = useState(0); // shows the speaker icon for a moment after a tap
   const hostRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [active, setActive] = useState(false);
@@ -68,9 +80,19 @@ function ReelVideo({ src, loader }: { src?: string; loader?: () => Promise<strin
   }, []);
 
   const url = useMemo(() => (src ? encodeURI(src) : resolved || ""), [src, resolved]);
+  useEffect(() => { if (videoRef.current) videoRef.current.muted = !sound; }, [sound, ready]);
+  useEffect(() => { if (!flash) return; const t = setTimeout(() => setFlash(0), 700); return () => clearTimeout(t); }, [flash]);
 
   return (
-    <div ref={hostRef} className="absolute inset-0 overflow-hidden bg-carbon">
+    <div
+      ref={hostRef}
+      className="absolute inset-0 overflow-hidden bg-carbon"
+      onClick={() => { if (!ready) return; void tapFeedback(); setSound(!sound); setFlash(f => f + 1); }}
+      role="button"
+      aria-label={sound ? "Mute reels" : "Play reels with sound"}
+    >
+      {/* the reel's own still, softened, while the video loads: the screen is never an empty box */}
+      {thumb && !ready && <img src={thumb} alt="" aria-hidden className="absolute inset-0 h-full w-full scale-110 object-cover blur-md" />}
       {active && !failed && url && (
         <video
           key={attempt}
@@ -92,8 +114,13 @@ function ReelVideo({ src, loader }: { src?: string; loader?: () => Promise<strin
       )}
       {!ready && !failed && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <Loader2 className="h-7 w-7 animate-spin text-ink-3" />
+          <Loader2 className="h-7 w-7 animate-spin text-white/70" />
         </div>
+      )}
+      {flash > 0 && (
+        <span key={flash} className="pointer-events-none absolute left-1/2 top-1/2 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-white animate-fade-in">
+          {sound ? <Volume2 className="h-7 w-7" /> : <VolumeX className="h-7 w-7" />}
+        </span>
       )}
       {failed && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center">
@@ -195,7 +222,7 @@ const ReelCard = memo(function ReelCard({
   return (
     <div id={`reel-${reel.id}`} className="relative aspect-[9/14] w-full overflow-hidden rounded-[28px] border border-line bg-carbon shadow-xl">
       {reel.remote ? (
-        reel.type === "video" ? <ReelVideo loader={loadMedia} /> : <RemoteImage load={loadMedia} />
+        reel.type === "video" ? <ReelVideo loader={loadMedia} thumb={reel.remote.thumb} /> : <RemoteImage load={loadMedia} />
       ) : reel.type === "video" ? (
         <ReelVideo src={reel.mediaUrl} />
       ) : (

@@ -1,7 +1,7 @@
 import { useBackClose } from "../../core/backStack";
 import { useBlocked } from "../safety/blocks";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, X, Send, Loader2, Swords, UserCheck, MessageCircle, Check, CheckCheck } from "lucide-react";
+import { ArrowLeft, X, Send, Swords, UserCheck, MessageCircle, Check, CheckCheck } from "lucide-react";
 import OverlayPortal from "../../shared/ui/OverlayPortal";
 import Avatar from "../../shared/ui/Avatar";
 import {
@@ -227,7 +227,6 @@ function Conversation({
   const [error, setError] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [tryN, setTryN] = useState(0);
-  const [sending, setSending] = useState(false);
   const [msgMax, setMsgMax] = useState(50); // newest 50 first; "Earlier messages" loads more
   const endRef = useRef<HTMLDivElement>(null);
   const chatId = chatIdFor(myUid, otherUid);
@@ -238,7 +237,8 @@ function Conversation({
     return subscribeMessages(
       chatId,
       m => { setLoadFailed(false); setMessages(m); },
-      e => { setMessages([]); if ((e as { code?: string })?.code !== "permission-denied") setLoadFailed(true); },
+      // the listener retries by itself; only a non-permission problem is worth a message (a brand-new chat is empty, not broken)
+      e => { setMessages(m => m ?? []); if ((e as { code?: string })?.code !== "permission-denied") setLoadFailed(true); },
       msgMax,
     );
   }, [chatId, tryN, msgMax]);
@@ -262,23 +262,22 @@ function Conversation({
 
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [messages?.length]);
 
-  const send = async (e: React.FormEvent) => {
+  // Sending never blocks the box: the message shows at once (with a clock icon until the server has it), and you
+  // can keep typing. If the server refuses it, the text comes back into the box with the reason.
+  const send = (e: React.FormEvent) => {
     e.preventDefault();
     const v = text.trim();
-    if (!v || sending) return;
+    if (!v) return;
     if (!allowed) { setError("You can message once your follow request is accepted."); return; }
-    setSending(true);
     setError(null);
-    try {
-      void tapFeedback();
-      // Queue instantly (works offline: shows a single grey tick until it syncs).
-      setText("");
-      void sendMessage(myUid, otherUid, v, true);
-    } catch (err) {
-      setError(friendlySocialError(err));
-    } finally {
-      setSending(false);
-    }
+    void tapFeedback();
+    setText("");
+    sendMessage(myUid, otherUid, v)
+      .catch(err => {
+        const code = (err as { code?: string })?.code;
+        setError(code === "permission-denied" ? "Couldn't send: you can message people when one of you has accepted the other's follow, and nobody has blocked anyone." : friendlySocialError(err));
+        setText(t => (t ? t : v));
+      });
   };
 
   return (
@@ -356,8 +355,8 @@ function Conversation({
           autoComplete="off"
           className="min-w-0 flex-1 rounded-full border border-line-strong bg-graphite px-4 py-2.5 text-base text-ink placeholder:text-ink-3 outline-none focus:border-volt"
         />
-        <button type="submit" disabled={!text.trim() || sending} aria-label="Send" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-volt text-void active:scale-90 disabled:opacity-40">
-          {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+        <button type="submit" disabled={!text.trim()} aria-label="Send" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-volt text-void active:scale-90 disabled:opacity-40">
+          <Send className="h-4 w-4" />
         </button>
       </form>
     </>

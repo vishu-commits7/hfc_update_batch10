@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import {
   Sparkles,
   Music,
@@ -17,7 +17,9 @@ import {
   Camera,
 } from "lucide-react";
 import { tapFeedback, successFeedback } from "../../core/haptics";
-import { publishReel } from "./reelsStore";
+import { MAX_REEL_BYTES, publishReel } from "./reelsStore";
+import { useReelCamera } from "./useReelCamera";
+import { shrinkVideo } from "./videoCompress";
 import { useMyIdentity } from "../social/useSocial";
 import OverlayPortal from "../../shared/ui/OverlayPortal";
 import { useBackClose } from "../../core/backStack";
@@ -98,172 +100,24 @@ export default function ReelCreatorStudio({
   const [publishedSuccess, setPublishedSuccess] = useState(false);
   const [activeDrawer, setActiveDrawer] = useState<ActiveDrawer>("none");
 
-  // Live Camera states
-  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
-  const [micEnabled, setMicEnabled] = useState(true);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const cameraFileInputRef = useRef<HTMLInputElement | null>(null);
-  const liveVideoPreviewRef = useRef<HTMLVideoElement | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordedChunksRef = useRef<Blob[]>([]);
-  const timerIntervalRef = useRef<any>(null);
   const recordedVideoPlayerRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
 
-  // Initialize camera when in camera mode and no media is captured yet
-  useEffect(() => {
-    if (!mediaUrl && captureSource === "camera") {
-      startCamera();
-    } else {
-      stopCamera();
-    }
-
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-        streamRef.current = null;
-      }
-      stopCamera();
-    };
-  }, [captureSource, mediaUrl, facingMode, micEnabled]);
-
-  const startCamera = async () => {
-    try {
-      setCameraError(null);
-      stopCamera();
-
-      const constraints: MediaStreamConstraints = {
-        video: {
-          facingMode,
-          width: { ideal: 720 },
-          height: { ideal: 1280 },
-        },
-        audio: micEnabled,
-      };
-
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      streamRef.current = stream;
-      setCameraStream(stream);
-      if (liveVideoPreviewRef.current) {
-        liveVideoPreviewRef.current.srcObject = stream;
-      }
-    } catch (err: any) {
-      console.warn("Camera init error:", err);
-      // If audio fails, try video-only
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode },
-          audio: false,
-        });
-        streamRef.current = stream;
-        setCameraStream(stream);
-        if (liveVideoPreviewRef.current) {
-          liveVideoPreviewRef.current.srcObject = stream;
-        }
-      } catch (videoErr: any) {
-        // Stay on the camera tab: switching away silently made the camera
-        // option disappear. Offer the retry and the phone-camera fallback.
-        setCameraError("Couldn't open the camera. Allow camera access, or record with your phone's camera app.");
-      }
-    }
-  };
-
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-    if (cameraStream) {
-      cameraStream.getTracks().forEach((track) => track.stop());
-      setCameraStream(null);
-    }
-    if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current);
-      timerIntervalRef.current = null;
-    }
-  };
-
-  const toggleCameraFacing = () => {
-    tapFeedback();
-    setFacingMode((prev) => (prev === "user" ? "environment" : "user"));
-  };
-
-  const toggleMic = () => {
-    tapFeedback();
-    setMicEnabled((prev) => !prev);
-  };
-
-  const startLiveRecording = () => {
-    if (!cameraStream) return;
-    tapFeedback();
-    recordedChunksRef.current = [];
-    setRecordingSeconds(0);
-
-    try {
-      const mimeTypes = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"];
-      let selectedMime = "";
-      for (const m of mimeTypes) {
-        if (MediaRecorder.isTypeSupported(m)) {
-          selectedMime = m;
-          break;
-        }
-      }
-
-      const recorder = selectedMime
-        ? new MediaRecorder(cameraStream, { mimeType: selectedMime, videoBitsPerSecond: 900_000 })
-        : new MediaRecorder(cameraStream, { videoBitsPerSecond: 900_000 });
-
-      recorder.ondataavailable = (event) => {
-        if (event.data && event.data.size > 0) {
-          recordedChunksRef.current.push(event.data);
-        }
-      };
-
-      recorder.onstop = () => {
-        const blob = new Blob(recordedChunksRef.current, {
-          type: selectedMime || "video/webm",
-        });
-        const url = URL.createObjectURL(blob);
-        setMediaUrl(url);
-        setMediaType("video");
-        stopCamera();
-      };
-
-      recorder.start(100);
-      mediaRecorderRef.current = recorder;
-      setIsRecording(true);
-
-      timerIntervalRef.current = setInterval(() => {
-        setRecordingSeconds((prev) => {
-          if (prev >= 60) {
-            stopLiveRecording();
-            return 60;
-          }
-          return prev + 1;
-        });
-      }, 1000);
-    } catch (e: any) {
-      console.error("Recording error:", e);
-      setCameraError("Unable to start video recorder: " + (e?.message || "Unknown error"));
-    }
-  };
-
-  const stopLiveRecording = () => {
-    tapFeedback();
-    if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current);
-      timerIntervalRef.current = null;
-    }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-      mediaRecorderRef.current.stop();
-    }
-    setIsRecording(false);
-  };
+  // The camera itself (opening, viewfinder, recording) lives in useReelCamera. It is on only while the camera
+  // tab is showing and nothing has been captured yet.
+  const cam = useReelCamera(!mediaUrl && captureSource === "camera", blob => {
+    setMediaUrl(URL.createObjectURL(blob));
+    setMediaType("video");
+  });
+  const cameraStream = cam.stream, isRecording = cam.recording, recordingSeconds = cam.seconds;
+  const facingMode = cam.facing, micEnabled = cam.micOn, cameraError = cam.error;
+  const startCamera = cam.open, stopCamera = cam.close;
+  const toggleCameraFacing = () => { tapFeedback(); cam.flip(); };
+  const toggleMic = () => { tapFeedback(); cam.toggleMic(); };
+  const startLiveRecording = () => { tapFeedback(); cam.startRecording(); };
+  const stopLiveRecording = () => { tapFeedback(); cam.stopRecording(); };
+  const [shrinkPct, setShrinkPct] = useState<number | null>(null); // set while an oversized clip is being made smaller
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -287,10 +141,7 @@ export default function ReelCreatorStudio({
     setMediaUrl(null);
     setPublishedSuccess(false);
     setActiveDrawer("none");
-    if (captureSource === "camera") {
-      startCamera();
-    }
-  };
+  }; // the camera reopens by itself once there is no captured clip
 
   const togglePlay = () => {
     if (!recordedVideoPlayerRef.current) return;
@@ -324,10 +175,23 @@ export default function ReelCreatorStudio({
     setPublishPct(0);
     setPublishError(null);
     tapFeedback();
+    let uploadUrl = mediaUrl, made: string | null = null;
     try {
+      // a clip from the phone's camera app or gallery can be far over the limit: make it smaller first
+      if (mediaType === "video") {
+        const blob = await (await fetch(mediaUrl)).blob();
+        if (blob.size > MAX_REEL_BYTES) {
+          recordedVideoPlayerRef.current?.pause();
+          setShrinkPct(0);
+          const small = await shrinkVideo(blob, MAX_REEL_BYTES, setShrinkPct);
+          made = URL.createObjectURL(small);
+          uploadUrl = made;
+        }
+      }
+      setShrinkPct(null);
       await publishReel({
         uid: meId.uid,
-        blobUrl: mediaUrl,
+        blobUrl: uploadUrl,
         type: mediaType,
         caption: caption.trim() || "Workout done.",
         badge: selectedBadge,
@@ -342,7 +206,10 @@ export default function ReelCreatorStudio({
       setTimeout(() => onClose(), 1200);
     } catch (e: any) {
       setPublishing(false);
+      setShrinkPct(null);
       setPublishError(e?.message || "Couldn't share. Check your connection and try again.");
+    } finally {
+      if (made) URL.revokeObjectURL(made);
     }
   };
 
@@ -429,7 +296,7 @@ export default function ReelCreatorStudio({
                 : "bg-white/10 text-slate-500 cursor-not-allowed"
             }`}
           >
-            {publishing ? `Sharing ${publishPct}%` : "Share"}
+            {shrinkPct !== null ? `Shrinking ${shrinkPct}%` : publishing ? `Sharing ${publishPct}%` : "Share"}
           </button>
         </div>
 
@@ -456,7 +323,7 @@ export default function ReelCreatorStudio({
                     <div>
                       <h3 className="text-base font-black text-white">Record a post</h3>
                       <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                        {cameraError || "Grant camera and microphone permissions to record live workout reels."}
+                        {cameraError || (cam.opening ? "Opening the camera…" : "Allow camera and microphone access to record a reel.")}
                       </p>
                     </div>
                     <button
@@ -478,7 +345,7 @@ export default function ReelCreatorStudio({
                   <>
                     {/* Live Camera Viewfinder */}
                     <video
-                      ref={liveVideoPreviewRef}
+                      ref={cam.attach}
                       autoPlay
                       playsInline
                       muted
@@ -495,7 +362,7 @@ export default function ReelCreatorStudio({
                     <span>{cameraError}</span>
                     <button
                       type="button"
-                      onClick={() => setCameraError(null)}
+                      onClick={cam.clearError}
                       className="ml-2 text-rose-400 hover:text-white font-bold text-sm px-1"
                     >
                       ×
@@ -527,9 +394,10 @@ export default function ReelCreatorStudio({
                       type="button"
                       onClick={toggleMic}
                       className="h-9 w-9 rounded-full bg-black/60 border border-white/20 text-white flex items-center justify-center backdrop-blur active:scale-90 transition"
-                      title={micEnabled ? "Mute Microphone" : "Unmute Microphone"}
+                      aria-label={!cam.micAvailable ? "Microphone not allowed: this reel will have no sound" : micEnabled ? "Mute microphone" : "Unmute microphone"}
+                      aria-pressed={micEnabled && cam.micAvailable}
                     >
-                      {micEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4 text-rose-400" />}
+                      {micEnabled && cam.micAvailable ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4 text-rose-400" />}
                     </button>
 
                     {/* Flip Camera */}
@@ -537,7 +405,8 @@ export default function ReelCreatorStudio({
                       type="button"
                       onClick={toggleCameraFacing}
                       className="h-9 w-9 rounded-full bg-black/60 border border-white/20 text-white flex items-center justify-center backdrop-blur active:scale-90 transition"
-                      title="Flip Camera (Front/Back)"
+                      aria-label="Switch between front and back camera"
+                      disabled={isRecording}
                     >
                       <SwitchCamera className="h-4 w-4" />
                     </button>
@@ -571,7 +440,7 @@ export default function ReelCreatorStudio({
                     </div>
                   </button>
                   <p className="text-[11px] font-bold text-white/70 drop-shadow">
-                    {isRecording ? "Tap square to stop & edit" : "Tap red circle to record workout reel"}
+                    {isRecording ? "Tap the square to stop" : !cam.micAvailable ? "Microphone not allowed: this reel will have no sound" : "Tap the red button to record (up to 60 seconds)"}
                   </p>
                 </div>
               </div>
@@ -777,7 +646,7 @@ export default function ReelCreatorStudio({
               className="mb-3 flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-cyan-500 text-sm font-black text-slate-950 active:scale-[0.98] disabled:opacity-60"
             >
               <Upload className="h-4 w-4" />
-              {publishing ? `Sharing ${publishPct}%` : "Share reel"}
+              {shrinkPct !== null ? `Making the clip smaller ${shrinkPct}%` : publishing ? `Sharing ${publishPct}%` : "Share reel"}
             </button>
           )}
           {activeDrawer === "caption" && (

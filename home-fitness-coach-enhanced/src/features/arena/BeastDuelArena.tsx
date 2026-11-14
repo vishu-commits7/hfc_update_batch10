@@ -4,7 +4,8 @@ import FriendsView from "./FriendsView";
 import CrewView from "./CrewView";
 import { QuickMatchCard, LiveRoomsCard, SpectateScreen } from "./ArenaExtras";
 import { callFn } from "../../core/functions";
-import { motionFor, usePoseCounter, cameraCountingPlan, rememberCamChoice, allowCameraAnyway } from "./poseCounter";
+import { familyFor, usePoseCounter, cameraCountingPlan, rememberCamChoice, allowCameraAnyway } from "./poseCounter";
+import { cueText, rejectText, setupText, type Evidence } from "./repEngine";
 import { useBackClose } from "../../core/backStack";
 import { ErrorState, EmptyState, EmptyAction, SkeletonRows } from "../../shared/ui/StateViews";
 import { track, trackOnce } from "../../core/track";
@@ -565,6 +566,7 @@ function RoomScreen({
   useEffect(() => {
     if (!room || phase !== "idle" || room.status !== "live") return;
     myRepsRef.current = 0; setMyReps(0); finishedRef.current = false;
+    liveAtRef.current = performance.now(); evRef.current = []; evSentRef.current = 0;
     setPhase("countdown"); setCount(3);
   }, [room?.status, phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -644,8 +646,15 @@ function RoomScreen({
     } catch (e) { setError(friendlySocialError(e)); } finally { setRematchBusy(false); }
   };
 
-  const addRep = () => {
+  // Camera evidence for each counted rep, kept until the server has confirmed receiving it.
+  const liveAtRef = useRef(0);                    // this phone's clock when it saw the match go live
+  const evRef = useRef<Evidence[]>([]);
+  const evSentRef = useRef(0);
+  const matchClock = () => performance.now() - liveAtRef.current; // always a little behind the server's clock, never ahead
+
+  const addRep = (ev?: Evidence) => {
     if (phase !== "battle" || !role || !room) return;
+    if (ev) evRef.current.push(ev);
     const next = myRepsRef.current + 1;
     myRepsRef.current = next;
     setMyReps(next);
@@ -653,7 +662,11 @@ function RoomScreen({
     void tapFeedback();
     // throttle network writes to ~2.5/second (each one is a server call plus a read for both players)
     const now = Date.now();
-    const push = () => { lastSentRef.current = Date.now(); void reportReps(code, role, myRepsRef.current).catch(() => {}); };
+    const push = () => {
+      lastSentRef.current = Date.now();
+      const from = evSentRef.current, batch = evRef.current.slice(from);
+      void reportReps(code, role, myRepsRef.current, batch).then(() => { evSentRef.current = Math.max(evSentRef.current, from + batch.length); }).catch(() => {});
+    };
     if (now - lastSentRef.current > REPORT_EVERY_MS) push();
     else if (!sendTimer.current) sendTimer.current = window.setTimeout(() => { sendTimer.current = null; push(); }, REPORT_EVERY_MS);
     if (room.mode === "reps" && next >= room.target) finishMe(next);
@@ -666,10 +679,13 @@ function RoomScreen({
     if (pl && pl.length > 1) { let left = myReps, i = 0; for (; i < pl.length - 1 && left >= pl[i].reps; i++) left -= pl[i].reps; return pl[i].name; }
     return pl?.[0]?.name || room.exercise;
   })();
-  const motion = motionFor(curName);
+  // one exercise only: a mixed plan is tap-counted (the server cannot judge it with one set of limits either)
+  const motion = room?.plan && room.plan.length > 1 ? null : familyFor(curName);
   const addRepRef = useRef(addRep);
   addRepRef.current = addRep;
-  const camStatus = usePoseCounter(duel.local, camCount && phase === "battle", motion, () => addRepRef.current());
+  const cam = usePoseCounter(duel.local, camCount && phase === "battle", motion, matchClock, ev => addRepRef.current(ev));
+  const camStatus = cam.status;
+  const camLive = camCount && !!motion && camStatus !== "error" && camStatus !== "slow";
   // while the camera is counting, taps are ignored (unless the camera failed)
   const tap = () => { if (camCount && camStatus !== "error" && camStatus !== "slow") return; addRep(); };
   // too slow on this phone: switch to taps for good (remembered), with a short message on the button
@@ -745,10 +761,19 @@ function RoomScreen({
             </p>
           );
         })()}
-        {room.ghost && room.unrated && (
+        {room.unrated && (
           <p className="rounded-xl bg-graphite px-3 py-2.5 text-xs font-medium text-ink-3">
-            {room.ghostKind === "self" ? "Your own best run: no rating change." : room.ghostKind === "pacer" ? "Practice pacer: no rating change." : "Daily ghost limit reached: no rating change."}
+            {room.ghostKind === "self" ? "Your own best run: no rating change."
+              : room.ghostKind === "pacer" ? "Practice pacer: no rating change."
+              : room.unratedReason === "taps-only-exercise" ? "Friendly match: the camera cannot judge this exercise, so ratings did not move."
+              : room.unratedReason === "winner-not-verified" ? (won ? "No rating change: your reps were tap-counted. Use the camera judge to earn rating." : "No rating change: the winner's reps were not camera-checked, so you lost nothing.")
+              : room.unratedReason === "nobody-verified" ? "No rating change: nobody used the camera judge."
+              : room.unratedReason === "draw-not-verified" ? "No rating change: a draw counts only when both players are camera-checked."
+              : room.ghost ? "Daily ghost limit reached: no rating change." : "No rating change for this match."}
           </p>
+        )}
+        {room.verified && (role === "host" ? room.verified.host : room.verified.guest) && (
+          <p className="flex items-center justify-center gap-1.5 text-xs font-bold text-volt"><Camera className="h-3.5 w-3.5" /> Your reps were camera-verified</p>
         )}
         {won && (
           <button onClick={() => { void tapFeedback(); setShareWin(true); }} className="flex min-h-[50px] w-full items-center justify-center gap-2 rounded-xl border border-volt bg-volt/10 text-sm font-bold text-volt active:scale-[0.98]">
@@ -844,8 +869,23 @@ function RoomScreen({
                   {camBlocked === "slow" ? "Camera counting was too slow on this phone, so taps are on. Try again" : camBlocked === "device" ? "Taps are on for this phone. Try camera counting anyway" : !camCount ? "Count reps with camera" : camStatus === "loading" ? "Starting camera counter…" : camStatus === "error" ? "Camera counting unavailable. Tap instead." : camStatus === "lost" ? "Can't see you. Step back so your body is in frame." : "Camera is counting. Tap to switch back."}
                 </button>
               ) : (
-                <p className="text-center text-[11px] text-ink-3">Camera counting supports push-ups, squats, lunges and sit-ups. Tap for {curName}.</p>
+                <p className="text-center text-[11px] text-ink-3">The camera can judge push-ups, squats, lunges, sit-ups, dips and jumping jacks. {curName} is tap-counted, so this match is a friendly: no rating change.</p>
               )
+            )}
+            {motion && camLive && (
+              <div className={`rounded-2xl border p-3 text-center ${camStatus === "lost" || cam.cue === "frame" || cam.cue === "position" ? "border-amber-400/50 bg-amber-500/10" : "border-line bg-carbon"}`} role="status" aria-live="polite">
+                <p className="text-base font-bold">{camStatus === "loading" ? "Starting the camera judge…" : cam.cue ? cueText(motion, cam.cue) : "Get ready"}</p>
+                <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-graphite" aria-hidden>
+                  <div className={`h-full rounded-full transition-[width] duration-100 ${cam.depth >= 1 ? "bg-volt" : "bg-[#7aa2ff]"}`} style={{ width: `${Math.round(cam.depth * 100)}%` }} />
+                </div>
+                <p className="mt-1.5 text-[11px] text-ink-3">
+                  {cam.lastReject ? rejectText(motion, cam.lastReject) : "Depth bar must fill, then return to the top, for a rep to count."}
+                  {cam.rejected > 0 ? ` · ${cam.rejected} not counted` : ""}
+                </p>
+              </div>
+            )}
+            {motion && !camLive && (
+              <p className="rounded-xl bg-amber-500/10 px-3 py-2 text-center text-[11px] font-semibold text-amber-300">Tap counting: your reps are not camera-checked, so you cannot gain rating in this match.</p>
             )}
             <button
               onPointerDown={tap}
@@ -853,8 +893,8 @@ function RoomScreen({
               aria-label="Tap to count a rep"
             >
               <Hand className="h-10 w-10" />
-              <span className="text-2xl font-bold">{camCount && camStatus !== "error" ? "CAMERA COUNTING" : "TAP EACH REP"}</span>
-              <span className="text-xs font-semibold opacity-70">{room.ghost ? "Count honestly. The ghost runs its recorded pace." : "Count honestly. Your opponent sees it live."}</span>
+              <span className="text-2xl font-bold">{camLive ? "CAMERA IS JUDGING" : "TAP EACH REP"}</span>
+              <span className="text-xs font-semibold opacity-70">{camLive ? "Only full, clean reps count. Taps are off." : room.ghost ? "Count honestly. The ghost runs its recorded pace." : "Count honestly. Your opponent sees it live."}</span>
             </button>
           </>
         ) : (
@@ -894,6 +934,16 @@ function RoomScreen({
       <div className="grid grid-cols-2 gap-3">
         <PlayerSlot name={room.hostName} avatar={room.hostAvatar} label="Host" you={role === "host"} />
         <PlayerSlot name={room.guestName} avatar={room.guestAvatar} label={room.ghost ? "Ghost" : "Challenger"} you={role === "guest"} empty={!room.guestUid && !room.ghost} />
+      </div>
+
+      {/* how this match is judged, before it starts */}
+      <div className="rounded-2xl border border-line bg-carbon p-4">
+        <p className="flex items-center gap-1.5 text-xs font-bold"><Camera className="h-4 w-4 text-volt" /> {motion ? "Camera-judged match" : "Tap-counted friendly"}</p>
+        <p className="mt-1 text-xs text-ink-3">
+          {motion
+            ? `Only full, clean reps count, and only camera-checked reps can win rating. ${setupText(motion)}`
+            : "The camera cannot judge this exercise, so reps are tapped and ratings do not move. Pick push-ups, squats, lunges, sit-ups, dips or jumping jacks for a rated match."}
+        </p>
       </div>
 
       <DuelVideo local={duel.local} remote={duel.remote} state={duel.state} error={duel.error} oppName={opp?.name || "Opponent"} />

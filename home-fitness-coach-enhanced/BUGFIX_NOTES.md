@@ -516,3 +516,20 @@ Not tested on a device; the error states were only checked by reading the code (
 - Reel studio: drawn above the bottom bar, full screen on a phone, with a large "Share reel" button at the bottom and Back to close. (It was under the bar because it was drawn inside the animated screen.) The profile's reel viewer had the same layer problem.
 
 Checked with `tsc --noEmit`, the 13 check scripts and `arch:check`. `npm run build` (Vite) cannot be run here: run it first.
+
+## Batch 51 — Camera rep judge and verified ratings (Arena)
+
+- **Phone** (`src/features/arena/repEngine.ts`, pure code; `poseCounter.ts` runs the camera): the pose model already in the app finds the body; the new judge counts a rep only if the body is in the right position for the exercise, the joint bends far enough and straightens fully, form holds for 70% of the rep, and the tempo is believable. Half reps are refused with a reason. Six exercise families: push-ups, dips, squats, lunges (and split squats), sit-ups, jumping jacks. Joint angles are now corrected for the video's shape (they were skewed on a tall video).
+- Live in a match: a coaching line ("Lower: chest closer to the floor"), a depth bar, and a count of reps not counted. Camera is the default; taps are off while it judges. The lobby says how to place the phone.
+- **Server** (`functions/src/repVerify.ts`): each counted rep sends a small evidence record (end time, duration, deepest and straightest angle, form %, visibility %). `arenaReport` re-checks every record against the exercise's limits and its own clock, ignores resends, and catches generated evidence (8+ near-identical reps is a strike). Video never leaves the phone.
+- **Rating rule** (`ratingPolicy`): ratings move only when the winner's reps were camera-verified (90% of them). A verified player who loses to a tapper loses nothing; a tapper who loses to a verified player does lose rating; a draw needs both verified; an exercise the camera cannot judge, or a mixed plan, is a friendly. Unverified wins stay off the wins board and arena trophies. XP is still paid. Ghost matches follow the same rule and only verified runs become ghosts.
+- Switch: `ARENA_REQUIRE_CAMERA=false` in `functions/.env` + redeploy functions goes back to rating every match.
+- `npm run reps:check`: made-up skeletons through the phone's judge, then the server's check, plus the rating rule (full reps count; half reps, sagging hips, standing arm-bends, arm flapping and feet-together jacks do not).
+- Needs: `firebase deploy --only functions`, and a new app build.
+- Honest limits: no model was trained here. The angle limits are my estimates and have never seen a real person through a real phone camera: expect to tune them. Angles are 2D, so the camera angle matters. The daily challenge is still tap-counted. A modified app can still invent plausible, varied evidence; this raises the cost of cheating, it does not end it.
+- Earlier in this session some `tsc` runs were cut off by a time limit and looked like a pass. From this batch on the exit code is checked. Current state: app `tsc` exit 0, functions build exit 0, all 15 check scripts exit 0.
+
+## Batch 52 — Old invite links
+
+- Invites sent before Batch 50 carry the bare Render address, which still opened the web app. `server.ts` now sends an Android phone that opens the bare address to the `/join` page ("Open in the app" / "Get the app"). Tapping "Continue in the browser" there sets a cookie so that phone gets the web app from then on. Computers are unaffected.
+- Needs `git push` to `main` (Render). Checked with `tsc` and `share:check`; not seen on a phone.

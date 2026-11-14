@@ -170,13 +170,26 @@ small{display:block;margin-top:18px;color:#737f95}
 ${code ? `<div class="code" aria-label="Code ${code.split("").join(" ")}">${code}</div>` : ""}
 <a class="go" id="open" href="${intent}">Open in the Apex Pulse app</a>
 <a class="get" href="${PLAY_URL}">Get the app on Google Play</a>
-<a class="web" href="/${q}">Continue in the browser instead</a>
+<a class="web" id="web" href="/${q}">Continue in the browser instead</a>
 ${code ? `<small>If the app opens without the code, enter ${code} in Arena.</small>` : ""}
 </main>
 <script>
 // "Open in the app" only works on Android. Elsewhere it becomes the Play Store link.
 if(!/Android/i.test(navigator.userAgent)){var a=document.getElementById("open");a.href=${JSON.stringify(PLAY_URL)};a.textContent="Apex Pulse is on Android";}
+// choosing the browser is remembered, so the front page stops sending this phone back here
+document.getElementById("web").addEventListener("click",function(){document.cookie="ap_web=1; path=/; max-age=31536000; SameSite=Lax";});
 </script></body></html>`);
+});
+
+// An Android phone that opens the bare address (for example from an invite sent before links pointed at /join)
+// gets the "open the app / get the app" page instead of the web app. Anyone who taps "Continue in the browser"
+// there is remembered by a cookie and gets the web app from then on. Computers always get the web app.
+app.get("/", (req, res, next) => {
+  const ua = String(req.headers["user-agent"] || "");
+  const wantsPage = String(req.headers.accept || "").includes("text/html");
+  const chose = /(?:^|;\s*)ap_web=1/.test(String(req.headers.cookie || ""));
+  if (wantsPage && /Android/i.test(ua) && !chose && Object.keys(req.query).length === 0) return res.redirect(302, "/join");
+  next();
 });
 
 // Health Check Endpoint

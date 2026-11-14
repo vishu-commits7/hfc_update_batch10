@@ -90,7 +90,7 @@ export function QuickMatchCard({ meUid, onMatched }: { meUid: string; onMatched:
   return (
     <section className="rounded-2xl border border-line bg-carbon p-4">
       <h2 className="flex items-center gap-1.5 text-sm font-bold"><Zap className="h-4 w-4 text-volt" /> Quick match</h2>
-      <p className="mt-0.5 text-xs text-ink-3">Get paired with the next athlete who picks the same exercise and reps. Ranked, so your rating moves.</p>
+      <p className="mt-0.5 text-xs text-ink-3">Get paired with the next athlete who picks the same exercise and reps. Rated when your reps are camera-checked.</p>
       {searching ? (
         <div className="mt-4 rounded-xl bg-graphite p-5 text-center">
           <Loader2 className="mx-auto h-6 w-6 animate-spin text-volt" />

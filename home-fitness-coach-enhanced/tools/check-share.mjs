@@ -56,6 +56,7 @@ ok(pj("apexpulse://join?room=AB12CD") === '{"kind":"room","code":"AB12CD"}', "re
 ok(pj("apexpulse://oauth?crew=QBSUTH") === "null" && pj("https://x.example/join?crew=<script>") === "null" && pj("not a url") === "null", "ignores other links and bad codes");
 const server = fs.readFileSync(path.join(root, "server.ts"), "utf8");
 ok(server.includes('app.get("/join"') && server.includes('"/.well-known/assetlinks.json"') && server.indexOf('app.get("/join"') < server.indexOf('app.get("*"'), "server answers /join and assetlinks before the web app");
+ok(server.includes('app.get("/", (req, res, next)') && server.includes("ap_web=1") && server.indexOf('app.get("/", (req') < server.indexOf("express.static"), "an Android phone on the bare address gets the invite page, unless it chose the browser");
 const manifest = fs.readFileSync(path.join(root, "android/app/src/main/AndroidManifest.xml"), "utf8");
 ok(manifest.includes('android:scheme="apexpulse" android:host="join"') && manifest.includes('android:pathPrefix="/join"'), "Android opens join links");
 

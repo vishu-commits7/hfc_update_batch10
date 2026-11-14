@@ -13,6 +13,7 @@
  * No Firebase Storage is needed for any of this — avatars are small JPEG data
  * URLs stored on the profile document — so it works on the free Spark plan.
  */
+import { liveListen } from "../../core/liveListen";
 import type { User } from "firebase/auth";
 import {
   collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, onSnapshot,
@@ -301,7 +302,7 @@ export interface ChatMessage {
 export interface ChatReceipts { deliveredAt: Record<string, number>; readAt: Record<string, number> }
 
 export function subscribeChatReceipts(chatId: string, cb: (r: ChatReceipts) => void) {
-  return onSnapshot(doc(db, "chats", chatId), snap => {
+  return liveListen(onErr => onSnapshot(doc(db, "chats", chatId), snap => {
     const x = (snap.data() as Record<string, any>) || {};
     const conv = (m: Record<string, any> | undefined) => {
       const out: Record<string, number> = {};
@@ -309,7 +310,7 @@ export function subscribeChatReceipts(chatId: string, cb: (r: ChatReceipts) => v
       return out;
     };
     cb({ deliveredAt: conv(x.deliveredAt), readAt: conv(x.readAt) });
-  }, () => {});
+  }, onErr));
 }
 
 /** I opened the conversation: everything up to now is read (and delivered). */
@@ -329,7 +330,7 @@ const toMs = (t: unknown): number => {
 };
 
 export function subscribeChats(me: string, cb: (c: ChatSummary[]) => void, onError?: (e: unknown) => void) {
-  return onSnapshot(
+  return liveListen(onErr => onSnapshot(
     query(collection(db, "chats"), where("members", "array-contains", me)),
     snap => {
       const list = snap.docs.map(d => {
@@ -345,13 +346,14 @@ export function subscribeChats(me: string, cb: (c: ChatSummary[]) => void, onErr
       list.sort((a, b) => b.updatedAt - a.updatedAt);
       cb(list);
     },
-    err => onError?.(err),
-  );
+    onErr,
+  ), onError);
 }
 
 /** The newest `max` messages, oldest first. Opening a chat used to read up to 300 every time. */
+/** `onError` is told about the first failure only; the listener keeps retrying on its own (see liveListen). */
 export function subscribeMessages(chatId: string, cb: (m: ChatMessage[]) => void, onError?: (e: unknown) => void, max = 50) {
-  return onSnapshot(
+  return liveListen(onErr => onSnapshot(
     query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "asc"), limitToLast(max)),
     { includeMetadataChanges: true },
     snap => {
@@ -362,11 +364,16 @@ export function subscribeMessages(chatId: string, cb: (m: ChatMessage[]) => void
         }),
       );
     },
-    err => onError?.(err),
-  );
+    onErr,
+  ), onError);
 }
 
-export async function sendMessage(me: string, other: string, text: string, queueOnly = false) {
+/**
+ * Sends a direct message. Resolves when the server has it; rejects with the reason if it was refused.
+ * The message appears in the open chat at once either way (Firestore shows local writes immediately), so callers
+ * should not wait on this before letting the user type again. Offline, it is queued and sent on reconnect.
+ */
+export async function sendMessage(me: string, other: string, text: string) {
   const clean = text.trim().slice(0, 1000);
   if (!clean) return;
   const id = chatIdFor(me, other);
@@ -382,9 +389,7 @@ export async function sendMessage(me: string, other: string, text: string, queue
     { merge: true },
   );
   batch.set(doc(collection(db, "chats", id, "messages")), { from: me, text: clean, createdAt: serverTimestamp() });
-  // queueOnly: let Firestore queue the write offline and deliver when back online.
-  if (queueOnly) { void batch.commit().catch(() => {}); return; }
-  await withTimeout(batch.commit(), 10000, "Sending");
+  await batch.commit(); // errors must reach the caller: the old version swallowed them, so a refused message just vanished
 }
 
 /* ------------------------------------------------------------------ */
@@ -519,8 +524,12 @@ export interface ArenaRoom {
   ghostTl: number[];
   /** rating moved at half weight against this ghost */
   ghostHalf: boolean;
-  /** no rating change (practice pacer, your own run, or the daily ghost limit) */
+  /** no rating change (practice pacer, your own run, a limit, or reps that were not camera-verified) */
   unrated: boolean;
+  /** why: "taps-only-exercise" | "nobody-verified" | "winner-not-verified" | "draw-not-verified" | "limit" | "practice" */
+  unratedReason: string | null;
+  /** whose reps the server accepted as camera-verified (set when the match ends) */
+  verified: { host: boolean; guest: boolean } | null;
 }
 
 export interface RoomPlayer { uid: string; name: string; avatarUrl: string | null }
@@ -565,6 +574,8 @@ function roomFrom(code: string, x: Record<string, any>): ArenaRoom {
     ghostTl: Array.isArray(x.ghostTl) ? x.ghostTl.map((n: unknown) => Number(n) || 0) : [],
     ghostHalf: x.ghostHalf === true,
     unrated: x.unrated === true,
+    unratedReason: typeof x.unratedReason === "string" ? x.unratedReason : null,
+    verified: x.verified && typeof x.verified === "object" ? { host: x.verified.host === true, guest: x.verified.guest === true } : null,
   };
 }
 
@@ -635,8 +646,9 @@ export async function startRoomMatch(code: string) {
   await withTimeout(callFn("arenaStart", { code }), 15000, "Starting");
 }
 
-export async function reportReps(code: string, _role: "host" | "guest", reps: number) {
-  await callFn("arenaReport", { code, reps });
+/** `ev` = camera evidence for reps counted since the last confirmed report (see features/arena/repEngine.ts). */
+export async function reportReps(code: string, _role: "host" | "guest", reps: number, ev?: number[][]) {
+  await callFn("arenaReport", ev && ev.length ? { code, reps, ev } : { code, reps });
 }
 
 export async function finishSide(code: string, _role: "host" | "guest", _reps?: number) {

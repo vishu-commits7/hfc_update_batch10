@@ -40,6 +40,8 @@ import { ensureQuests, type QuestDoc } from "./quests";
 import { dayKeyIST, weekIdIST, weekIdOfDay } from "./timeutil";
 import { finalizeGhost, ghostRef, saveGhost } from "./ghosts";
 import { appendTimeline, ghostKey, isGhostable } from "./ghostCore";
+import { ratingPolicy, roomFamily, sideVerified, verifyBatch, looksForged, type EvStats } from "./repVerify";
+import { REQUIRE_CAMERA } from "./init";
 import { isStrike, plausibleReps, roomRate } from "./repLimits";
 import { strike } from "./anticheat";
 import { applyInvite, readInvite } from "./invites";
@@ -188,6 +190,9 @@ interface Room {
   plan?: { id?: string }[] | null;
   /** this player sent a rep count far above the human limit in this match */
   hostStruck?: boolean; guestStruck?: boolean;
+  exercise?: string;
+  /** camera-verified reps (repVerify.ts): how many passed, end time of the last one, running statistics, refusals */
+  hostVer?: number; guestVer?: number; hostEvT?: number; guestEvT?: number; hostEvS?: EvStats; guestEvS?: EvStats; hostEvBad?: number; guestEvBad?: number;
 }
 
 function needAuth(req: CallableRequest): string {
@@ -323,9 +328,19 @@ async function finalize(tx: FirebaseFirestore.Transaction, ref: DocumentReferenc
   const pairRef = r.guestUid ? db.doc(`arenaPairs/${dayKeyIST()}_${[r.hostUid, r.guestUid].sort().join("_")}`) : null;
   const pairSnap = !r.statsApplied && pairRef ? await tx.get(pairRef) : null;
   const pairCount = Number(pairSnap?.data()?.n || 0);
+  // Ratings move only on camera-verified reps (repVerify.ts). XP is still paid; the match just is not rated.
+  const family = roomFamily(r);
+  const ver = (role: "host" | "guest") => sideVerified(
+    Number((extra[`${role}Reps`] as number | undefined) ?? r[`${role}Reps`] ?? 0),
+    Number((extra[`${role}Ver`] as number | undefined) ?? r[`${role}Ver`] ?? 0),
+    ((extra[`${role}EvS`] as EvStats | undefined) ?? r[`${role}EvS`] ?? [0, 0, 0, 0, 0]) as EvStats,
+  );
+  const hostVerified = !!family && ver("host"), guestVerified = !!family && ver("guest");
+  const policy = ratingPolicy({ requireCamera: REQUIRE_CAMERA, family, hostVerified, guestVerified, winner: winner === null ? null : winner === r.hostUid ? "host" : "guest" });
   // a match where either side sent an impossible rep count is not rated (and makes no ghosts)
   const capped = pairCount >= PAIR_DAILY_CAP || !!r.hostStruck || !!r.guestStruck;
   const apply = !r.statsApplied && !!r.guestUid && !capped;
+  const rated = apply && policy.rated;
   // all reads first
   const hostP = apply ? await readProgress(tx, r.hostUid) : null;
   const guestP = apply && r.guestUid ? await readProgress(tx, r.guestUid) : null;
@@ -343,12 +358,13 @@ async function finalize(tx: FirebaseFirestore.Transaction, ref: DocumentReferenc
   };
   const hRating = Number(hostP?.user.rating ?? 1000), gRating = Number(guestP?.user.rating ?? 1000);
   const hScore = winner === null ? 0.5 : winner === r.hostUid ? 1 : 0;
-  const hDelta = hostP ? rate(hRating, gRating, hScore, Number(hostP.user.arenaMatches || 0)) : 0;
-  const gDelta = guestP ? rate(gRating, hRating, 1 - hScore, Number(guestP.user.arenaMatches || 0)) : 0;
+  const hDelta = hostP && rated ? rate(hRating, gRating, hScore, Number(hostP.user.arenaMatches || 0)) : 0;
+  const gDelta = guestP && rated ? rate(gRating, hRating, 1 - hScore, Number(guestP.user.arenaMatches || 0)) : 0;
   tx.update(ref, {
     ...extra, status: "finished", hostDone: true, guestDone: true, winnerUid: winner, statsApplied: true,
-    ...(capped ? { unrated: true } : {}),
-    ...(apply ? { ratingDelta: { host: hDelta, guest: gDelta }, ratingAfter: { host: hRating + hDelta, guest: gRating + gDelta } } : {}),
+    verified: { host: hostVerified, guest: guestVerified }, camRequired: REQUIRE_CAMERA,
+    ...(capped || !policy.rated ? { unrated: true, unratedReason: capped ? "limit" : policy.reason } : {}),
+    ...(rated ? { ratingDelta: { host: hDelta, guest: gDelta }, ratingAfter: { host: hRating + hDelta, guest: gRating + gDelta } } : {}),
   });
   if (apply && pairRef) tx.set(pairRef, { n: pairCount + 1, day: dayKeyIST(), a: r.hostUid, b: r.guestUid }, { merge: true });
   if (apply && hostP && guestP && r.guestUid) {
@@ -361,13 +377,14 @@ async function finalize(tx: FirebaseFirestore.Transaction, ref: DocumentReferenc
       const draw = winner === null;
       const xpGain = won ? 60 : draw ? 35 : 20;
       const prog = applyProgress(tx, s.uid, s.p, {
-        xp: xpGain, arenaWin: won, arenaMatch: true,
-        extra: { rating: s.rating + s.delta, ratingPeak: Math.max(Number(s.p.user.ratingPeak || 1000), s.rating + s.delta) },
+        xp: xpGain, arenaWin: won && rated, arenaMatch: true, // an unverified win stays off the wins board and trophies
+        extra: rated ? { rating: s.rating + s.delta, ratingPeak: Math.max(Number(s.p.user.ratingPeak || 1000), s.rating + s.delta) } : undefined,
       });
       tx.set(db.doc(`users/${s.uid}/matches/${ref.id}`), {
         code: ref.id, at: FieldValue.serverTimestamp(), exercise: room.exercise || "", mode: r.mode,
         myReps: s.mine, oppReps: s.theirs, oppUid: s.oppUid, oppName: s.oppName,
         result: won ? "win" : draw ? "draw" : "loss", xpGained: xpGain, ratingDelta: s.delta, ratingAfter: s.rating + s.delta,
+        rated, verified: s.uid === r.hostUid ? hostVerified : guestVerified,
         levelUp: prog.levelUp, rankUp: prog.rankUp, newTrophies: prog.newTrophies.map(t => t.id),
       });
     }
@@ -375,6 +392,7 @@ async function finalize(tx: FirebaseFirestore.Transaction, ref: DocumentReferenc
       const startedMs = r.startedAt?.toMillis() ?? Date.now();
       const side = (role: "host" | "guest", uid: string, snap: FirebaseFirestore.DocumentSnapshot | null, reps: number, ratingNow: number) => {
         if (r[`${role}Struck`]) return;
+        if (REQUIRE_CAMERA && !(role === "host" ? hostVerified : guestVerified)) return; // only real, camera-checked runs become ghosts
         const tl = ((extra[`${role}Tl`] as number[] | undefined) ?? r[`${role}Tl`] ?? []);
         const doneAt = Number(extra[`${role}DoneAt`] ?? r[`${role}DoneAt`] ?? 0);
         saveGhost(tx, snap, { uid, keyHash: gKey, exercise: String(room.exercise || ""), target: r.target, rating: ratingNow, tl, reps, finMs: reps >= r.target && doneAt ? doneAt - startedMs : null });
@@ -425,9 +443,21 @@ export const arenaReport = onCall(async req => {
     const nowMs = Date.now() - r.startedAt.toMillis();
     const tl = appendTimeline((r[tlKey as "hostTl"] as number[] | undefined) ?? [], current, next, Number(r[tlMsKey as "hostTlMs"] ?? 0), nowMs);
     const struckKey = `${role}Struck` as "hostStruck" | "guestStruck";
-    const newStrike = !r[struckKey] && isStrike(reps, plausible);
+    let newStrike = !r[struckKey] && isStrike(reps, plausible);
     if (newStrike) struck = `room ${c}: sent ${reps} reps at ${elapsed.toFixed(1)}s, limit ${plausible} (${rate}/s)`;
-    const mark = newStrike ? { [struckKey]: true } : {};
+    // camera evidence for the reps in this report: each record is checked here, never trusted
+    const fam = roomFamily(r);
+    const evOut = fam && Array.isArray(req.data?.ev) ? verifyBatch(fam, req.data.ev, Number(r[`${role}EvT` as "hostEvT"] ?? 0), nowMs, (r[`${role}EvS` as "hostEvS"] ?? [0, 0, 0, 0, 0]) as EvStats) : null;
+    const verNow = Math.min(next, Number(r[`${role}Ver` as "hostVer"] ?? 0) + (evOut?.accepted ?? 0)); // never more verified reps than reps
+    const evMark: Record<string, unknown> = evOut ? {
+      [`${role}Ver`]: verNow, [`${role}EvT`]: evOut.lastEndMs, [`${role}EvS`]: evOut.stats,
+      ...(evOut.refused ? { [`${role}EvBad`]: Number(r[`${role}EvBad` as "hostEvBad"] ?? 0) + evOut.refused } : {}),
+    } : {};
+    if (evOut && !r[struckKey] && !newStrike && looksForged(evOut.stats)) { // identical "reps": generated, not performed
+      newStrike = true;
+      struck = `room ${c}: camera evidence for ${evOut.stats[0]} reps is identical (generated)`;
+    }
+    const mark = { ...(newStrike ? { [struckKey]: true } : {}), ...evMark };
     const updated = { ...r, ...mark, [field]: next, [tlKey]: tl } as Room;
     if (r.mode === "reps" && next >= r.target) {
       await finalize(tx, ref, updated, { ...mark, [field]: next, [tlKey]: tl, [`${role}DoneAt`]: Date.now() });

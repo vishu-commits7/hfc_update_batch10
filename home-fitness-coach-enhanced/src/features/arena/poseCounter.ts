@@ -1,19 +1,14 @@
 /**
  * Camera rep counting (pose detection, on-device). Video never leaves the phone for this.
+ * This file runs the camera and the pose model; the judging of each rep is in repEngine.ts.
  * MediaPipe ships inside the app (see below) and loads the first time it's used; any load failure
  * just falls back to tap counting.
  */
 import { useEffect, useRef, useState } from "react";
+import { RepEngine, type Cue, type Evidence, type Family, type Pt, type Reject } from "./repEngine";
 
-export type Motion = "elbow" | "knee" | "hip";
-
-/** Which joint angle drives the rep for an exercise. null = not supported, use tapping. */
-export function motionFor(name: string): Motion | null {
-  if (/push-?up|dip/i.test(name) && !/scapular|cobra/i.test(name)) return "elbow";
-  if (/squat|lunge/i.test(name)) return "knee";
-  if (/sit-?up|crunch/i.test(name)) return "hip";
-  return null;
-}
+export type { Family } from "./repEngine";
+export { familyFor } from "./repEngine";
 
 /**
  * Files live inside the app (public/mediapipe, copied there by `npm run fetch:mediapipe`) so counting works
@@ -48,7 +43,7 @@ export function cameraCountingPlan(): { start: boolean; blocked: "device" | "slo
   const p = readPref();
   if (p.autoOff) return { start: false, blocked: p.autoOff };      // it was too slow on this phone before
   if (lowEndDevice() && p.pref !== "camera") return { start: false, blocked: "device" };
-  return { start: p.pref === "camera", blocked: null };
+  return { start: p.pref !== "tap", blocked: null };                  // camera is the default: only camera-checked reps are rated
 }
 /** Remember the player's own on/off choice. */
 export function rememberCamChoice(on: boolean) { writePref({ ...readPref(), pref: on ? "camera" : "tap" }); }
@@ -83,62 +78,49 @@ function loadLandmarker(): Promise<any> {
   return landmarkerP;
 }
 
-type P = { x: number; y: number; visibility?: number };
-const deg = (a: P, b: P, c: P) => {
-  const v1 = { x: a.x - b.x, y: a.y - b.y }, v2 = { x: c.x - b.x, y: c.y - b.y };
-  const dot = v1.x * v2.x + v1.y * v2.y, m = Math.hypot(v1.x, v1.y) * Math.hypot(v2.x, v2.y);
-  return m ? (Math.acos(Math.max(-1, Math.min(1, dot / m))) * 180) / Math.PI : 180;
-};
-
-// [shoulder, elbow, wrist] / [hip, knee, ankle] / [shoulder, hip, knee] landmark indices, left then right
-const JOINTS: Record<Motion, [number[], number[]]> = {
-  elbow: [[11, 13, 15], [12, 14, 16]],
-  knee: [[23, 25, 27], [24, 26, 28]],
-  hip: [[11, 23, 25], [12, 24, 26]],
-};
-// angle must drop below `down`, then rise above `up`, to count one rep
-const LIMITS: Record<Motion, { down: number; up: number }> = {
-  elbow: { down: 95, up: 150 },
-  knee: { down: 105, up: 158 },
-  hip: { down: 95, up: 130 },
-};
-
-export class RepCounter {
-  private smooth: number | null = null;
-  private low = false;
-  private last = 0;
-  constructor(private motion: Motion) {}
-  /** Feed one frame of landmarks. Returns "rep", "tracking" (body found) or "lost" (body not visible enough). */
-  feed(lm: P[], now: number): "rep" | "tracking" | "lost" {
-    const [l, r] = JOINTS[this.motion];
-    const vis = (ids: number[]) => ids.reduce((s, i) => s + (lm[i]?.visibility ?? 0), 0) / ids.length;
-    const ids = vis(l) >= vis(r) ? l : r;
-    if (ids.some(i => !lm[i] || (lm[i].visibility ?? 0) < 0.5)) return "lost";
-    const raw = deg(lm[ids[0]], lm[ids[1]], lm[ids[2]]);
-    this.smooth = this.smooth === null ? raw : this.smooth * 0.5 + raw * 0.5;
-    const { down, up } = LIMITS[this.motion];
-    if (this.smooth < down) this.low = true;
-    else if (this.low && this.smooth > up && now - this.last > 350) { this.low = false; this.last = now; return "rep"; }
-    return "tracking";
-  }
-}
-
 export type PoseStatus = "off" | "loading" | "tracking" | "lost" | "error" | "slow";
 
-/** Runs pose detection on a camera stream and calls onRep for every counted rep. */
-export function usePoseCounter(stream: MediaStream | null, enabled: boolean, motion: Motion | null, onRep: () => void): PoseStatus {
-  const [status, setStatus] = useState<PoseStatus>("off");
+export interface PoseLive {
+  status: PoseStatus;
+  /** 0 = top of the rep, 1 = deep enough */
+  depth: number;
+  cue: Cue | null;
+  /** reps refused so far, and why the last one was */
+  rejected: number;
+  lastReject: Reject | null;
+}
+const IDLE: PoseLive = { status: "off", depth: 0, cue: null, rejected: 0, lastReject: null };
+
+/**
+ * Runs pose detection on a camera stream and judges every rep with the RepEngine.
+ * `clock` returns milliseconds since the match went live; `onRep` gets the evidence record for each counted rep.
+ * Video frames stay on the phone: only the small evidence records are sent to the server.
+ */
+export function usePoseCounter(stream: MediaStream | null, enabled: boolean, family: Family | null, clock: () => number, onRep: (ev: Evidence) => void): PoseLive {
+  const [live, setLive] = useState<PoseLive>(IDLE);
   const repRef = useRef(onRep);
   repRef.current = onRep;
+  const clockRef = useRef(clock);
+  clockRef.current = clock;
 
   useEffect(() => {
-    if (!enabled || !stream || !motion) { setStatus("off"); return; }
+    if (!enabled || !stream || !family) { setLive(IDLE); return; }
     let alive = true;
     let raf = 0;
     const video = document.createElement("video");
     video.muted = true; video.playsInline = true; video.srcObject = stream;
-    const counter = new RepCounter(motion);
-    setStatus("loading");
+    const engine = new RepEngine(family);
+    let lastReject: Reject | null = null;
+    let shown = "";
+    const show = (status: PoseStatus, depth: number, cue: Cue | null) => {
+      // redraw only when something the player can see changed (depth in 5% steps)
+      const d = Math.round(depth * 20) / 20;
+      const key = `${status}|${d}|${cue}|${engine.rejected}`;
+      if (key === shown) return;
+      shown = key;
+      setLive({ status, depth: d, cue, rejected: engine.rejected, lastReject });
+    };
+    show("loading", 0, null);
     (async () => {
       try {
         const [lmk] = await Promise.all([loadLandmarker(), video.play()]);
@@ -161,23 +143,23 @@ export function usePoseCounter(stream: MediaStream | null, enabled: boolean, mot
               if (win >= 20) {
                 slowWins = winMs / win > 110 ? slowWins + 1 : 0;
                 win = 0; winMs = 0;
-                if (slowWins >= 2) { alive = false; markTooSlow(); setStatus("slow"); return; }
+                if (slowWins >= 2) { alive = false; markTooSlow(); show("slow", 0, null); return; }
               }
             }
-            const pts = res?.landmarks?.[0] as P[] | undefined;
-            if (!pts) { setStatus(s => (s === "lost" ? s : "lost")); return; }
-            const out = counter.feed(pts, now);
-            setStatus(out === "lost" ? "lost" : "tracking");
-            if (out === "rep") repRef.current();
+            const aspect = video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 1;
+            const f = engine.feed(res?.landmarks?.[0] as Pt[] | undefined, clockRef.current(), aspect);
+            if (f.rep && !f.rep.ok) lastReject = f.rep.reason;
+            if (f.rep?.ok) { lastReject = null; repRef.current(f.rep.ev); }
+            show(f.tracking ? "tracking" : "lost", f.depth, f.cue);
           } catch { /* skip a bad frame */ }
         };
         raf = requestAnimationFrame(loop);
       } catch {
-        if (alive) setStatus("error");
+        if (alive) show("error", 0, null);
       }
     })();
     return () => { alive = false; cancelAnimationFrame(raf); video.pause(); video.srcObject = null; };
-  }, [stream, enabled, motion]);
+  }, [stream, enabled, family]);
 
-  return status;
+  return live;
 }
